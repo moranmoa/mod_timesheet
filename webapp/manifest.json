@@ -1,0 +1,82 @@
+{
+	"_version": "1.40.0",
+	"sap.app": {
+		"id": "modtimesheet",
+		"type": "application",
+		"i18n": "i18n/i18n.properties",
+		"title": "דוחות נוכחות באחריות ממונה",
+		"description": "Manager attendance approval worklist",
+		"applicationVersion": {
+			"version": "1.0.0"
+		}
+	},
+	"sap.ui": {
+		"technology": "UI5",
+		"deviceTypes": {
+			"desktop": true,
+			"tablet": true,
+			"phone": true
+		}
+	},
+	"sap.ui5": {
+		"rootView": {
+			"viewName": "modtimesheet.view.App",
+			"type": "XML",
+			"id": "app",
+			"async": true
+		},
+		"dependencies": {
+			"minUI5Version": "1.108.0",
+			"libs": {
+				"sap.m": {},
+				"sap.ui.core": {},
+				"sap.ui.layout": {},
+				"sap.ui.export": {}
+			}
+		},
+		"contentDensities": {
+			"compact": true,
+			"cozy": false
+		},
+		"resources": {
+			"css": [
+				{
+					"uri": "css/style.css"
+				}
+			]
+		},
+		"models": {
+			"i18n": {
+				"type": "sap.ui.model.resource.ResourceModel",
+				"settings": {
+					"bundleName": "modtimesheet.i18n.i18n",
+					"supportedLocales": [""],
+					"fallbackLocale": ""
+				}
+			}
+		},
+		"routing": {
+			"config": {
+				"routerClass": "sap.m.routing.Router",
+				"viewType": "XML",
+				"viewPath": "modtimesheet.view",
+				"controlId": "app",
+				"controlAggregation": "pages",
+				"async": true
+			},
+			"routes": [
+				{
+					"pattern": "",
+					"name": "managerReports",
+					"target": "managerReports"
+				}
+			],
+			"targets": {
+				"managerReports": {
+					"viewId": "managerReports",
+					"viewName": "ManagerReports"
+				}
+			}
+		}
+	}
+}

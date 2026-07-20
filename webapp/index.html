@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html dir="rtl" lang="he">
+<head>
+	<meta charset="utf-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<title>דוחות נוכחות באחריות ממונה</title>
+
+	<!--
+		Standalone bootstrap using the public SAPUI5 CDN so the app runs as-is.
+		In your real application you already have a bootstrap - just copy the
+		view / controller / model / css folders into your project.
+	-->
+	<script
+		id="sap-ui-bootstrap"
+		src="https://ui5.sap.com/resources/sap-ui-core.js"
+		data-sap-ui-theme="sap_horizon"
+		data-sap-ui-rtl="true"
+		data-sap-ui-language="he"
+		data-sap-ui-compatVersion="edge"
+		data-sap-ui-async="true"
+		data-sap-ui-frameOptions="trusted"
+		data-sap-ui-resourceroots='{ "modtimesheet": "./" }'
+		data-sap-ui-oninit="module:sap/ui/core/ComponentSupport"
+		data-sap-ui-libs="sap.m, sap.ui.core, sap.ui.layout, sap.ui.export">
+	</script>
+</head>
+<body class="sapUiBody sapUiSizeCompact" id="content">
+	<div
+		data-sap-ui-component
+		data-name="modtimesheet"
+		data-id="container"
+		data-settings='{ "id" : "modtimesheet" }'
+		style="height: 100%">
+	</div>
+</body>
+</html>
