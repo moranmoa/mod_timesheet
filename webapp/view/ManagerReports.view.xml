@@ -19,11 +19,11 @@
 				<FlexBox wrap="Wrap" alignItems="End" class="mtFilterRow">
 
 					<!-- Search (right-most in RTL) -->
-					<VBox class="mtFilterField mtFilterFieldWide">
+					<VBox class="mtFilterField">
 						<Label text="חיפוש דוח לפי שם, מס. עובד או מחלקה" class="mtFilterLabel" />
 						<SearchField
 							id="searchField"
-							placeholder="חיפוש דוח לפי שם, מס. עובד, מחלקה"
+							placeholder="חיפוש לפי שם, מס. עובד, מחלקה"
 							search=".onSearch"
 							liveChange=".onSearch"
 							width="100%" />
@@ -126,7 +126,73 @@
 					</VBox>
 
 				</FlexBox>
-				<HBox justifyContent="End" class="mtFilterActions">
+
+				<!-- Advanced filters - hidden until the arrow is clicked -->
+				<FlexBox
+					wrap="Wrap"
+					alignItems="End"
+					class="mtFilterRow mtFilterRowAdvanced"
+					visible="{view>/filtersExpanded}">
+
+					<!-- Manager name (default: current user) -->
+					<VBox class="mtFilterField">
+						<Label text="שם ממונה" class="mtFilterLabel" />
+						<MultiComboBox
+							id="managerFilter"
+							width="100%"
+							placeholder="הכל"
+							selectionFinish=".onFilterChange"
+							items="{
+								path: 'options>/managers',
+								templateShareable: false
+							}">
+							<core:Item key="{options>key}" text="{options>text}" />
+						</MultiComboBox>
+					</VBox>
+
+					<!-- Handling party (default: by role / selected tab) -->
+					<VBox class="mtFilterField">
+						<Label text="נמצא בטיפול" class="mtFilterLabel" />
+						<MultiComboBox
+							id="handledByFilter"
+							width="100%"
+							placeholder="כל הגורמים המאשרים"
+							selectionChange=".onHandledByChange"
+							selectionFinish=".onFilterChange"
+							items="{
+								path: 'options>/handlingParties',
+								templateShareable: false
+							}">
+							<core:Item key="{options>key}" text="{options>text}" />
+						</MultiComboBox>
+					</VBox>
+
+					<!-- Subordinates (default: direct only) -->
+					<VBox class="mtFilterField">
+						<Label text="כפיפים" class="mtFilterLabel" />
+						<Select
+							id="subordinatesFilter"
+							width="100%"
+							selectedKey="DIRECT"
+							change=".onFilterChange"
+							items="{
+								path: 'options>/subordinateScopes',
+								templateShareable: false
+							}">
+							<core:Item key="{options>key}" text="{options>text}" />
+						</Select>
+					</VBox>
+
+				</FlexBox>
+
+				<!-- Footer: expand toggle (start / right) + reset (end / left, always shown) -->
+				<HBox justifyContent="SpaceBetween" alignItems="Center" class="mtFilterActions">
+					<Button
+						class="mtFilterToggle"
+						type="Transparent"
+						icon="{= ${view>/filtersExpanded} ? 'sap-icon://slim-arrow-up' : 'sap-icon://slim-arrow-down' }"
+						text="{= ${view>/filtersExpanded} ? 'הסתר מסננים נוספים' : 'מסננים נוספים' }"
+						press=".onToggleFilters" />
 					<Button
 						text="איפוס פילטרים"
 						icon="sap-icon://clear-filter"
@@ -138,7 +204,7 @@
 			<!-- ================= Status tabs ================= -->
 			<IconTabBar
 				id="statusTabBar"
-				class="mtStatusTabs"
+				class="width_auto mtStatusTabs"
 				expandable="false"
 				selectedKey="PENDING_MY_APPROVAL"
 				select=".onStatusSelect"
@@ -171,7 +237,7 @@
 			<!-- ================= Table ================= -->
 			<Table
 				id="reportsTable"
-				class="mtTable"
+				class="width_auto mtTable"
 				inset="false"
 				growing="true"
 				growingThreshold="8"

@@ -28,10 +28,14 @@ sap.ui.define([
 		/* =============================== lifecycle =============================== */
 
 		onInit: function () {
+			// logged-in user + the defaults their role implies
+			this._oCurrentUser = DataService.getCurrentUser();
+			this._oRoleDefaults = DataService.getRoleDefaults(this._oCurrentUser.role);
+
 			// filter drop-down options
 			this.getView().setModel(new JSONModel(DataService.getFilterOptions()), "options");
 
-			// view state (counts, title)
+			// view state (counts, title, advanced-filters toggle)
 			this.getView().setModel(new JSONModel({
 				statusCounts: {
 					PENDING_EMPLOYEE: 0,
@@ -39,7 +43,8 @@ sap.ui.define([
 					PENDING_HR: 0,
 					APPROVED: 0
 				},
-				tableTitle: ""
+				tableTitle: "",
+				filtersExpanded: false
 			}), "view");
 
 			// data model (filled by the DataService)
@@ -52,7 +57,13 @@ sap.ui.define([
 			this._loadData();
 		},
 
-		/** Applies the default filter selection (current year + current month). */
+		/**
+		 * Applies the default filter selection:
+		 *   - current year + current month
+		 *   - status tab + "נמצא בטיפול" per the user's role
+		 *   - "שם ממונה" = the current user
+		 *   - "כפיפים" = direct reports only
+		 */
 		_setDefaultFilters: function () {
 			var oNow = new Date();
 			var oView = this.getView();
@@ -63,12 +74,41 @@ sap.ui.define([
 			oView.byId("populationFilter").setSelectedKeys([]);
 			oView.byId("branchFilter").setSelectedKeys([]);
 			oView.byId("unitFilter").setSelectedKeys([]);
+
+			// role / user driven defaults
+			oView.byId("managerFilter").setSelectedKeys([this._oCurrentUser.managerKey]);
+			oView.byId("handledByFilter").setSelectedKeys([this._oRoleDefaults.handledByKey]);
+			oView.byId("subordinatesFilter").setSelectedKey("DIRECT");
+			oView.byId("statusTabBar").setSelectedKey(this._oRoleDefaults.statusTab);
 		},
 
 		/** "איפוס פילטרים" - reset the filters back to their defaults. */
 		onResetFilters: function () {
 			this._setDefaultFilters();
-			this.byId("statusTabBar").setSelectedKey("PENDING_MY_APPROVAL");
+			this._applyFilters();
+		},
+
+		/** Expand / collapse the advanced filter area (the arrow toggle). */
+		onToggleFilters: function () {
+			var oModel = this.getView().getModel("view");
+			oModel.setProperty("/filtersExpanded", !oModel.getProperty("/filtersExpanded"));
+		},
+
+		/**
+		 * "נמצא בטיפול": keeps the "כל הגורמים המאשרים" (ALL) item mutually
+		 * exclusive with the specific parties.
+		 */
+		onHandledByChange: function (oEvent) {
+			var oMcb = oEvent.getSource();
+			var oParams = oEvent.getParameters();
+			var sChangedKey = oParams.changedItem && oParams.changedItem.getKey();
+			var aKeys = oMcb.getSelectedKeys();
+
+			if (oParams.selected && sChangedKey === "ALL") {
+				oMcb.setSelectedKeys(["ALL"]);
+			} else if (oParams.selected && aKeys.indexOf("ALL") !== -1) {
+				oMcb.setSelectedKeys(aKeys.filter(function (sKey) { return sKey !== "ALL"; }));
+			}
 			this._applyFilters();
 		},
 
@@ -123,6 +163,10 @@ sap.ui.define([
 				populations: fnKeys("populationFilter"),
 				branches: fnKeys("branchFilter"),
 				units: fnKeys("unitFilter"),
+				managers: fnKeys("managerFilter"),
+				// drop the "ALL" pseudo-key -> means "no restriction"
+				handledBy: fnKeys("handledByFilter").filter(function (s) { return s !== "ALL"; }),
+				directOnly: oView.byId("subordinatesFilter").getSelectedKey() === "DIRECT",
 				status: oView.byId("statusTabBar").getSelectedKey()
 			};
 		},
@@ -177,6 +221,11 @@ sap.ui.define([
 			this._pushMultiFilter(aFilters, "populationKey", oState.populations);
 			this._pushMultiFilter(aFilters, "branchKey", oState.branches);
 			this._pushMultiFilter(aFilters, "unitKey", oState.units);
+			this._pushMultiFilter(aFilters, "managerKey", oState.managers);
+			this._pushMultiFilter(aFilters, "handledByKey", oState.handledBy);
+			if (oState.directOnly) {
+				aFilters.push(new Filter("isDirect", FilterOperator.EQ, true));
+			}
 
 			return aFilters;
 		},
@@ -228,6 +277,9 @@ sap.ui.define([
 			if (oState.reportType && oItem.reportType !== oState.reportType) {
 				return false;
 			}
+			if (oState.directOnly && !oItem.isDirect) {
+				return false;
+			}
 			var fnIn = function (aKeys, sVal) {
 				return !aKeys.length || aKeys.indexOf(sVal) !== -1;
 			};
@@ -235,7 +287,9 @@ sap.ui.define([
 				&& fnIn(oState.months, oItem.approvalMonthKey)
 				&& fnIn(oState.populations, oItem.populationKey)
 				&& fnIn(oState.branches, oItem.branchKey)
-				&& fnIn(oState.units, oItem.unitKey);
+				&& fnIn(oState.units, oItem.unitKey)
+				&& fnIn(oState.managers, oItem.managerKey)
+				&& fnIn(oState.handledBy, oItem.handledByKey);
 		},
 
 		_updateTitle: function (oState) {

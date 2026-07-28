@@ -23,7 +23,10 @@ sap.ui.define([], function () {
 	 *   branchKey:          string,   // filter key for branch
 	 *   unit:               string,   // "יחידה"          (column + filter)
 	 *   unitKey:            string,   // filter key for unit
-	 *   managerName:        string,   // "שם ממונה"
+	 *   managerName:        string,   // "שם ממונה"       (column, searchable)
+	 *   managerKey:         string,   // filter key for the "שם ממונה" filter
+	 *   handledByKey:       string,   // "נמצא בטיפול": EMPLOYEE | MANAGER | HR | DELEGATION
+	 *   isDirect:           bool,     // "כפיפים": true = direct report of the manager
 	 *   approvalMonth:      string,   // "חודש לאישור"    e.g. "01/2025"
 	 *   approvalMonthKey:   string,   // month filter key "1".."12"
 	 *   approvalYearKey:    string,   // year filter key  "2021".."2025"
@@ -43,6 +46,45 @@ sap.ui.define([], function () {
 		PENDING_HR: "PENDING_HR", // ממתין למשא"ן
 		APPROVED: "APPROVED" // אושרו
 	};
+
+	// ---- current user + role -------------------------------------------------
+	// The logged-in user. Swap `role` to "HR" to see the משא"ן defaults kick in.
+	// In a real deployment this comes from the backend / user service.
+	var CURRENT_USER = {
+		managerKey: "M1",
+		managerName: "משה כהן",
+		role: "MANAGER" // MANAGER | HR
+	};
+
+	// Role -> default status tab + default "נמצא בטיפול" (handling party) value.
+	// A manager lands on "ממתין לאישורי"; a משא"ן user lands on "ממתין למשא"ן".
+	var ROLE_DEFAULTS = {
+		MANAGER: { statusTab: STATUS.PENDING_MY_APPROVAL, handledByKey: "MANAGER" },
+		HR: { statusTab: STATUS.PENDING_HR, handledByKey: "HR" }
+	};
+
+	// Managers available in the "שם ממונה" filter. The current user is M1.
+	var aManagers = [
+		{ key: "M1", text: "משה כהן" },
+		{ key: "M2", text: "דנה לוי" },
+		{ key: "M3", text: "יוסי אברהם" }
+	];
+	var mManagerName = aManagers.reduce(function (o, m) { o[m.key] = m.text; return o; }, {});
+
+	// "נמצא בטיפול" - who currently holds the report. "ALL" means no restriction.
+	var aHandlingParties = [
+		{ key: "EMPLOYEE", text: "עובד" },
+		{ key: "MANAGER", text: "ממונה" },
+		{ key: "HR", text: 'משא"ן' },
+		{ key: "DELEGATION", text: "שליחות" },
+		{ key: "ALL", text: "כל הגורמים המאשרים" }
+	];
+
+	// "כפיפים" - direct reports only vs. the whole subtree.
+	var aSubordinateScopes = [
+		{ key: "DIRECT", text: "ישירים בלבד" },
+		{ key: "ALL", text: "כל הכפיפים" }
+	];
 
 	// ---- mock helpers -------------------------------------------------------
 	var aBranches = [
@@ -71,6 +113,12 @@ sap.ui.define([], function () {
 			STATUS.APPROVED, STATUS.PENDING_MY_APPROVAL, STATUS.PENDING_MY_APPROVAL,
 			STATUS.PENDING_HR, STATUS.PENDING_EMPLOYEE
 		];
+		// Most rows belong to the current manager (M1) so the role-based defaults
+		// still show a healthy set out of the box; the rest belong to other managers.
+		var aManagerCycle = ["M1", "M1", "M2", "M1", "M3", "M1", "M1", "M2", "M1", "M3"];
+		// "נמצא בטיפול" is an independent dimension from the status tabs, weighted
+		// towards "ממונה" so the manager default is not empty.
+		var aHandledByCycle = ["MANAGER", "EMPLOYEE", "MANAGER", "HR", "MANAGER", "DELEGATION", "MANAGER", "HR"];
 
 		// Anchor most rows on the current year + month so the default filters
 		// (current year + current month) show data out of the box.
@@ -83,6 +131,8 @@ sap.ui.define([], function () {
 			var oBranch = aBranches[i % aBranches.length];
 			var oUnit = aUnits[i % aUnits.length];
 			var sStatus = aStatusCycle[i % aStatusCycle.length];
+			var sManagerKey = aManagerCycle[i % aManagerCycle.length];
+			var sHandledByKey = aHandledByCycle[i % aHandledByCycle.length];
 
 			// 70% of rows in the current month/year, the rest spread to previous
 			// months / last year so the other filter values have data too.
@@ -106,7 +156,10 @@ sap.ui.define([], function () {
 				branchKey: oBranch.key,
 				unit: oUnit.text,
 				unitKey: oUnit.key,
-				managerName: "שם ממונה",
+				managerName: mManagerName[sManagerKey],
+				managerKey: sManagerKey,
+				handledByKey: sHandledByKey,
+				isDirect: (i % 3 !== 0), // ~2/3 are direct reports
 				approvalMonth: sMonth,
 				approvalMonthKey: sMonthKey,
 				approvalYearKey: String(iYear),
@@ -124,6 +177,22 @@ sap.ui.define([], function () {
 	return {
 
 		STATUS: STATUS,
+
+		/**
+		 * The logged-in user (name + role). Drives the role-based filter defaults.
+		 * Replace with your real user service.
+		 */
+		getCurrentUser: function () {
+			return CURRENT_USER;
+		},
+
+		/**
+		 * Default status tab + default handling party for a given role.
+		 * Falls back to the MANAGER defaults for unknown roles.
+		 */
+		getRoleDefaults: function (sRole) {
+			return ROLE_DEFAULTS[sRole] || ROLE_DEFAULTS.MANAGER;
+		},
 
 		/**
 		 * Static option lists used to populate the filter drop-downs.
@@ -154,7 +223,10 @@ sap.ui.define([], function () {
 				],
 				populations: aPopulations,
 				branches: aBranches,
-				units: aUnits
+				units: aUnits,
+				managers: aManagers,
+				handlingParties: aHandlingParties,
+				subordinateScopes: aSubordinateScopes
 			};
 		},
 
