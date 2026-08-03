@@ -18,8 +18,9 @@
 			<VBox class="mtFilterBar">
 				<FlexBox wrap="Wrap" alignItems="End" class="mtFilterRow">
 
-					<!-- Search (right-most in RTL) -->
-					<VBox class="mtFilterField">
+					<!-- Search (right-most in RTL). Wider than the other columns:
+					     it carries the longest label. -->
+					<VBox class="mtFilterField mtFilterFieldSearch">
 						<Label text="חיפוש דוח לפי שם, מס. עובד או מחלקה" class="mtFilterLabel" />
 						<SearchField
 							id="searchField"
@@ -201,16 +202,23 @@
 				</HBox>
 			</VBox>
 
-			<!-- ================= Status tabs ================= -->
+			<!-- ============ Status tabs + table actions ============
+			     Frame 57:2941 puts both on one row: the status tabs at the
+			     inline start, the legend and the table actions at the end. -->
+			<HBox alignItems="Center" justifyContent="SpaceBetween" class="mtTabsBar">
+
 			<IconTabBar
 				id="statusTabBar"
-				class="width_auto mtStatusTabs"
+				class="mtStatusTabs"
 				expandable="false"
 				selectedKey="PENDING_MY_APPROVAL"
 				select=".onStatusSelect"
 				backgroundDesign="Transparent"
 				headerBackgroundDesign="Transparent">
 				<items>
+					<!-- iconColor drives the semantic accent of each tab circle
+					     (see .mtStatusTabs rules in css/style.css):
+					     no iconColor -> brand, Critical -> pending, Positive -> approved -->
 					<IconTabFilter
 						key="PENDING_EMPLOYEE"
 						text="ממתין לעובד"
@@ -220,6 +228,7 @@
 						key="PENDING_MY_APPROVAL"
 						text="ממתין לאישורי"
 						icon="sap-icon://manager"
+						iconColor="Critical"
 						count="{view>/statusCounts/PENDING_MY_APPROVAL}" />
 					<IconTabFilter
 						key="PENDING_HR"
@@ -230,9 +239,34 @@
 						key="APPROVED"
 						text="אושרו"
 						icon="sap-icon://complete"
+						iconColor="Positive"
 						count="{view>/statusCounts/APPROVED}" />
 				</items>
 			</IconTabBar>
+
+				<!-- legend + table actions, at the inline end of the tab row -->
+				<HBox alignItems="Center" class="mtTableActions">
+					<HBox alignItems="Center" class="mtLegend">
+						<core:Icon src="sap-icon://record" color="#d6b85e" class="mtLegendDot" />
+						<Text text="שלב ממתין" class="mtLegendText" />
+						<core:Icon src="sap-icon://record" color="#52ba65" class="mtLegendDot" />
+						<Text text="שלב אושר" class="mtLegendText" />
+					</HBox>
+					<Button
+						icon="sap-icon://action-settings"
+						type="Transparent"
+						text="הגדרות תצוגה"
+						tooltip="הגדרות תצוגה"
+						press=".onOpenViewSettings" />
+					<Button
+						icon="sap-icon://excel-attachment"
+						type="Transparent"
+						text="ייצוא לאקסל"
+						tooltip="ייצוא לאקסל"
+						press=".onExport" />
+				</HBox>
+
+			</HBox>
 
 			<!-- ================= Table ================= -->
 			<Table
@@ -252,31 +286,13 @@
 				<headerToolbar>
 					<OverflowToolbar class="mtTableToolbar">
 						<Title id="tableTitle" text="{view>/tableTitle}" level="H3" />
-						<ToolbarSpacer />
-						<!-- legend -->
-						<HBox alignItems="Center" class="mtLegend">
-							<core:Icon src="sap-icon://record" color="#e9730c" size="0.7rem" class="mtLegendDot" />
-							<Text text="שלב ממתין" class="mtLegendText" />
-							<core:Icon src="sap-icon://record" color="#36a41d" size="0.7rem" class="mtLegendDot" />
-							<Text text="שלב אושר" class="mtLegendText" />
-						</HBox>
-						<Button
-							icon="sap-icon://action-settings"
-							type="Transparent"
-							text="הגדרות תצוגה"
-							tooltip="הגדרות תצוגה"
-							press=".onOpenViewSettings" />
-						<Button
-							icon="sap-icon://excel-attachment"
-							type="Transparent"
-							text="ייצוא לאקסל"
-							tooltip="ייצוא לאקסל"
-							press=".onExport" />
 					</OverflowToolbar>
 				</headerToolbar>
 
 				<columns>
-					<Column width="12rem" hAlign="Begin">
+					<!-- Widths follow the frame: employee name 230px, wizard 147px,
+					     row action 33px - each plus the 16px cell inset. -->
+					<Column width="15rem" hAlign="Begin">
 						<Text text="שם עובד" />
 					</Column>
 					<Column width="7rem" hAlign="Begin" minScreenWidth="Tablet" demandPopin="true">
@@ -297,24 +313,27 @@
 					<Column width="8rem" hAlign="Begin" minScreenWidth="Tablet" demandPopin="true">
 						<Text text="חודש לאישור" />
 					</Column>
-					<Column width="9rem" hAlign="Center">
+					<Column width="11.25rem" hAlign="Center">
 						<Text text="השלמת תהליך" />
 					</Column>
-					<Column width="3rem" hAlign="Center" />
 				</columns>
 
 				<items>
 					<ColumnListItem vAlign="Middle" class="mtRow">
 						<cells>
-							<!-- שם עובד -->
-							<Text text="{reports>employeeName}" class="mtEmpName" />
+							<!-- שם עובד - opens the report (replaces the row's
+							     former expand button) -->
+							<Link
+								text="{reports>employeeName}"
+								class="mtEmpName"
+								press=".onOpenReport" />
 
 							<!-- מספר עובד -->
 							<Text text="{reports>employeeNumber}" />
 
 							<!-- אוכלוסייה chip -->
 							<HBox class="mtPopChip" alignItems="Center" justifyContent="Center">
-								<core:Icon src="sap-icon://locked" class="mtPopChipIcon" size="0.75rem" />
+								<core:Icon src="sap-icon://employee" class="mtPopChipIcon" size="16px" />
 								<Text text="{reports>population}" class="mtPopChipText" />
 							</HBox>
 
@@ -344,18 +363,11 @@
 								<HBox alignItems="Center" class="mtDots" items="{path: 'reports>stepStates', templateShareable: false}">
 									<core:Icon
 										src="sap-icon://record"
-										size="0.65rem"
 										class="mtDot"
 										color="{path: 'reports>state', formatter: '.formatter.stepColor'}" />
 								</HBox>
 							</HBox>
 
-							<!-- expand -->
-							<Button
-								icon="sap-icon://navigation-left-arrow"
-								type="Transparent"
-								class="mtExpandBtn"
-								press=".onOpenReport" />
 						</cells>
 					</ColumnListItem>
 				</items>

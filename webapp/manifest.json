@@ -41,6 +41,9 @@
 		"resources": {
 			"css": [
 				{
+					"uri": "css/tokens.css"
+				},
+				{
 					"uri": "css/style.css"
 				}
 			]

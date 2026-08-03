@@ -1,0 +1,184 @@
+/* ============================================================================
+   Design tokens - SAP UI5 Attendance System Design System
+   ----------------------------------------------------------------------------
+   Transcribed from the "מערכת נוכחות" Figma kit via the Claude Design project
+   "SAP UI5 Attendance System Design System" (tokens/colors.css, tokens/
+   typography.css, tokens/layout.css) plus the exact geometry read off the
+   frame components:
+
+     52:4199  מסננים דוחות נוכחות באחריות ממונה   (filter bar)
+     57:3979  שורה טבלת דוחות באחריות ממונה        (table row)
+     86:3634  טבלת דוחות באחריות ממונה             (table + status tabs)
+     57:3552  ויזארד השלמת תהליך                   (process wizard dots)
+     87:5507  שדה סינון                            (filter field)
+     1:7600   תגית עובד                            (employee/population tag)
+     3:483    Button                               (21 variants)
+
+   All tokens are namespaced `--mt-*` so they never collide with UI5's own
+   `--sapXxx` theme parameters. Values are the raw Figma values (no rounding);
+   px is used wherever the kit specifies px so the screens stay 1:1 with the
+   design regardless of UI5's compact/cozy root font size.
+
+   Reuse: import this file first, then any screen stylesheet. Registered in
+   manifest.json under sap.ui5/resources/css.
+   ========================================================================= */
+
+:root {
+
+	/* ---------------------------------------------------------------------
+	   Color - core brand
+	   ------------------------------------------------------------------ */
+	--mt-color-brand: #3e5de6;              /* rgb(62,93,230)  primary action, field border, links */
+	--mt-color-brand-hover: #5872fc;        /* rgb(88,114,252) */
+	--mt-color-brand-active: #3a57d6;       /* rgb(58,87,214)  primary button pressed */
+	--mt-color-brand-tint: #e0e5fb;         /* rgb(224,229,251) text-button hover fill */
+	--mt-color-brand-wash: rgba(62, 93, 230, 0.06); /* employee tag fill */
+	--mt-color-brand-disabled: rgba(62, 93, 230, 0.5);
+
+	--mt-color-navy: #111d4b;               /* rgb(17,29,75)  headings, labels, column headers */
+	--mt-color-navy-deep: #121842;          /* rgb(18,24,66)  shell bar */
+
+	/* ---------------------------------------------------------------------
+	   Color - neutrals
+	   ------------------------------------------------------------------ */
+	--mt-color-white: #ffffff;
+	--mt-color-black: #000000;              /* table row text is pure black in the kit */
+	--mt-surface-page: #f4f6fc;             /* rgb(244,246,252) app canvas + filter area */
+	--mt-surface-subtle: #e7eaf7;           /* rgb(231,234,247) table header, group row, row hover */
+	--mt-surface-tint: #d8e1f0;             /* rgb(216,225,240) selected row */
+	--mt-color-border: #939ec9;             /* rgb(147,158,201) table rules, wizard connector */
+	--mt-color-border-quiet: #e1e5ec;       /* rgb(225,229,236) */
+	--mt-color-text-muted: #7d85a8;         /* rgb(125,133,168) secondary labels, neutral tabs */
+	--mt-color-grey-500: #797979;           /* disabled text */
+	--mt-color-grey-300: #d9d9d9;           /* disabled fill */
+	--mt-color-grey-dot: #d7d7d7;           /* rgb(215,215,215) un-started wizard dot */
+	--mt-color-grey-200: #f2f2f2;
+
+	/* ---------------------------------------------------------------------
+	   Color - semantic
+	   ------------------------------------------------------------------ */
+	--mt-color-success: #52ba65;            /* rgb(82,186,101) approved step / approved tab */
+	--mt-color-warning: #d6b85e;            /* rgb(214,184,94) pending step / pending tab */
+	--mt-color-warning-text: #ab934b;       /* rgb(171,147,75) */
+	--mt-color-error: #aa0808;              /* rgb(170,8,8) */
+	--mt-color-error-accent: #ba5265;       /* rgb(186,82,101) decline button */
+	--mt-color-error-surface: #eed4d9;      /* rgb(238,212,217) */
+
+	/* ---------------------------------------------------------------------
+	   Color - semantic aliases (prefer these in screen CSS)
+	   ------------------------------------------------------------------ */
+	--mt-text-primary: var(--mt-color-navy);
+	--mt-text-body: var(--mt-color-black);
+	--mt-text-secondary: var(--mt-color-text-muted);
+	--mt-text-inverse: var(--mt-color-white);
+	--mt-text-link: var(--mt-color-brand);
+	--mt-bg-app: var(--mt-surface-page);
+	--mt-bg-card: var(--mt-color-white);
+	--mt-bg-table-header: var(--mt-surface-subtle);
+	--mt-bg-row: var(--mt-color-white);
+	--mt-bg-row-hover: var(--mt-surface-subtle);
+	--mt-border-field: var(--mt-color-brand);
+	--mt-border-table: var(--mt-color-border);
+	--mt-border-row: var(--mt-surface-subtle);
+
+	/* ---------------------------------------------------------------------
+	   Typography
+	   ------------------------------------------------------------------
+	   The kit is set in Assistant. It is used when installed locally and
+	   falls back to SAP's own "72" family, so no external font request is
+	   made (matters for locked-down deployments).
+	   ------------------------------------------------------------------ */
+	--mt-font-sans: "Assistant", "72", "72full", "Segoe UI", system-ui, -apple-system, sans-serif;
+	--mt-font-icons: "SAP-icons";
+
+	--mt-font-weight-regular: 400;
+	--mt-font-weight-semibold: 600;
+	--mt-font-weight-bold: 700;
+	--mt-font-weight-extrabold: 800;
+
+	--mt-font-size-xs: 13px;                /* dense meta, month "+N" badge */
+	--mt-font-size-sm: 14px;                /* column headers */
+	--mt-font-size-base: 16px;              /* body, table cells, filter labels - the workhorse */
+	--mt-font-size-md: 18px;                /* sub-headings */
+	--mt-font-size-lg: 20px;                /* card + section titles, employee name */
+	--mt-font-size-xl: 28px;                /* page title */
+
+	--mt-line-height-tight: 18px;
+	--mt-line-height-base: 20px;
+	--mt-line-height-loose: 21px;
+
+	/* Type roles - shorthand `font:` values */
+	--mt-text-page-title: var(--mt-font-weight-extrabold) var(--mt-font-size-xl) / 1.2 var(--mt-font-sans);
+	--mt-text-section-title: var(--mt-font-weight-extrabold) var(--mt-font-size-lg) / 1.3 var(--mt-font-sans);
+	--mt-text-card-title: var(--mt-font-weight-bold) var(--mt-font-size-lg) / 1.3 var(--mt-font-sans);
+	--mt-text-column-header: var(--mt-font-weight-bold) var(--mt-font-size-sm) / var(--mt-line-height-base) var(--mt-font-sans);
+	--mt-text-cell: var(--mt-font-weight-bold) var(--mt-font-size-base) / var(--mt-line-height-base) var(--mt-font-sans);
+	--mt-text-cell-emphasis: var(--mt-font-weight-extrabold) var(--mt-font-size-lg) / var(--mt-line-height-base) var(--mt-font-sans);
+	--mt-text-body: var(--mt-font-weight-regular) var(--mt-font-size-base) / var(--mt-line-height-base) var(--mt-font-sans);
+	--mt-text-field-label: var(--mt-font-weight-bold) var(--mt-font-size-base) / 1 var(--mt-font-sans);
+	--mt-text-field-value: var(--mt-font-weight-semibold) var(--mt-font-size-base) / 1 var(--mt-font-sans);
+	--mt-text-button: var(--mt-font-weight-bold) var(--mt-font-size-base) / 1 var(--mt-font-sans);
+	--mt-text-tag: var(--mt-font-weight-semibold) var(--mt-font-size-base) / 1 var(--mt-font-sans);
+
+	/* ---------------------------------------------------------------------
+	   Spacing - the kit sits on a loose 4/6/8/10/12/16/24 rhythm
+	   ------------------------------------------------------------------ */
+	--mt-space-1: 4px;
+	--mt-space-2: 6px;
+	--mt-space-3: 8px;
+	--mt-space-4: 10px;
+	--mt-space-5: 12px;
+	--mt-space-6: 16px;
+	--mt-space-7: 24px;
+	--mt-space-8: 32px;
+
+	/* ---------------------------------------------------------------------
+	   Radii
+	   ------------------------------------------------------------------ */
+	--mt-radius-sm: 5px;                    /* time cells, small chips */
+	--mt-radius-md: 10px;                   /* popovers, panels, table header band */
+	--mt-radius-lg: 16px;                   /* cards */
+	--mt-radius-pill: 1000px;               /* every button, field and tag in the system */
+
+	/* ---------------------------------------------------------------------
+	   Borders
+	   ------------------------------------------------------------------ */
+	--mt-border-width: 1px;
+	--mt-border-width-strong: 2px;
+
+	/* ---------------------------------------------------------------------
+	   Elevation
+	   ------------------------------------------------------------------ */
+	--mt-shadow-card: 0 0 10px rgba(0, 0, 0, 0.16);
+	--mt-shadow-popover: 0 4px 8px rgba(34, 53, 72, 0.25);
+	--mt-shadow-overlay: 0 8px 16px rgba(34, 53, 72, 0.48);
+	--mt-shadow-hairline: 0 2px 0 -1px rgba(34, 53, 72, 0.05);
+
+	/* ---------------------------------------------------------------------
+	   Layout / component metrics (exact Figma sizes)
+	   ------------------------------------------------------------------ */
+	--mt-shell-height: 64px;
+	--mt-content-inset: 24px;               /* page gutter */
+	--mt-field-height: 44px;                /* filter select / search field */
+	--mt-field-block: 76px;                 /* label + field stack */
+	--mt-field-width: 198px;                /* one filter column */
+	--mt-field-width-search: 330px;         /* search column: one column + 2rem */
+	--mt-table-header-height: 52px;
+	--mt-row-height: 77px;
+	--mt-row-padding-block: 19px;
+	--mt-row-padding-inline: 16px;
+	--mt-tab-circle: 44px;                  /* status tab icon circle */
+	--mt-tab-strip-height: 81px;
+	--mt-wizard-dot: 20px;                  /* process wizard dot */
+	--mt-wizard-gap: 26px;                  /* space between wizard dots */
+	--mt-tag-height: 28px;                  /* employee / population tag */
+	--mt-legend-dot: 15px;
+	--mt-icon-button: 33px;                 /* circular row action button */
+
+	/* ---------------------------------------------------------------------
+	   Motion - business app: short, flat fades, no bounce
+	   ------------------------------------------------------------------ */
+	--mt-ease-standard: cubic-bezier(0.2, 0, 0.2, 1);
+	--mt-duration-fast: 120ms;
+	--mt-duration-base: 200ms;
+}

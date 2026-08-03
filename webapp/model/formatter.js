@@ -5,16 +5,21 @@ sap.ui.define([], function () {
 
 		/**
 		 * Maps a single process-step state to the colour of its dot.
-		 * done -> green, current -> amber (waiting), open -> grey.
+		 * done -> approved, current -> pending, open -> not started.
+		 *
+		 * Values mirror the design tokens in css/tokens.css
+		 * (--mt-color-success / --mt-color-warning / --mt-color-grey-dot);
+		 * sap.ui.core.Icon takes a literal colour, so they cannot be read
+		 * from CSS custom properties here. Keep the two in sync.
 		 */
 		stepColor: function (sState) {
 			switch (sState) {
 				case "done":
-					return "#36a41d"; // green - approved stage
+					return "#52ba65"; // --mt-color-success  - approved stage
 				case "current":
-					return "#e9730c"; // amber - waiting stage
+					return "#d6b85e"; // --mt-color-warning  - waiting stage
 				default:
-					return "#c6cdd5"; // grey - not started
+					return "#d7d7d7"; // --mt-color-grey-dot - not started
 			}
 		},
 
@@ -26,9 +31,9 @@ sap.ui.define([], function () {
 			return (iStep || 0) + "/" + iTotal;
 		},
 
-		/** Shows the "N+" badge next to the month when there are extra months. */
+		/** Extra-months hint next to the month, e.g. "+1" (frame 57:3979). */
 		extraMonthsText: function (iExtra) {
-			return iExtra > 0 ? iExtra + "+" : "";
+			return iExtra > 0 ? "+" + iExtra : "";
 		},
 
 		extraMonthsVisible: function (iExtra) {
