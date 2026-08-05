@@ -577,7 +577,8 @@
 
 /* Default accent; each semantic variant overrides it below.
    Tabs with no iconColor get .sapMITBFilterDefault and fall through to brand,
-   which is what the frame shows for "ממתין לעובד" / "ממתין למשא\"ן". */
+   which is what the frame shows for "הכל". The three waiting tabs are
+   Critical (pending) and "אושרו" is Positive (approved). */
 .mtStatusTabs .sapMITBFilter {
 	--mt-tab-accent: var(--mt-color-brand);
 	box-sizing: border-box;
@@ -1049,7 +1050,272 @@
 }
 
 /* ============================================================================
-   8. Responsive
+   8. נתוני כל העובדים - AllEmployees
+   ------------------------------------------------------------------------
+   The second screen reuses the kit wherever the two designs agree: the filter
+   pills (.mtFilterField), the employee tag (.mtPopChip) and the transparent
+   text&icon toolbar buttons (.mtTableActions) are the same components, so this
+   section only carries what is specific to this screen - the DynamicPage
+   chrome, the 1px field border of frame 44:1281, the group band and the
+   sap.ui.table.TreeTable, which brings its own DOM and therefore its own
+   selectors.
+
+   RTL-first, same as above: directional values use logical properties.
+   ========================================================================= */
+
+/* ---------------------------------------------------------------------------
+   8a. Page chrome (sap.f.DynamicPage)
+   ------------------------------------------------------------------------ */
+.aePage .sapFDynamicPageTitle,
+.aePage .sapFDynamicPageHeader,
+.aePage .sapFDynamicPageContentWrapper,
+.aePage .sapFDynamicPageContent {
+	background-color: var(--mt-bg-app);
+}
+
+/* Horizon hairlines the title/header seam; the frame runs the header area as
+   one uninterrupted block of canvas. */
+.aePage .sapFDynamicPageTitle,
+.aePage .sapFDynamicPageHeader {
+	box-shadow: none;
+	border: none;
+}
+
+/* The filter bar is the screen's permanent working surface, not collapsible
+   chrome, so DynamicPage's expand/collapse chevron is dropped - it would float
+   in the middle of the page offering an interaction the design does not have.
+   toggleHeaderOnTitleClick="false" on the view disables the matching gesture. */
+.aePage .sapFDynamicPageToggleHeaderIndicator {
+	display: none;
+}
+
+.aePage .sapFDynamicPageTitle {
+	padding-block: var(--mt-space-6) var(--mt-space-1);
+	padding-inline: var(--mt-content-inset);
+}
+
+.aePage .sapFDynamicPageHeader {
+	padding-block: 0 var(--mt-space-5);
+	padding-inline: var(--mt-content-inset);
+}
+
+.aePageTitle,
+.aePageTitle .sapMTitleInner {
+	font: var(--mt-text-page-title);
+	color: var(--mt-text-primary);
+}
+
+/* ---------------------------------------------------------------------------
+   8b. Filter row
+   ------------------------------------------------------------------------
+   The pill itself comes from .mtFilterField (section 3a). Frame 44:1281 draws
+   it with a 1px border rather than the 2px of the reports screen, and centres
+   the label over the four drop-downs; both are handled here, and both rely on
+   this section coming after section 3a in source order.
+   ------------------------------------------------------------------------ */
+.aeFilterRow {
+	gap: var(--mt-space-5);
+}
+
+.aeFilterField .sapMSlt,
+.aeFilterField .sapMSF,
+.aeFilterField .sapMInputBaseContentWrapper {
+	border-width: var(--mt-border-width);
+}
+
+/* The search column carries the longest label and the design's 320px field. */
+.aeFilterFieldSearch {
+	flex-basis: 320px;
+}
+
+.aeFilterLabelCentered {
+	text-align: center;
+	width: 100%;
+}
+
+/* Every multi-select starts fully checked, which UI5 renders as a row of tokens
+   inside a 44px pill. While the selection is complete it carries no
+   information, so the tokenizer is collapsed and the field falls back to its
+   "הכל" placeholder. The controller adds/removes .aeAllSelected. */
+.aeFilterField .sapMMultiComboBox.aeAllSelected .sapMTokenizer {
+	display: none;
+}
+
+/* סוג דוח: the frame tints the active entry amber and the rest brand blue.
+   A Select's picker is rendered into the static area, so a class on the Select
+   never reaches it - but the picker's id is derived from the Select's, which
+   scopes these rules to this one drop-down without touching any other. */
+.sapMSelectList[id*="aeReportTypeSelect"] .sapMSelectListItemBase,
+.sapMSltPicker[id*="aeReportTypeSelect"] .sapMSelectListItemBase {
+	font: var(--mt-text-field-value);
+	color: var(--mt-color-brand);
+}
+
+.sapMSelectList[id*="aeReportTypeSelect"] .sapMSelectListItemBaseSelected,
+.sapMSltPicker[id*="aeReportTypeSelect"] .sapMSelectListItemBaseSelected {
+	color: var(--mt-color-warning-text);
+	font-weight: var(--mt-font-weight-bold);
+}
+
+/* ---------------------------------------------------------------------------
+   8c. Table extension strip - action toolbar + group band
+   ------------------------------------------------------------------------ */
+.aeTableToolbar {
+	background-color: transparent;
+	border: none;
+	padding: 0 0 var(--mt-space-5) 0;
+}
+
+/* The design's full-width grey section row. sap.ui.table cannot span a data row
+   across all columns, so it is rendered as the table's extension strip - which
+   puts it directly above the column header band and makes it the element that
+   carries the table's top radius. */
+.aeGroupHeader {
+	box-sizing: border-box;
+	width: 100%;
+	min-height: 40px;
+	padding: 0 var(--mt-row-padding-inline);
+	gap: var(--mt-space-4);
+	background-color: var(--mt-surface-page);
+	border: var(--mt-border-width) solid var(--mt-border-row);
+	border-bottom: none;
+	border-start-start-radius: var(--mt-radius-md);
+	border-start-end-radius: var(--mt-radius-md);
+}
+
+.aeGroupHeaderText {
+	font: var(--mt-text-cell);
+	color: var(--mt-text-primary);
+}
+
+.aeGroupHeaderCount {
+	font: var(--mt-text-body);
+	color: var(--mt-text-secondary);
+}
+
+/* ---------------------------------------------------------------------------
+   8d. Table (sap.ui.table.TreeTable)
+   ------------------------------------------------------------------------
+   Same visual language as the sap.m.Table in section 5 - lavender header band,
+   white rows on a 1px rule - expressed against sap.ui.table's own DOM.
+   ------------------------------------------------------------------------ */
+.aeTable {
+	background-color: transparent;
+}
+
+.aeTable,
+.aeTable .sapUiTableCnt {
+	border: none;
+}
+
+/* --- column headers --- */
+.aeTable .sapUiTableColHdrCnt,
+.aeTable .sapUiTableColHdr,
+.aeTable .sapUiTableHeaderCell {
+	background-color: var(--mt-bg-table-header);
+	border-color: var(--mt-border-row);
+}
+
+.aeTable .sapUiTableColHdrCnt {
+	border-bottom: var(--mt-border-width-strong) solid var(--mt-border-table);
+}
+
+.aeTable .sapUiTableHeaderCell .sapMText {
+	font: var(--mt-text-column-header);
+	color: var(--mt-text-primary);
+}
+
+/* --- rows --- */
+.aeTable .sapUiTableCtrl > tbody > tr,
+.aeTable .sapUiTableTr {
+	background-color: var(--mt-bg-row);
+}
+
+.aeTable .sapUiTableCtrl td.sapUiTableCell {
+	border-bottom: var(--mt-border-width) solid var(--mt-border-row);
+	border-inline: none;
+}
+
+.aeTable .sapUiTableCtrl td.sapUiTableCell .sapMText {
+	font: var(--mt-text-cell);
+	color: var(--mt-color-black);
+}
+
+.aeTable .sapUiTableRowHvr td.sapUiTableCell,
+.aeTable .sapUiTableCtrl > tbody > tr:hover > td.sapUiTableCell {
+	background-color: var(--mt-bg-row-hover);
+}
+
+/* --- expand / collapse arrow ---
+   Brand blue, at UI5's own size. The frame draws the chevron at 16px, which is
+   exactly what sap.ui.table sets in cozy density, so there is no font-size here
+   on purpose - only the colour.
+
+   The arrow opens the branch while the name beside it navigates somewhere else,
+   so the two must not read as one target. The frame separates them by hit area
+   rather than by glyph size: the chevron sits in its own round 33px button, the
+   name is bare text. Growing the glyph is not how that distinction is made.
+
+   The 2rem flex box UI5 gives the span is left alone: leaf rows keep that box
+   (visibility: hidden), and it is what keeps every name in the column aligned. */
+.aeTable .sapUiTableTreeIcon {
+	cursor: pointer;
+}
+
+.aeTable .sapUiTableTreeIcon::before {
+	color: var(--mt-color-brand);
+}
+
+.aeNoData,
+.aeTable .sapUiTableCtrlEmpty .aeNoData {
+	font: var(--mt-text-body);
+	color: var(--mt-text-secondary);
+}
+
+/* --- employee name ---
+   The name is the row's navigation target, so it renders as a sap.m.Link, and
+   the design colours it brand blue to say so.
+
+   Typography deliberately stays on the plain cell type (--mt-text-cell, same as
+   אגף / יחידה), even though Figma node 44:1281 draws the name a step above at
+   extrabold 20px. The reason is the font stack: Assistant is not loaded by this
+   app (see tokens.css), so on any machine without it installed the text falls
+   back to SAP's "72", which has no 800 weight - the browser then synthesises or
+   clamps it, and the result looks unlike the design rather than closer to it.
+   Bold 16px lands on a real 72 face, so it is what actually matches on screen.
+
+   To take the design value, load a real Assistant ExtraBold face first.
+
+   One uniform weight for everyone, leaf rows included. Managers are not singled
+   out by weight - the expand arrow is what marks a manager, so the weight would
+   carry no extra information. */
+.aeTable .sapUiTableCtrl td.sapUiTableCell .aeEmpName.sapMLnk {
+	font: var(--mt-text-cell);
+	color: var(--mt-text-link);
+	text-decoration: none;
+	cursor: pointer;
+	max-width: 100%;
+}
+
+/* Breathing room between the arrow and the name - 10px, the distance the frame
+   leaves between the end of the name and the chevron's button box.
+
+   The gap is put on the name, not on the icon: the icon's box and margins belong
+   to sap.ui.table's own tree layout, and the adjacent-sibling selector matches
+   only where an arrow really precedes the name (renderer order inside
+   .sapUiTableCellInner). */
+.aeTable .sapUiTableCtrl td.sapUiTableCell .sapUiTableTreeIcon + .aeEmpName.sapMLnk {
+	margin-inline-start: var(--mt-space-4);
+}
+
+.aeTable .sapUiTableCtrl td.sapUiTableCell .aeEmpName.sapMLnk:hover,
+.aeTable .sapUiTableCtrl td.sapUiTableCell .aeEmpName.sapMLnk:focus {
+	color: var(--mt-color-brand-hover);
+	text-decoration: underline;
+}
+
+/* ============================================================================
+   9. Responsive
    ------------------------------------------------------------------------
    The frame is authored at 1920px. Below the desktop breakpoint the gutter
    tightens, the filter fields go two-up then one-up, and the flanking rules
@@ -1135,5 +1401,82 @@
 	.mtRow .sapMListTblCell .mtEmpName.sapMText,
 	.mtRow .sapMListTblCell .mtEmpName.sapMLnk {
 		font-size: var(--mt-font-size-md);
+	}
+}
+
+/* --- AllEmployees: the header block tightens with the rest of the shell ---
+   The TreeTable itself scrolls horizontally below its columns' combined width,
+   which is what keeps the seven columns legible on a tablet instead of
+   squeezing them into unreadable stubs. */
+@media (max-width: 1200px) {
+	.aeFilterFieldSearch {
+		flex-basis: var(--mt-field-width-search);
+	}
+}
+
+@media (max-width: 900px) {
+	.aePage .sapFDynamicPageTitle,
+	.aePage .sapFDynamicPageHeader {
+		padding-inline: var(--mt-space-6);
+	}
+
+	.aeFilterField {
+		flex: 1 1 45%;
+		min-width: 0;
+	}
+}
+
+@media (max-width: 600px) {
+	.aePage .sapFDynamicPageTitle,
+	.aePage .sapFDynamicPageHeader {
+		padding-inline: var(--mt-space-5);
+	}
+
+	.aePageTitle,
+	.aePageTitle .sapMTitleInner {
+		font-size: var(--mt-font-size-lg);
+	}
+
+	.aeFilterField {
+		flex: 1 1 100%;
+	}
+}
+
+/* ============================================================================
+   10. Print
+   ------------------------------------------------------------------------
+   "הדפסה" is a plain window.print(); this block is what makes the result
+   readable - the page chrome and the toolbar drop away, the employee name
+   prints as plain text rather than as a link, and the table lands on the white
+   page.
+
+   Worth knowing: sap.ui.table virtualises its rows, so a print contains the
+   rows currently rendered. Use "ייצוא לאקסל" for the complete result set - it
+   exports every filtered row, including collapsed branches.
+   ========================================================================= */
+@media print {
+
+	.aePage .sapFDynamicPageHeader,
+	.aeTableToolbar,
+	.aeTable .sapUiTableVSb,
+	.aeTable .sapUiTableHSb {
+		display: none;
+	}
+
+	.aeTable .sapUiTableCtrl td.sapUiTableCell .aeEmpName.sapMLnk {
+		color: var(--mt-color-black);
+		text-decoration: none;
+	}
+
+	.aePage,
+	.aePage .sapFDynamicPageTitle,
+	.aePage .sapFDynamicPageContentWrapper,
+	.aeGroupHeader,
+	.aeTable .sapUiTableCtrl > tbody > tr {
+		background-color: var(--mt-color-white);
+	}
+
+	.aeTable .sapUiTableCtrl td.sapUiTableCell {
+		border-bottom: var(--mt-border-width) solid var(--mt-color-border);
 	}
 }

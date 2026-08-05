@@ -31,7 +31,9 @@
 				"sap.m": {},
 				"sap.ui.core": {},
 				"sap.ui.layout": {},
-				"sap.ui.export": {}
+				"sap.ui.export": {},
+				"sap.f": {},
+				"sap.ui.table": {}
 			}
 		},
 		"contentDensities": {
@@ -72,12 +74,21 @@
 					"pattern": "",
 					"name": "managerReports",
 					"target": "managerReports"
+				},
+				{
+					"pattern": "AllEmployees",
+					"name": "allEmployees",
+					"target": "allEmployees"
 				}
 			],
 			"targets": {
 				"managerReports": {
 					"viewId": "managerReports",
 					"viewName": "ManagerReports"
+				},
+				"allEmployees": {
+					"viewId": "allEmployees",
+					"viewName": "AllEmployees"
 				}
 			}
 		}

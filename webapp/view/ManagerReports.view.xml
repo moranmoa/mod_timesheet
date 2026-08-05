@@ -217,12 +217,21 @@
 				headerBackgroundDesign="Transparent">
 				<items>
 					<!-- iconColor drives the semantic accent of each tab circle
-					     (see .mtStatusTabs rules in css/style.css):
-					     no iconColor -> brand, Critical -> pending, Positive -> approved -->
+					     (see .mtStatusTabs rules in css/style.css).
+					     Per the designer: "הכל" is brand blue (no iconColor),
+					     all three waiting stages share the pending accent
+					     (Critical) because they are the same waiting status,
+					     and "אושרו" stays green (Positive). -->
+					<IconTabFilter
+						key="ALL"
+						text="הכל"
+						icon="sap-icon://list"
+						count="{view>/statusCounts/ALL}" />
 					<IconTabFilter
 						key="PENDING_EMPLOYEE"
 						text="ממתין לעובד"
 						icon="sap-icon://employee"
+						iconColor="Critical"
 						count="{view>/statusCounts/PENDING_EMPLOYEE}" />
 					<IconTabFilter
 						key="PENDING_MY_APPROVAL"
@@ -234,6 +243,7 @@
 						key="PENDING_HR"
 						text='ממתין למשא"ן'
 						icon="sap-icon://group"
+						iconColor="Critical"
 						count="{view>/statusCounts/PENDING_HR}" />
 					<IconTabFilter
 						key="APPROVED"

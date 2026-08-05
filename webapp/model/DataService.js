@@ -26,6 +26,9 @@ sap.ui.define([], function () {
 	 *   managerName:        string,   // "שם ממונה"       (column, searchable)
 	 *   managerKey:         string,   // filter key for the "שם ממונה" filter
 	 *   handledByKey:       string,   // "נמצא בטיפול": EMPLOYEE | MANAGER | HR | DELEGATION
+	 *                                // ("" when nobody holds it, i.e. approved).
+	 *                                // Must agree with `status`: the status tabs
+	 *                                // and this filter are synced on screen.
 	 *   isDirect:           bool,     // "כפיפים": true = direct report of the manager
 	 *   approvalMonth:      string,   // "חודש לאישור"    e.g. "01/2025"
 	 *   approvalMonthKey:   string,   // month filter key "1".."12"
@@ -116,9 +119,15 @@ sap.ui.define([], function () {
 		// Most rows belong to the current manager (M1) so the role-based defaults
 		// still show a healthy set out of the box; the rest belong to other managers.
 		var aManagerCycle = ["M1", "M1", "M2", "M1", "M3", "M1", "M1", "M2", "M1", "M3"];
-		// "נמצא בטיפול" is an independent dimension from the status tabs, weighted
-		// towards "ממונה" so the manager default is not empty.
-		var aHandledByCycle = ["MANAGER", "EMPLOYEE", "MANAGER", "HR", "MANAGER", "DELEGATION", "MANAGER", "HR"];
+		// "נמצא בטיפול" describes the same thing as the status tab - the party the
+		// report waits on - so it is derived from the status rather than cycled
+		// independently, otherwise the two (now synced) filters contradict each
+		// other on screen. Approved reports wait on nobody.
+		var mStatusToHandledBy = {};
+		mStatusToHandledBy[STATUS.PENDING_EMPLOYEE] = "EMPLOYEE";
+		mStatusToHandledBy[STATUS.PENDING_MY_APPROVAL] = "MANAGER";
+		mStatusToHandledBy[STATUS.PENDING_HR] = "HR";
+		mStatusToHandledBy[STATUS.APPROVED] = "";
 
 		// Anchor most rows on the current year + month so the default filters
 		// (current year + current month) show data out of the box.
@@ -132,7 +141,12 @@ sap.ui.define([], function () {
 			var oUnit = aUnits[i % aUnits.length];
 			var sStatus = aStatusCycle[i % aStatusCycle.length];
 			var sManagerKey = aManagerCycle[i % aManagerCycle.length];
-			var sHandledByKey = aHandledByCycle[i % aHandledByCycle.length];
+			// every 3rd manager-side report sits with a delegate instead - still
+			// the "ממתין לאישורי" stage, but a party the tabs cannot express
+			var sHandledByKey = mStatusToHandledBy[sStatus];
+			if (sHandledByKey === "MANAGER" && i % 3 === 0) {
+				sHandledByKey = "DELEGATION";
+			}
 
 			// 70% of rows in the current month/year, the rest spread to previous
 			// months / last year so the other filter values have data too.

@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html dir="rtl" lang="he">
+<head>
+	<meta charset="utf-8">
+	<title>Unit tests - mod_timesheet</title>
+
+	<!--
+		Run:  node server.js
+		Open: http://localhost:8080/test/unit/unitTests.qunit.html
+
+		Same public SAPUI5 CDN as index.html, so no build step or npm install is
+		needed. The suite only exercises the pure helpers and the formatters -
+		no view is rendered.
+	-->
+	<script
+		id="sap-ui-bootstrap"
+		src="https://ui5.sap.com/resources/sap-ui-core.js"
+		data-sap-ui-theme="sap_horizon"
+		data-sap-ui-rtl="true"
+		data-sap-ui-language="he"
+		data-sap-ui-compatVersion="edge"
+		data-sap-ui-async="true"
+		data-sap-ui-resourceroots='{ "modtimesheet": "../../" }'
+		data-sap-ui-libs="sap.m, sap.ui.core">
+	</script>
+
+	<link rel="stylesheet" href="https://ui5.sap.com/resources/sap/ui/thirdparty/qunit-2.css">
+	<script src="https://ui5.sap.com/resources/sap/ui/thirdparty/qunit-2.js"></script>
+
+	<script>
+		QUnit.config.autostart = false;
+
+		sap.ui.getCore().attachInit(function () {
+			sap.ui.require([
+				"modtimesheet/test/unit/AllEmployees.controller.qunit"
+			], function () {
+				QUnit.start();
+			});
+		});
+	</script>
+</head>
+<body class="sapUiBody sapUiSizeCompact">
+	<div id="qunit"></div>
+	<div id="qunit-fixture"></div>
+</body>
+</html>

@@ -1,0 +1,396 @@
+<mvc:View
+	controllerName="modtimesheet.controller.AllEmployees"
+	xmlns:mvc="sap.ui.core.mvc"
+	xmlns="sap.m"
+	xmlns:core="sap.ui.core"
+	xmlns:f="sap.f"
+	xmlns:t="sap.ui.table"
+	height="100%">
+
+	<!--
+		נתוני כל העובדים - one sap.ui.table.TreeTable serving both modes:
+
+		  flat mode  -> rows bound to view>/flatEmployees (a flat array, so every
+		                node is a leaf and no expand arrows are drawn)
+		  tree mode  -> rows bound to view>/treeEmployees (nested via `children`)
+
+		The columns are declared once and shared by both modes; the controller only
+		swaps the binding path in _bindTable().
+	-->
+	<f:DynamicPage
+		id="allEmployeesPage"
+		class="aePage"
+		fitContent="true"
+		showFooter="false"
+		toggleHeaderOnTitleClick="false"
+		busy="{view>/viewState/busy}"
+		busyIndicatorDelay="0">
+
+		<f:title>
+			<f:DynamicPageTitle areaShrinkRatio="1:0:0">
+				<f:heading>
+					<Title text="{i18n>aeTitle}" level="H2" class="aePageTitle" />
+				</f:heading>
+			</f:DynamicPageTitle>
+		</f:title>
+
+		<!-- ================= Filter area =================
+		     RTL: the first child sits at the right, so the XML order is the
+		     right-to-left order of the design - search, סוג דוח, אוכלוסיה,
+		     אגף, יחידה. -->
+		<f:header>
+			<f:DynamicPageHeader pinnable="false">
+				<FlexBox wrap="Wrap" alignItems="End" class="aeFilterRow">
+
+					<VBox class="mtFilterField aeFilterField aeFilterFieldSearch">
+						<Label text="{i18n>aeSearchLabel}" class="mtFilterLabel" />
+						<SearchField
+							id="aeSearchField"
+							placeholder="{i18n>aeSearchPlaceholder}"
+							search=".onSearch"
+							liveChange=".onSearch"
+							width="100%" />
+					</VBox>
+
+					<!-- סוג דוח: single select. Changing it means "fetch a different
+					     report", so it re-enters the data-load path rather than
+					     filtering the rows already on screen. -->
+					<VBox class="mtFilterField aeFilterField">
+						<Label text="{i18n>aeFilterReportType}" class="mtFilterLabel aeFilterLabelCentered" />
+						<Select
+							id="aeReportTypeSelect"
+							width="100%"
+							selectedKey="{view>/viewState/reportType}"
+							change=".onReportTypeChange"
+							items="{
+								path: 'view>/filters/reportTypes',
+								templateShareable: false
+							}">
+							<core:Item key="{view>key}" text="{view>text}" />
+						</Select>
+					</VBox>
+
+					<!-- אוכלוסיה / אגף / יחידה: multi-select, everything checked on
+					     entry. Options are built from the data that actually
+					     arrived (_buildFilterOptionsFromData). -->
+					<VBox class="mtFilterField aeFilterField">
+						<Label text="{i18n>aeFilterPopulation}" class="mtFilterLabel aeFilterLabelCentered" />
+						<MultiComboBox
+							id="aePopulationFilter"
+							width="100%"
+							placeholder="{i18n>aeFilterAll}"
+							selectionChange=".onFilterChange"
+							items="{
+								path: 'view>/filters/populations',
+								templateShareable: false
+							}">
+							<core:Item key="{view>key}" text="{view>text}" />
+						</MultiComboBox>
+					</VBox>
+
+					<VBox class="mtFilterField aeFilterField">
+						<Label text="{i18n>aeFilterDivision}" class="mtFilterLabel aeFilterLabelCentered" />
+						<MultiComboBox
+							id="aeDivisionFilter"
+							width="100%"
+							placeholder="{i18n>aeFilterAll}"
+							selectionChange=".onFilterChange"
+							items="{
+								path: 'view>/filters/divisions',
+								templateShareable: false
+							}">
+							<core:Item key="{view>key}" text="{view>text}" />
+						</MultiComboBox>
+					</VBox>
+
+					<VBox class="mtFilterField aeFilterField">
+						<Label text="{i18n>aeFilterUnit}" class="mtFilterLabel aeFilterLabelCentered" />
+						<MultiComboBox
+							id="aeUnitFilter"
+							width="100%"
+							placeholder="{i18n>aeFilterAll}"
+							selectionChange=".onFilterChange"
+							items="{
+								path: 'view>/filters/units',
+								templateShareable: false
+							}">
+							<core:Item key="{view>key}" text="{view>text}" />
+						</MultiComboBox>
+					</VBox>
+
+				</FlexBox>
+			</f:DynamicPageHeader>
+		</f:header>
+
+		<f:content>
+
+			<t:TreeTable
+				id="employeesTable"
+				class="aeTable"
+				ariaLabelledBy="employeesTableLabel"
+				selectionMode="None"
+				enableSelectAll="false"
+				visibleRowCountMode="Auto"
+				minAutoRowCount="5"
+				rowHeight="60"
+				columnHeaderHeight="56"
+				enableColumnReordering="false"
+				alternateRowColors="false"
+				showNoData="true">
+
+				<t:extension>
+					<!-- ToolbarSpacer first: in RTL that pushes the actions to the
+					     left edge, as in the design. Styling is inherited from the
+					     kit's .mtTableActions button rules. -->
+					<OverflowToolbar class="mtTableActions aeTableToolbar">
+						<core:InvisibleText id="employeesTableLabel" text="{i18n>aeTableAriaLabel}" />
+						<ToolbarSpacer />
+
+						<!-- פתיחת / צמצום כל השורות. One control in two states: exactly
+						     one of them is on screen at a time, driven by allExpanded.
+						     The tree opens collapsed, so פתיחת כל השורות is the one that
+						     greets you; pressing it swaps in צמצום כל השורות.
+
+						     Both only exist in hierarchy mode - in flat mode every row is
+						     a leaf and there is nothing to open.
+
+						     Position is deliberate and must not move. The spacer packs
+						     the actions against the (RTL) left edge, so the toolbar lays
+						     them out from that edge in REVERSE order - the last child
+						     ends up leftmost. Anything inserted later in the list
+						     therefore shifts every earlier button sideways. These two
+						     appear and disappear with the mode, so they sit FIRST: that
+						     puts them at the far right of the group, growing into the
+						     spacer's empty space, and leaves הדפסה / ייצוא / הגדרות /
+						     תצוגת היררכיה / מיון exactly where they were.
+
+						     Put them next to the hierarchy toggle instead and toggling
+						     the mode slides the toggle ~375px out from under the cursor,
+						     with צמצום כל השורות landing on the pixels it just left. -->
+						<Button
+							id="expandAllButton"
+							text="{i18n>aeExpandAll}"
+							tooltip="{i18n>aeExpandAllTooltip}"
+							icon="sap-icon://expand"
+							type="Transparent"
+							visible="{= ${view>/viewState/isHierarchy} &amp;&amp; !${view>/viewState/allExpanded} }"
+							press=".onExpandAll" />
+						<Button
+							id="collapseAllButton"
+							text="{i18n>aeCollapseAll}"
+							tooltip="{i18n>aeCollapseAllTooltip}"
+							icon="sap-icon://collapse"
+							type="Transparent"
+							visible="{= ${view>/viewState/isHierarchy} &amp;&amp; ${view>/viewState/allExpanded} }"
+							press=".onCollapseAll" />
+						<Button
+							text="{i18n>aePrint}"
+							tooltip="{i18n>aePrint}"
+							icon="sap-icon://print"
+							type="Transparent"
+							press=".onPrint" />
+						<Button
+							text="{i18n>aeExportExcel}"
+							tooltip="{i18n>aeExportExcel}"
+							icon="sap-icon://excel-attachment"
+							type="Transparent"
+							press=".onExportToExcel" />
+						<Button
+							text="{i18n>aeViewSettings}"
+							tooltip="{i18n>aeViewSettings}"
+							icon="sap-icon://action-settings"
+							type="Transparent"
+							press=".onOpenViewSettings" />
+
+						<!-- flat <-> tree. Label and icon always advertise the mode
+						     the button will switch *to*. -->
+						<ToggleButton
+							id="hierarchyToggle"
+							type="Transparent"
+							pressed="{view>/viewState/isHierarchy}"
+							icon="{= ${view>/viewState/isHierarchy} ? 'sap-icon://list' : 'sap-icon://org-chart' }"
+							text="{= ${view>/viewState/isHierarchy} ? ${i18n>aeViewFlat} : ${i18n>aeViewHierarchy} }"
+							tooltip="{= ${view>/viewState/isHierarchy} ? ${i18n>aeViewFlatTooltip} : ${i18n>aeViewHierarchyTooltip} }"
+							press=".onToggleHierarchy" />
+
+						<!-- sap.m.MenuItem has no `key`, so the sort mode travels
+						     on CustomData. -->
+						<MenuButton
+							id="sortMenuButton"
+							type="Transparent"
+							icon="sap-icon://sort"
+							tooltip="{i18n>aeSortTooltip}"
+							text="{= ${view>/viewState/sortMode} === 'hierarchy' ? ${i18n>aeSortLabelHierarchy} : ${i18n>aeSortLabelName} }">
+							<menu>
+								<Menu itemSelected=".onToggleSort">
+									<MenuItem text="{i18n>aeSortByName}">
+										<customData>
+											<core:CustomData key="sortMode" value="name" />
+										</customData>
+									</MenuItem>
+									<MenuItem text="{i18n>aeSortByHierarchy}">
+										<customData>
+											<core:CustomData key="sortMode" value="hierarchy" />
+										</customData>
+									</MenuItem>
+								</Menu>
+							</menu>
+						</MenuButton>
+					</OverflowToolbar>
+
+					<!-- Group / section header. sap.ui.table cannot span a data row
+					     across all columns, so the design's full-width grey band is
+					     rendered as the table's own extension strip, flush against
+					     the column header. The count is live: it follows the current
+					     filter and search. -->
+					<HBox class="aeGroupHeader" alignItems="Center">
+						<Text text="{i18n>aeGroupUnderMyManagement}" class="aeGroupHeaderText" />
+						<Text
+							class="aeGroupHeaderCount"
+							text="{
+								path: 'view>/group/count',
+								formatter: '.formatter.countInParentheses'
+							}" />
+					</HBox>
+				</t:extension>
+
+				<t:columns>
+
+					<!-- שם עובד. First visible column, so the TreeTable draws the
+					     expand/collapse arrow and the indentation here.
+
+					     The name itself is the navigation target: the design dropped
+					     the separate row-action button, so pressing the name opens the
+					     employee's card. A Link (not a Text) so it is keyboard
+					     reachable and announced as a link.
+
+					     Every name is styled alike - same weight as the אגף / יחידה
+					     cells, in brand blue. Managers are NOT set apart typographically
+					     any more; the tree's expand arrow is what marks them. -->
+					<t:Column id="colEmployeeName" width="17rem" hAlign="Begin">
+						<t:label>
+							<Text text="{i18n>aeColEmployeeName}" />
+						</t:label>
+						<t:template>
+							<Link
+								text="{view>employeeName}"
+								wrapping="false"
+								class="aeEmpName"
+								tooltip="{i18n>aeOpenEmployee}"
+								press=".onNavigateToEmployee" />
+						</t:template>
+					</t:Column>
+
+					<!-- שם מנהל ישיר. Second column, as in the frame's Row Header
+					     (right-to-left: שם עובד, מנהל נוכחות ישיר, מספר עובד, ...).
+
+					     Filled on every row: the top-level managers' direct manager is
+					     the logged-in user, so their name shows here too. Present in both
+					     modes (it stays in the model even when the tree already conveys
+					     it) and hideable through הגדרות תצוגה. -->
+					<t:Column id="colDirectManager" width="11rem" hAlign="Begin">
+						<t:label>
+							<Text text="{i18n>aeColDirectManager}" />
+						</t:label>
+						<t:template>
+							<Text text="{view>managerName}" wrapping="false" maxLines="1" />
+						</t:template>
+					</t:Column>
+
+					<t:Column id="colEmployeeNumber" width="7rem" hAlign="Center">
+						<t:label>
+							<Text text="{i18n>aeColEmployeeNumber}" />
+						</t:label>
+						<t:template>
+							<Text text="{view>employeeNumber}" wrapping="false" />
+						</t:template>
+					</t:Column>
+
+					<!-- אוכלוסייה: the kit's "תגית עובד" pill (node 1:7600). -->
+					<t:Column id="colPopulation" width="11rem" hAlign="Center">
+						<t:label>
+							<Text text="{i18n>aeColPopulation}" />
+						</t:label>
+						<t:template>
+							<HBox class="mtPopChip" alignItems="Center" justifyContent="Center">
+								<core:Icon src="sap-icon://person-placeholder" class="mtPopChipIcon" size="16px" />
+								<Text text="{view>populationText}" class="mtPopChipText" wrapping="false" />
+							</HBox>
+						</t:template>
+					</t:Column>
+
+					<!-- אגף: widened - the names here ("תקשוב וניהול מערכות מידע") are the
+					     longest text in the table, and 13rem ellipsised most of them. -->
+					<t:Column id="colDivision" width="16rem" hAlign="Begin">
+						<t:label>
+							<Text text="{i18n>aeColDivision}" />
+						</t:label>
+						<t:template>
+							<Text text="{view>divisionName}" wrapping="false" maxLines="1" />
+						</t:template>
+					</t:Column>
+
+					<!-- No fixed width: this column absorbs whatever space the others
+					     leave, so the table fills its container instead of trailing
+					     an empty filler column. -->
+					<t:Column id="colUnit" minWidth="150" hAlign="Begin">
+						<t:label>
+							<Text text="{i18n>aeColUnit}" />
+						</t:label>
+						<t:template>
+							<Text text="{view>unitName}" wrapping="false" maxLines="1" />
+						</t:template>
+					</t:Column>
+
+					<!-- היעדרויות. An action column, not data: the frame draws a bare
+					     SAP-icon button here, at the far end of the row, and pressing it
+					     leaves for the employee's absences screen. Carries no text, so
+					     the label lives in the tooltip and the aria name.
+
+					     Excluded from the Excel export for the same reason - there is no
+					     value to export, only a way in. Same for השתלמויות below. -->
+					<t:Column id="colAbsences" width="6rem" hAlign="Center">
+						<t:label>
+							<Text text="{i18n>aeColAbsences}" />
+						</t:label>
+						<t:template>
+							<Button
+								icon="sap-icon://date-time"
+								type="Transparent"
+								tooltip="{i18n>aeOpenAbsences}"
+								press=".onOpenAbsences" />
+						</t:template>
+					</t:Column>
+
+					<!-- השתלמויות. The frame's second icon column, and the last one -
+					     leftmost in RTL, at the very end of the row.
+
+					     Wider than היעדרויות only to fit its own header on one line: the
+					     icon needs no more room, but "השתלמויות" wraps at 6rem. -->
+					<t:Column id="colTraining" width="7.5rem" hAlign="Center">
+						<t:label>
+							<Text text="{i18n>aeColTraining}" />
+						</t:label>
+						<t:template>
+							<Button
+								icon="sap-icon://education"
+								type="Transparent"
+								tooltip="{i18n>aeOpenTraining}"
+								press=".onOpenTraining" />
+						</t:template>
+					</t:Column>
+
+					<!-- No row-action chevron column: the design replaced it with
+					     pressing the employee's name (see colEmployeeName). -->
+
+				</t:columns>
+
+				<t:noData>
+					<Text text="{i18n>aeNoData}" class="aeNoData" />
+				</t:noData>
+
+			</t:TreeTable>
+
+		</f:content>
+	</f:DynamicPage>
+</mvc:View>

@@ -21,6 +21,28 @@ sap.ui.define([
 		APPROVED: "שאושרו"
 	};
 
+	// The "הכל" pseudo-key, shared by the status tab bar and the
+	// "נמצא בטיפול" drop-down. On both it means "no restriction".
+	var ALL = "ALL";
+
+	/**
+	 * The status tabs and the "נמצא בטיפול" field describe the same thing -
+	 * which party the report is waiting on - so the two are kept in sync
+	 * (both directions). This is the mapping between them; the statuses that
+	 * are absent (ALL, APPROVED) have no single handling party and map to
+	 * "כל הגורמים המאשרים".
+	 */
+	var TAB_TO_PARTY = {
+		PENDING_EMPLOYEE: "EMPLOYEE",
+		PENDING_MY_APPROVAL: "MANAGER",
+		PENDING_HR: "HR"
+	};
+
+	var PARTY_TO_TAB = Object.keys(TAB_TO_PARTY).reduce(function (o, sTab) {
+		o[TAB_TO_PARTY[sTab]] = sTab;
+		return o;
+	}, {});
+
 	return Controller.extend("modtimesheet.controller.ManagerReports", {
 
 		formatter: formatter,
@@ -38,6 +60,7 @@ sap.ui.define([
 			// view state (counts, title, advanced-filters toggle)
 			this.getView().setModel(new JSONModel({
 				statusCounts: {
+					ALL: 0,
 					PENDING_EMPLOYEE: 0,
 					PENDING_MY_APPROVAL: 0,
 					PENDING_HR: 0,
@@ -96,7 +119,8 @@ sap.ui.define([
 
 		/**
 		 * "נמצא בטיפול": keeps the "כל הגורמים המאשרים" (ALL) item mutually
-		 * exclusive with the specific parties.
+		 * exclusive with the specific parties, then mirrors the selection onto
+		 * the status tabs.
 		 */
 		onHandledByChange: function (oEvent) {
 			var oMcb = oEvent.getSource();
@@ -104,12 +128,42 @@ sap.ui.define([
 			var sChangedKey = oParams.changedItem && oParams.changedItem.getKey();
 			var aKeys = oMcb.getSelectedKeys();
 
-			if (oParams.selected && sChangedKey === "ALL") {
-				oMcb.setSelectedKeys(["ALL"]);
-			} else if (oParams.selected && aKeys.indexOf("ALL") !== -1) {
-				oMcb.setSelectedKeys(aKeys.filter(function (sKey) { return sKey !== "ALL"; }));
+			if (oParams.selected && sChangedKey === ALL) {
+				oMcb.setSelectedKeys([ALL]);
+			} else if (oParams.selected && aKeys.indexOf(ALL) !== -1) {
+				oMcb.setSelectedKeys(aKeys.filter(function (sKey) { return sKey !== ALL; }));
 			}
+
+			this._syncTabToHandledBy();
 			this._applyFilters();
+		},
+
+		/**
+		 * "נמצא בטיפול" -> status tabs.
+		 *
+		 * A single party that has a tab of its own selects that tab; anything
+		 * else - nothing selected, "כל הגורמים המאשרים", more than one party,
+		 * or a party with no matching tab (שליחות) - falls back to "הכל",
+		 * because no single tab can express it.
+		 */
+		_syncTabToHandledBy: function () {
+			var aKeys = this.getView().byId("handledByFilter").getSelectedKeys()
+				.filter(function (sKey) { return sKey !== ALL; });
+			var sTab = (aKeys.length === 1 && PARTY_TO_TAB[aKeys[0]]) || ALL;
+			this.getView().byId("statusTabBar").setSelectedKey(sTab);
+		},
+
+		/**
+		 * Status tabs -> "נמצא בטיפול".
+		 *
+		 * The three waiting tabs each select their one party. "הכל" and "אושרו"
+		 * have no single handling party, so they reset the field to
+		 * "כל הגורמים המאשרים".
+		 */
+		_syncHandledByToTab: function () {
+			var sTab = this.getView().byId("statusTabBar").getSelectedKey();
+			var sParty = TAB_TO_PARTY[sTab];
+			this.getView().byId("handledByFilter").setSelectedKeys([sParty || ALL]);
 		},
 
 		/**
@@ -146,6 +200,7 @@ sap.ui.define([
 		},
 
 		onStatusSelect: function () {
+			this._syncHandledByToTab();
 			this._applyFilters();
 		},
 
@@ -155,6 +210,19 @@ sap.ui.define([
 			var fnKeys = function (sId) {
 				return oView.byId(sId).getSelectedKeys();
 			};
+
+			// On both controls "ALL" is the pseudo-key for "no restriction".
+			var sStatus = oView.byId("statusTabBar").getSelectedKey();
+			var aHandledBy = fnKeys("handledByFilter").filter(function (s) { return s !== ALL; });
+
+			// The tabs and the field are two views of the same dimension, so a
+			// field selection that merely mirrors the selected tab must not
+			// filter a second time - it would also flatten the counts on every
+			// other tab, since they are computed over everything except status.
+			if (aHandledBy.length === 1 && TAB_TO_PARTY[sStatus] === aHandledBy[0]) {
+				aHandledBy = [];
+			}
+
 			return {
 				search: (oView.byId("searchField").getValue() || "").trim().toLowerCase(),
 				reportType: oView.byId("reportTypeSelect").getSelectedKey(),
@@ -164,10 +232,9 @@ sap.ui.define([
 				branches: fnKeys("branchFilter"),
 				units: fnKeys("unitFilter"),
 				managers: fnKeys("managerFilter"),
-				// drop the "ALL" pseudo-key -> means "no restriction"
-				handledBy: fnKeys("handledByFilter").filter(function (s) { return s !== "ALL"; }),
+				handledBy: aHandledBy,
 				directOnly: oView.byId("subordinatesFilter").getSelectedKey() === "DIRECT",
-				status: oView.byId("statusTabBar").getSelectedKey()
+				status: sStatus === ALL ? "" : sStatus
 			};
 		},
 
@@ -248,6 +315,7 @@ sap.ui.define([
 		 */
 		_recomputeCounts: function (oState) {
 			var oCounts = {
+				ALL: 0,
 				PENDING_EMPLOYEE: 0,
 				PENDING_MY_APPROVAL: 0,
 				PENDING_HR: 0,
@@ -256,6 +324,7 @@ sap.ui.define([
 			(this._aAllItems || []).forEach(function (oItem) {
 				if (this._matchesBase(oItem, oState) && oCounts.hasOwnProperty(oItem.status)) {
 					oCounts[oItem.status]++;
+					oCounts.ALL++;
 				}
 			}.bind(this));
 			// IconTabFilter.count is a string property - coerce.
@@ -294,10 +363,13 @@ sap.ui.define([
 
 		_updateTitle: function (oState) {
 			var oCounts = this.getView().getModel("view").getProperty("/statusCounts");
-			var sLabel = STATUS_LABEL[oState.status] || "";
-			var iCount = oCounts[oState.status] || 0;
-			this.getView().getModel("view").setProperty(
-				"/tableTitle", "דוחות ממתינים: " + sLabel + " (" + iCount + ")");
+			// oState.status is "" on the "הכל" tab - there is no single status
+			// to name, so the title just counts everything in view.
+			var sTitle = oState.status
+				? "דוחות ממתינים: " + (STATUS_LABEL[oState.status] || "")
+					+ " (" + (oCounts[oState.status] || 0) + ")"
+				: "כל הדוחות (" + (oCounts.ALL || 0) + ")";
+			this.getView().getModel("view").setProperty("/tableTitle", sTitle);
 		},
 
 		/* =============================== sorting =============================== */

@@ -38,7 +38,25 @@ sap.ui.define([], function () {
 
 		extraMonthsVisible: function (iExtra) {
 			return iExtra > 0;
+		},
+
+		/* ========================================================================
+		   נתוני כל העובדים (AllEmployees)
+		   ===================================================================== */
+
+		/**
+		 * "(9)" - the count next to the group header label.
+		 * Renders nothing for a missing count rather than "(undefined)".
+		 */
+		countInParentheses: function (iCount) {
+			return (iCount === undefined || iCount === null) ? "" : "(" + iCount + ")";
 		}
+
+		// שם מנהל ישיר needs no formatter: managerName is filled on every row,
+		// including the top level, whose direct manager is the logged-in user.
+		//
+		// Neither does שם עובד: all names share one weight now, so there is no
+		// isManager flag to carry into the DOM.
 	};
 
 	return formatter;
