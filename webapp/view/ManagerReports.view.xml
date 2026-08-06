@@ -279,6 +279,15 @@
 			</HBox>
 
 			<!-- ================= Table ================= -->
+			<!-- The count line sits here rather than in the table's own
+			     headerToolbar: everything above the table is the screen's fixed
+			     part and only the table scrolls (section 5 in css/style.css), so
+			     a title inside the table would scroll away with the rows. It also
+			     keeps the sticky column headers on the theme's top: 0 offset. -->
+			<HBox alignItems="Center" class="mtTableToolbar mtTableHeader">
+				<Title id="tableTitle" text="{view>/tableTitle}" level="H3" />
+			</HBox>
+
 			<Table
 				id="reportsTable"
 				class="width_auto mtTable"
@@ -286,18 +295,12 @@
 				growing="true"
 				growingThreshold="8"
 				growingScrollToLoad="false"
-				sticky="ColumnHeaders,HeaderToolbar"
+				sticky="ColumnHeaders"
 				mode="None"
 				items="{
 					path: 'reports>/items',
 					sorter: []
 				}">
-
-				<headerToolbar>
-					<OverflowToolbar class="mtTableToolbar">
-						<Title id="tableTitle" text="{view>/tableTitle}" level="H3" />
-					</OverflowToolbar>
-				</headerToolbar>
 
 				<columns>
 					<!-- Widths follow the frame: employee name 230px, wizard 147px,
@@ -325,6 +328,25 @@
 					</Column>
 					<Column width="11.25rem" hAlign="Center">
 						<Text text="השלמת תהליך" />
+					</Column>
+
+					<!-- היעדרויות / השתלמויות. Action columns, not data: each holds a
+					     bare SAP-icon button that leaves for that employee's absences /
+					     training screen, exactly as on "כל העובדים" (colAbsences /
+					     colTraining there) - same icons, same widths, same order, so the
+					     two screens read alike.
+
+					     They carry no value, so they stay out of "ייצוא לאקסל" - there is
+					     nothing to export, only a way in.
+
+					     Last in the XML, which in RTL puts them at the end of the row
+					     (leftmost); השתלמויות is the wider of the two only so its own
+					     header fits on one line. -->
+					<Column width="6rem" hAlign="Center">
+						<Text text="היעדרויות" />
+					</Column>
+					<Column width="7.5rem" hAlign="Center">
+						<Text text="השתלמויות" />
 					</Column>
 				</columns>
 
@@ -377,6 +399,20 @@
 										color="{path: 'reports>state', formatter: '.formatter.stepColor'}" />
 								</HBox>
 							</HBox>
+
+							<!-- היעדרויות -->
+							<Button
+								icon="sap-icon://date-time"
+								type="Transparent"
+								tooltip="פתיחת היעדרויות העובד"
+								press=".onOpenAbsences" />
+
+							<!-- השתלמויות -->
+							<Button
+								icon="sap-icon://education"
+								type="Transparent"
+								tooltip="פתיחת השתלמויות העובד"
+								press=".onOpenTraining" />
 
 						</cells>
 					</ColumnListItem>

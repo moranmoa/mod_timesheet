@@ -443,6 +443,37 @@ sap.ui.define([
 			var oRow = oCtx.getObject();
 			// TODO: navigate to the report detail. Placeholder for now:
 			MessageToast.show("פתיחת דוח: " + oRow.employeeName + " (" + oRow.employeeNumber + ")");
+		},
+
+		/** היעדרויות - leaves for that employee's absences screen. */
+		onOpenAbsences: function (oEvent) {
+			// TODO: wire up once the absences screen exists:
+			// this.getOwnerComponent().getRouter().navTo("employeeAbsences", {
+			//     employeeId: oRow.employeeId
+			// });
+			this._toastRowAction(oEvent, "פתיחת מסך היעדרויות");
+		},
+
+		/** השתלמויות - leaves for that employee's training screen. */
+		onOpenTraining: function (oEvent) {
+			// TODO: wire up once the training screen exists:
+			// this.getOwnerComponent().getRouter().navTo("employeeTraining", {
+			//     employeeId: oRow.employeeId
+			// });
+			this._toastRowAction(oEvent, "פתיחת מסך השתלמויות");
+		},
+
+		/**
+		 * Placeholder for the row-action icons until their screens exist: names the
+		 * employee whose row was pressed, so it is visible that the press reached the
+		 * right record and not just the right column.
+		 *
+		 * @param {sap.ui.base.Event} oEvent press event of a row-action Button
+		 * @param {string}            sWhat  what is being opened
+		 */
+		_toastRowAction: function (oEvent, sWhat) {
+			var oRow = oEvent.getSource().getBindingContext("reports").getObject();
+			MessageToast.show(sWhat + ": " + oRow.employeeName + " (" + oRow.employeeNumber + ")");
 		}
 	});
 });

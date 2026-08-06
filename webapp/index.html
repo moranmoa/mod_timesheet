@@ -6,6 +6,26 @@
 	<title>דוחות נוכחות באחריות ממונה</title>
 
 	<!--
+		Assistant is the design's typeface and the first entry in --mt-font-sans
+		(css/tokens.css), but nothing was loading it - so every screen fell back to
+		SAP's "72", which ships faces at 300/400/700 only. Anything asking for 800,
+		the page titles included, got a browser-synthesised fake bold, which reads
+		as a different typeface next to real 700 text like the filter labels.
+
+		Loading the family fixes that at the source: 800 lands on a real ExtraBold
+		face and the titles sit in the same typeface as the rest of the screen.
+
+		On a closed network this link will not resolve - self-host the woff2 files
+		under webapp/fonts and declare them with @font-face instead. The fallback
+		chain keeps the app readable either way.
+	-->
+	<link rel="preconnect" href="https://fonts.googleapis.com">
+	<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+	<link
+		rel="stylesheet"
+		href="https://fonts.googleapis.com/css2?family=Assistant:wght@400;600;700;800&display=swap">
+
+	<!--
 		Standalone bootstrap using the public SAPUI5 CDN so the app runs as-is.
 		In your real application you already have a bootstrap - just copy the
 		view / controller / model / css folders into your project.

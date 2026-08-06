@@ -84,9 +84,12 @@
 	/* ---------------------------------------------------------------------
 	   Typography
 	   ------------------------------------------------------------------
-	   The kit is set in Assistant. It is used when installed locally and
-	   falls back to SAP's own "72" family, so no external font request is
-	   made (matters for locked-down deployments).
+	   The kit is set in Assistant, which index.html now loads - the family has
+	   to be present for the 800 weights below to land on a real face, since
+	   SAP's "72" fallback ships 300/400/700 only and the browser synthesises
+	   anything heavier. The fallback chain still holds if the request fails,
+	   which is what a locked-down deployment will do: self-host the woff2 files
+	   there (see the note in index.html).
 	   ------------------------------------------------------------------ */
 	--mt-font-sans: "Assistant", "72", "72full", "Segoe UI", system-ui, -apple-system, sans-serif;
 	--mt-font-icons: "SAP-icons";

@@ -24,6 +24,38 @@
 	color: var(--mt-text-primary);
 }
 
+/* Only the table scrolls.
+   ------------------------------------------------------------------------
+   sap.m.Page renders its content into an absolutely positioned <section> that
+   fills the page and scrolls as one block, so a long list used to carry the
+   title, the filters and the status tabs off the top of the screen with it.
+   Laying that section out as a flex column instead lets the header block keep
+   its natural height while the table takes whatever is left and scrolls inside
+   itself - which is also what makes its sticky column headers stick to the top
+   of the table rather than to the top of the page.
+
+   min-height on the table is the escape hatch: if the fixed part ever grows
+   taller than the window (expanded filters on a short screen) the table stops
+   shrinking and the section's own scrolling - still enabled - takes over, so
+   nothing becomes unreachable. */
+.mtPage > section {
+	display: flex;
+	flex-direction: column;
+}
+
+.mtPage > section > .mtHeader,
+.mtPage > section > .mtFilterBar,
+.mtPage > section > .mtTabsBar,
+.mtPage > section > .mtTableHeader {
+	flex: 0 0 auto;
+}
+
+.mtPage > section > .mtTable {
+	flex: 1 1 auto;
+	min-height: 160px;
+	overflow: auto;
+}
+
 /* Let the kit's type stack win over the theme's "72" default inside the screen. */
 .mtPage .sapMText,
 .mtPage .sapMLabel,
@@ -758,9 +790,11 @@
 	box-shadow: none;
 }
 
+/* The selected circle is filled with the accent colour, so the glyph reverses
+   out of it in white rather than sitting on it in black. */
 .mtStatusTabs .sapMITBSelected .sapMITBFilterIcon,
 .mtStatusTabs .sapMITBSelected .sapMITBTab .sapUiIcon {
-	color: var(--mt-color-black);
+	color: var(--mt-color-white);
 }
 
 .mtStatusTabs .sapMITBSelected .sapMITBText {
@@ -808,6 +842,13 @@
 	border: none;
 	padding: var(--mt-space-6) 0 var(--mt-space-5) 0;
 	gap: var(--mt-space-6);
+}
+
+/* The count line is a row of the page rather than the table's headerToolbar
+   (see the note in the view), so it carries the page gutter itself - the table's
+   own margin used to provide it. */
+.mtTableHeader {
+	margin-inline: var(--mt-content-inset);
 }
 
 .mtTableToolbar .sapMTitle,
@@ -947,10 +988,8 @@
    It is typed and coloured as the same column on "כל העובדים" (section 8d):
    bold 16px in brand blue, underlining on hover. The two screens list the same
    people in the same role, so the column reading differently on each was the
-   odd part. The type step down from extrabold 20px carries that screen's
-   reasoning with it - Assistant is not loaded by this app, so an 800 weight
-   falls back to SAP's "72", which has no such face and gets synthesised; bold
-   16px lands on a real one. See the note at .aeEmpName for the full story. */
+   odd part. See the note at .aeEmpName for why both sit a step below the
+   frame's extrabold 20px, and what it would take to go back to it. */
 .mtEmpName,
 .mtRow .sapMListTblCell .mtEmpName.sapMText,
 .mtRow .sapMListTblCell .mtEmpName.sapMLnk {
@@ -1116,11 +1155,36 @@
 /* ---------------------------------------------------------------------------
    8a. Page chrome (sap.f.DynamicPage)
    ------------------------------------------------------------------------ */
+.aePage,
 .aePage .sapFDynamicPageTitle,
 .aePage .sapFDynamicPageHeader,
 .aePage .sapFDynamicPageContentWrapper,
 .aePage .sapFDynamicPageContent {
 	background-color: var(--mt-bg-app);
+}
+
+/* The content area is the one exception that needs its parent named: Horizon
+   paints it from `.sapFDynamicPage .sapFDynamicPageContentWrapperStandard >
+   .sapFDynamicPageContent`, which outranks the rule above and was leaving the
+   table's surroundings on the theme's own #f5f6f7 instead of the kit's #F4F6FC -
+   a visibly greyer canvas than the reports screen's. */
+.aePage.sapFDynamicPage .sapFDynamicPageContentWrapper > .sapFDynamicPageContent {
+	background-color: var(--mt-bg-app);
+}
+
+/* The table's gutter.
+   ------------------------------------------------------------------------
+   DynamicPage pads its content area with the theme's own 3rem/48px inline
+   inset, which put this screen's table twice as far from the edge as the
+   reports table (`.mtTable`: margin 0 24px 24px). Both now sit on the page's
+   24px gutter, with the same 24px of canvas below the last row.
+
+   Top is 0 on purpose: the action toolbar is the table's own extension strip,
+   so its 12px bottom padding (.aeTableToolbar) is the gap to the header above
+   it - a padding here would be added on top of that. */
+.aePage .sapFDynamicPageContent,
+.aePage .sapFDynamicPageContentFitContainer {
+	padding: 0 var(--mt-content-inset) var(--mt-content-inset) var(--mt-content-inset);
 }
 
 /* Horizon hairlines the title/header seam; the frame runs the header area as
@@ -1139,8 +1203,12 @@
 	display: none;
 }
 
+/* Same block as .mtHeader on the reports screen (section 2): the title sits on
+   the page canvas at the 24px gutter, with 10px between it and the filter row.
+   The two screens' headings have to start at the same y - they are the same
+   heading in the same shell. */
 .aePage .sapFDynamicPageTitle {
-	padding-block: var(--mt-space-6) var(--mt-space-1);
+	padding-block: var(--mt-content-inset) var(--mt-space-4);
 	padding-inline: var(--mt-content-inset);
 }
 
@@ -1149,9 +1217,19 @@
 	padding-inline: var(--mt-content-inset);
 }
 
-.aePageTitle,
-.aePageTitle .sapMTitleInner {
-	font: var(--mt-text-page-title);
+/* Page title: the kit's 800 / 28px / navy, identical to .mtHeaderTitle.
+   ------------------------------------------------------------------------
+   !important, because a DynamicPage heading is sized from six classes deep -
+   `.sapFDynamicPageTitleMain > .sapFDynamicPageTitleMainInner
+   .sapFDynamicPageTitleMainHeading .sapFDynamicPageTitleMainHeadingInner
+   .sapMTitle:not(.sapUICompVarMngmtTitle)`, which resolves to
+   --sapObjectHeader_Title_FontSize (20px). Nothing scoped to the Title's own
+   class can outrank that, so this screen's heading rendered a full type step
+   below the reports screen's. Matching that selector here would tie this rule
+   to the DynamicPage's internal DOM; one !important declaration keeps it on the
+   token instead. */
+.aePageTitle {
+	font: var(--mt-text-page-title) !important;
 	color: var(--mt-text-primary);
 }
 
@@ -1259,6 +1337,43 @@
 	border: none;
 }
 
+/* sap.ui.table fills its container with --sapList_Background (white), which
+   showed as a white slab wherever the rows do not reach - the strip past the
+   last column, and the area below the last row. The rows carry their own white
+   (--mt-bg-row further down), so the container itself hands the page canvas
+   through, exactly as .mtTable does with its transparent background. */
+.aeTable .sapUiTableCnt,
+.aeTable .sapUiTableCCnt,
+.aeTable .sapUiTableCtrlEmpty {
+	background-color: transparent;
+}
+
+/* Its scrollbars keep their own gutter, and Horizon paints that gutter from the
+   list palette - a white strip down the table's inline end, closed off with a
+   #e5e5e5 hairline, which cut across the lavender header band and read as a
+   ragged table edge next to the reports screen. The gutter is handed over to the
+   page canvas instead, so the only thing drawn in it is the scrollbar itself. */
+.aeTable .sapUiTableVSbContainer,
+.aeTable .sapUiTableVSbHeader,
+.aeTable .sapUiTableVSb,
+.aeTable .sapUiTableHSb,
+.aeTable .sapUiTableHSbBg,
+.aeTable .sapUiTableHSbExternal {
+	background-color: transparent;
+	border-color: transparent;
+}
+
+/* Cell inset: the kit's 16px, on the column headers and the data cells alike -
+   the same --mt-row-padding-inline the reports table uses (section 5). UI5's
+   own values are 0.5rem, plus a physical `padding-left: 1rem` on the first
+   column that lands on the wrong side in RTL; the third selector is what
+   replaces it, so every column gets the same inset on both sides. */
+.aeTable .sapUiTableHeaderDataCell > .sapUiTableCellInner,
+.aeTable .sapUiTableDataCell > .sapUiTableCellInner,
+.aeTable .sapUiTableCell > .sapUiTableCellInner.sapUiTableFirstColumnCell {
+	padding-inline: var(--mt-row-padding-inline);
+}
+
 /* --- column headers --- */
 .aeTable .sapUiTableColHdrCnt,
 .aeTable .sapUiTableColHdr,
@@ -1327,15 +1442,14 @@
    The name is the row's navigation target, so it renders as a sap.m.Link, and
    the design colours it brand blue to say so.
 
-   Typography deliberately stays on the plain cell type (--mt-text-cell, same as
-   אגף / יחידה), even though Figma node 44:1281 draws the name a step above at
-   extrabold 20px. The reason is the font stack: Assistant is not loaded by this
-   app (see tokens.css), so on any machine without it installed the text falls
-   back to SAP's "72", which has no 800 weight - the browser then synthesises or
-   clamps it, and the result looks unlike the design rather than closer to it.
-   Bold 16px lands on a real 72 face, so it is what actually matches on screen.
-
-   To take the design value, load a real Assistant ExtraBold face first.
+   Typography stays on the plain cell type (--mt-text-cell, same as אגף /
+   יחידה), even though Figma node 44:1281 draws the name a step above at
+   extrabold 20px. That started as a workaround - nothing loaded Assistant, so
+   an 800 weight fell back to SAP's "72", which ships no such face, and the
+   synthesised result looked unlike the design rather than closer to it. Now
+   that index.html loads the family, taking the design value is a one-line
+   change to --mt-text-cell-emphasis; the columns on both screens were levelled
+   at bold 16 on request, so it stays a decision rather than a constraint.
 
    One uniform weight for everyone, leaf rows included. Managers are not singled
    out by weight - the expand arrow is what marks a manager, so the weight would
@@ -1391,6 +1505,7 @@
 	}
 
 	.mtTabsBar,
+	.mtTableHeader,
 	.mtTable,
 	.width_auto {
 		margin-inline: var(--mt-space-6) !important;
@@ -1424,6 +1539,7 @@
 	}
 
 	.mtTabsBar,
+	.mtTableHeader,
 	.mtTable,
 	.width_auto {
 		margin-inline: var(--mt-space-5) !important;
@@ -1465,6 +1581,12 @@
 		padding-inline: var(--mt-space-6);
 	}
 
+	.aePage .sapFDynamicPageContent,
+	.aePage .sapFDynamicPageContentFitContainer {
+		padding-inline: var(--mt-space-6);
+		padding-bottom: var(--mt-space-6);
+	}
+
 	.aeFilterField {
 		flex: 1 1 45%;
 		min-width: 0;
@@ -1477,9 +1599,16 @@
 		padding-inline: var(--mt-space-5);
 	}
 
-	.aePageTitle,
-	.aePageTitle .sapMTitleInner {
-		font-size: var(--mt-font-size-lg);
+	.aePage .sapFDynamicPageContent,
+	.aePage .sapFDynamicPageContentFitContainer {
+		padding-inline: var(--mt-space-5);
+		padding-bottom: var(--mt-space-5);
+	}
+
+	/* !important for the same reason as the base rule in section 8a - and needed
+	   again here, because that rule's own !important would otherwise win. */
+	.aePageTitle {
+		font-size: var(--mt-font-size-lg) !important;
 	}
 
 	.aeFilterField {
