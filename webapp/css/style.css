@@ -105,15 +105,31 @@
    Figma: height 44, radius pill, 2px brand-blue border, white fill,
    inner padding 4px 8px, value text 600/16.
    ------------------------------------------------------------------------ */
+.mtFilterField {
+	/* The pill's border width lives in one custom property so a screen can
+	   restyle it (section 8b runs this 2px down to 1px) without restating the
+	   border, which the rule below has to pin with !important. */
+	--mt-field-border-width: var(--mt-border-width-strong);
+}
+
 .mtFilterField .sapMSlt,
 .mtFilterField .sapMSF,
 .mtFilterField .sapMInputBaseContentWrapper {
 	height: var(--mt-field-height);
 	min-height: var(--mt-field-height);
 	border-radius: var(--mt-radius-pill);
-	border: var(--mt-border-width-strong) solid var(--mt-border-field);
-	background-color: var(--mt-color-white);
 	box-sizing: border-box;
+
+	/* Border and fill are constants - a field looks the same idle, hovered,
+	   focused or open. !important rather than a rule per state, because Horizon
+	   changes both from selectors that nest deeper than anything scoped to
+	   .mtFilterField can: it brightens the wrapper's border on hover, drops the
+	   border outright on a focused Select (`.sapMSlt.sapMSltFocused … {border:
+	   none}`), recolours it while a picker is open (.sapMInputBaseIconPressed)
+	   and tints the fill on focus (.sapMFocus). One !important declaration holds
+	   in every one of those states at once. */
+	border: var(--mt-field-border-width) solid var(--mt-border-field) !important;
+	background-color: var(--mt-color-white) !important;
 }
 
 /* MultiComboBox / Input: the wrapper carries the border, so the root must not
@@ -163,6 +179,7 @@
 	line-height: normal;
 }
 
+/* Height is deliberately absent - the chevron section further down owns it. */
 .mtFilterField .sapMSltArrow,
 .mtFilterField .sapMInputBaseIconContainer {
 	position: static;
@@ -170,7 +187,7 @@
 	flex: 0 0 auto;
 	display: flex;
 	align-items: center;
-	height: auto;
+	justify-content: center;
 	margin: 0;
 	line-height: normal;
 }
@@ -274,45 +291,34 @@
 	font-size: 20px;
 }
 
-/* Hover / focus: no inner rings, ever.
+/* No rings, in any state.
    ------------------------------------------------------------------------
-   Horizon signals hover and focus on a field with an *inset* box-shadow and a
-   pseudo-element outline drawn just inside the control. Both land inside the
-   brand pill and read as a second, squarer border. The pill's own 2px border
-   is the only outline this design uses, so every ring is cleared in every
-   state and focus is expressed by recolouring that border instead. */
+   Horizon signals hover, focus and "picker open" on a field with an *inset*
+   box-shadow and a pseudo-element outline drawn just inside the control. Both
+   land inside the brand pill and read as a second, squarer border. The pill's
+   own border is the only outline this design uses, so every ring is cleared.
+   No state selectors here on purpose: the theme's own run up to seven classes
+   deep (`.sapMInputBase:not(.sapMFocus) .sapMInputBaseContentWrapper:not(…)
+   :not(…):not(…):hover`). Stateless !important declarations outrank all of them
+   at once, in idle, hover, focus and expanded alike. */
 .mtFilterField .sapMSlt,
-.mtFilterField .sapMSlt:hover,
-.mtFilterField .sapMSlt:focus,
-.mtFilterField .sapMSlt:active,
-.mtFilterField .sapMSltHoverable:hover,
 .mtFilterField .sapMSF,
-.mtFilterField .sapMSF:hover,
-.mtFilterField .sapMSF:focus-within,
 .mtFilterField .sapMSFF,
-.mtFilterField .sapMSFF:hover,
 .mtFilterField .sapMSFI,
-.mtFilterField .sapMSFI:hover,
-.mtFilterField .sapMSFI:focus,
 .mtFilterField .sapMInputBase,
-.mtFilterField .sapMInputBase:hover,
 .mtFilterField .sapMInputBaseContentWrapper,
-.mtFilterField .sapMInputBaseContentWrapper:hover,
-.mtFilterField .sapMInputBaseContentWrapper:focus-within,
-.mtFilterField .sapMInputBase:hover .sapMInputBaseContentWrapper,
 .mtFilterField .sapMInputBaseInner,
-.mtFilterField .sapMInputBaseInner:hover,
-.mtFilterField .sapMInputBaseInner:focus,
-.mtFilterField .sapMTokenizer,
-.mtFilterField .sapMFocus,
-.mtFilterField .sapMFocus:focus {
-	box-shadow: none;
-	outline: none;
-	background-image: none;
+.mtFilterField .sapMTokenizer {
+	box-shadow: none !important;
+	outline: none !important;
+	background-image: none !important;
 }
 
-/* Horizon also draws those rings as pseudo-elements. Only the containers are
-   listed - .sapMSFR / .sapMSFS / staticSearchIcon render their glyph through
+/* Horizon also draws those rings as pseudo-elements, and the focused ones from
+   deeper selectors again (`html.sap-desktop .sapMFocus > .sapMSFF::before`,
+   `.sapMFocus.sapMInputBase .sapMInputBaseContentWrapper:not(…)::before`) -
+   hence !important here too. Only the containers are listed - .sapMSFR /
+   .sapMSFS / .sapMSltArrow / .sapMInputBaseIcon render their glyph through
    ::before, so they are deliberately left alone. */
 .mtFilterField .sapMSlt::before,
 .mtFilterField .sapMSlt::after,
@@ -328,10 +334,10 @@
 .mtFilterField .sapMInputBaseInner::after,
 .mtFilterField .sapMFocus::before,
 .mtFilterField .sapMFocus::after {
-	display: none;
-	content: none;
-	border: none;
-	outline: none;
+	display: none !important;
+	content: none !important;
+	border: none !important;
+	outline: none !important;
 }
 
 /* Nothing inside a field may paint over the pill's rounded corners - clipping
@@ -349,55 +355,93 @@
 	background-color: transparent;
 }
 
-/* Hover and focus are both "the pill's border brightens", so every field type
-   reacts the same way.
+/* Hover and focus are not signalled on a filter field at all: the border keeps
+   its brand colour (pinned in the base rule above), no ring is drawn inside the
+   pill and none outside it. Nothing to declare here - the absence is the design,
+   and it is worth knowing it is deliberate, because it also means keyboard focus
+   on these fields has no visible indicator of its own. */
+
+/* The chevron that opens the picker
    ------------------------------------------------------------------------
-   Select needs more selectors than the rest: its root <div> carries
-   tabindex="-1" and the focusable node is the inner .sapMSltHiddenSelect
-   (tabindex="0"), so `.sapMSlt:focus` can never match. :focus-within covers it,
-   and .sapMFocus - which UI5 puts on the root - is the fallback for engines
-   without :focus-within. */
-.mtFilterField .sapMSlt:hover,
-.mtFilterField .sapMSF:hover,
-.mtFilterField .sapMInputBaseContentWrapper:hover,
-.mtFilterField .sapMInputBase:hover .sapMInputBaseContentWrapper {
-	border-color: var(--mt-color-brand-hover);
+   Horizon renders it as a small boxed button - 26px tall in the compact theme,
+   barely more than half the 44px pill - and rings it with a shadow whenever it
+   is hovered, pressed, or the picker is open. Here it fills the pill's inner
+   height instead, so the whole inline-end of the field is the target, and it
+   never draws a frame or a fill of its own: the pill's border is the only one
+   this design has.
+
+   `align-self: stretch` is what grows it - both nodes are already flex items of
+   the field (section 3a above), and stretching the container is also what lets
+   the icon inside a MultiComboBox resolve its own height: 100% against something
+   definite. */
+.mtFilterField .sapMSltArrow,
+.mtFilterField .sapMInputBaseIconContainer {
+	align-self: stretch;
+	height: auto !important;
 }
 
-.mtFilterField .sapMSlt:focus,
-.mtFilterField .sapMSlt:focus-within,
-.mtFilterField .sapMSlt.sapMFocus,
-.mtFilterField .sapMSF:focus-within,
-.mtFilterField .sapMInputBaseContentWrapper:focus-within {
-	border-color: var(--mt-color-brand-hover);
+/* In a MultiComboBox the box is the icon rather than its container, so the icon
+   is what takes the height - and its own centring, which the flexbox above
+   already provides for the Select's arrow. */
+.mtFilterField .sapMInputBaseIconContainer .sapMInputBaseIcon {
+	height: 100% !important;
+	display: flex;
+	align-items: center;
+	justify-content: center;
 }
 
-/* Keyboard focus adds a ring *outside* the pill, so it never competes with the
-   border. Outlines are not clipped by overflow. */
-.mtFilterField .sapMSlt:focus-visible,
-.mtFilterField .sapMSF:focus-visible {
-	outline: var(--mt-border-width-strong) solid var(--mt-color-brand-hover);
-	outline-offset: 2px;
+/* Whichever of the two draws the box: no frame, no fill, no ring - ever. */
+.mtFilterField .sapMSltArrow,
+.mtFilterField .sapMInputBaseIcon {
+	line-height: normal !important;
+	border: none !important;
+	box-shadow: none !important;
+	outline: none !important;
+	background-color: transparent !important;
 }
 
-/* Kept in its own rule on purpose: an unsupported selector invalidates the
-   entire list it sits in, so pairing :has() with the plain :focus-visible
-   selectors above would drop the focus ring altogether on older engines. */
-.mtFilterField .sapMSlt:has(.sapMSltHiddenSelect:focus-visible),
-.mtFilterField .sapMSF:has(.sapMSFI:focus-visible),
-.mtFilterField .sapMInputBaseContentWrapper:has(.sapMInputBaseInner:focus-visible) {
-	outline: var(--mt-border-width-strong) solid var(--mt-color-brand-hover);
-	outline-offset: 2px;
+/* The theme flips the glyph to white while the picker is open, for contrast
+   against the blue box it fills. With no box left, it stays brand blue. */
+.mtFilterField .sapMSltArrow::before,
+.mtFilterField .sapMInputBaseIcon::before {
+	color: inherit !important;
 }
 
-/* Selected tokens inside a MultiComboBox stay on the kit's tag styling. */
+/* Selected tokens inside a MultiComboBox stay on the kit's tag styling - and
+   stay on it in every state, exactly like the field around them.
+   ------------------------------------------------------------------------
+   A token is the busiest control Horizon ships: it re-borders and re-fills on
+   hover, rings itself with an ::after frame on focus, and on selection swaps
+   its whole palette, its radius, its font-family and adds a ::before hairline.
+   All of it from html.sap-desktop-prefixed selectors, so - as with the fields
+   above - the tag's own look is pinned statelessly rather than fought state by
+   state. The tag's outline is its inset box-shadow; nothing else is drawn. */
 .mtFilterField .sapMToken {
-	border-radius: var(--mt-radius-pill);
-	background-color: var(--mt-color-brand-wash);
-	box-shadow: inset 0 0 0 var(--mt-border-width) var(--mt-color-brand);
-	border: none;
-	font: var(--mt-text-tag);
-	color: var(--mt-color-black);
+	border-radius: var(--mt-radius-pill) !important;
+	background-color: var(--mt-color-brand-wash) !important;
+	background-image: none !important;
+	box-shadow: inset 0 0 0 var(--mt-border-width) var(--mt-color-brand) !important;
+	border: none !important;
+	outline: none !important;
+	font: var(--mt-text-tag) !important;
+	color: var(--mt-color-black) !important;
+}
+
+.mtFilterField .sapMToken::before,
+.mtFilterField .sapMToken::after {
+	display: none !important;
+	content: none !important;
+}
+
+/* The label follows the tag's own colour; the "x" stays brand blue instead of
+   turning white for contrast against a selected-state fill that is no longer
+   painted. */
+.mtFilterField .sapMTokenText {
+	color: inherit !important;
+}
+
+.mtFilterField .sapMTokenIcon {
+	color: var(--mt-color-brand) !important;
 }
 
 /* ---------------------------------------------------------------------------
@@ -897,15 +941,21 @@
 	background-color: var(--mt-bg-row-hover);
 }
 
-/* Employee name is the row's anchor: 800 / 20px. It is a Link - clicking it
-   opens the report, replacing the row's former expand button - but it reads as
-   the row's title rather than a blue link. The underline and brand colour only
-   appear on hover/focus, which is what signals it is actionable. */
+/* Employee name is the row's anchor and a Link - clicking it opens the report,
+   replacing the row's former expand button.
+
+   It is typed and coloured as the same column on "כל העובדים" (section 8d):
+   bold 16px in brand blue, underlining on hover. The two screens list the same
+   people in the same role, so the column reading differently on each was the
+   odd part. The type step down from extrabold 20px carries that screen's
+   reasoning with it - Assistant is not loaded by this app, so an 800 weight
+   falls back to SAP's "72", which has no such face and gets synthesised; bold
+   16px lands on a real one. See the note at .aeEmpName for the full story. */
 .mtEmpName,
 .mtRow .sapMListTblCell .mtEmpName.sapMText,
 .mtRow .sapMListTblCell .mtEmpName.sapMLnk {
-	font: var(--mt-text-cell-emphasis);
-	color: var(--mt-color-black);
+	font: var(--mt-text-cell);
+	color: var(--mt-text-link);
 	text-decoration: none;
 	max-width: 100%;
 	cursor: pointer;
@@ -913,13 +963,13 @@
 
 .mtRow .sapMListTblCell .mtEmpName.sapMLnk:hover,
 .mtRow .sapMListTblCell .mtEmpName.sapMLnk:active {
-	color: var(--mt-color-brand);
+	color: var(--mt-color-brand-hover);
 	text-decoration: underline;
 }
 
-/* Keyboard focus rings from outside the text, as on the filter fields. */
+/* Keyboard focus rings from outside the text. */
 .mtRow .sapMListTblCell .mtEmpName.sapMLnk:focus-visible {
-	color: var(--mt-color-brand);
+	color: var(--mt-color-brand-hover);
 	text-decoration: underline;
 	outline: var(--mt-border-width-strong) solid var(--mt-color-brand-hover);
 	outline-offset: 2px;
@@ -1117,10 +1167,11 @@
 	gap: var(--mt-space-5);
 }
 
-.aeFilterField .sapMSlt,
-.aeFilterField .sapMSF,
-.aeFilterField .sapMInputBaseContentWrapper {
-	border-width: var(--mt-border-width);
+/* Section 3a declares the border once, with !important, so this screen's
+   thinner border is handed over as a custom property instead of restated - a
+   `border-width` rule here would be outranked by that declaration. */
+.aeFilterField {
+	--mt-field-border-width: var(--mt-border-width);
 }
 
 /* The search column carries the longest label and the design's 320px field. */
@@ -1395,12 +1446,6 @@
 	.mtRow .sapMListTblCell {
 		height: auto;
 		padding-block: var(--mt-space-5);
-	}
-
-	.mtEmpName,
-	.mtRow .sapMListTblCell .mtEmpName.sapMText,
-	.mtRow .sapMListTblCell .mtEmpName.sapMLnk {
-		font-size: var(--mt-font-size-md);
 	}
 }
 
