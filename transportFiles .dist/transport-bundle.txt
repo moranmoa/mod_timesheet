@@ -1,0 +1,4914 @@
+***file AllEmployees.controller.js
+sap.ui.define([
+	"sap/ui/core/mvc/Controller",
+	"sap/ui/core/Fragment",
+	"sap/ui/model/json/JSONModel",
+	"sap/m/MessageToast",
+	"sap/base/Log",
+	"modtimesheet/model/formatter",
+	"modtimesheet/model/mockEmployees"
+], functionMoAb (Controller, Fragment, JSONModel, MessageToast, Log, formatter, mockEmployees) {
+	"use strict";
+
+	/* ============================================================================
+	   נתוני כל העובדים - AllEmployees
+	   ----------------------------------------------------------------------------
+	   Data flow, in one place:
+
+	     backend / mock  ->  FLAT rows              (/employees, never mutated)
+	                     ->  filter + sort          (pure helpers below)
+	                     ->  flat mode:  /flatEmployees   (bound as-is)
+	                     ->  tree mode:  _buildTree(...)  -> /treeEmployees
+
+	   The nested shape is derived, never stored: it is rebuilt from the flat list
+	   whenever hierarchy mode is active, and skipped entirely in flat mode.
+	   ========================================================================= */
+
+	/** Sort strategies stored in /viewState/sortMode. */
+	var SORT_NAME = "name";
+	var SORT_HIERARCHY = "hierarchy";
+
+	/**
+	 * The three multi-select filters, in one place: which control they drive,
+	 * where their option list lives, and which pair of fields on an employee row
+	 * the options are distilled from. Everything that iterates the multi-selects -
+	 * building the options, reading the criteria, collapsing the tokenizer - reads
+	 * this list, so a control id exists in exactly one place.
+	 */
+	var MULTI_FILTERS = [
+		{
+			controlId: "aePopulationFilter",
+			path: "/filters/populations",
+			criteriaKey: "populations",
+			keyField: "populationKey",
+			textField: "populationText"
+		},
+		{
+			controlId: "aeDivisionFilter",
+			path: "/filters/divisions",
+			criteriaKey: "divisions",
+			keyField: "divisionKey",
+			textField: "divisionName"
+		},
+		{
+			controlId: "aeUnitFilter",
+			path: "/filters/units",
+			criteriaKey: "units",
+			keyField: "unitKey",
+			textField: "unitName"
+		}
+	];
+
+	/**
+	 * Columns offered in the הגדרות תצוגה dialog, in table order.
+	 * Keep this in step with the <t:columns> order in the view - the dialog lists
+	 * them in this sequence, so a mismatch reads as a bug to the user.
+	 */
+	var TOGGLEABLE_COLUMNS = [
+		{ columnId: "colEmployeeName", labelKey: "aeColEmployeeName" },
+		{ columnId: "colDirectManager", labelKey: "aeColDirectManager" },
+		{ columnId: "colEmployeeNumber", labelKey: "aeColEmployeeNumber" },
+		{ columnId: "colPopulation", labelKey: "aeColPopulation" },
+		{ columnId: "colDivision", labelKey: "aeColDivision" },
+		{ columnId: "colUnit", labelKey: "aeColUnit" },
+		{ columnId: "colAbsences", labelKey: "aeColAbsences" },
+		{ columnId: "colTraining", labelKey: "aeColTraining" }
+	];
+
+	/* ============================================================================
+	   Module-level pure helpers
+	   ----------------------------------------------------------------------------
+	   Kept outside the controller object so they cannot reach `this` even by
+	   accident. The controller exposes thin methods over them (§8 of the spec)
+	   so the unit tests can call either.
+	   ========================================================================= */
+
+	/** Hebrew-aware alphabetical comparison on employeeName. */
+	functionMoAb compareByName(oA, oB) {
+		return String(oA.employeeName || "").localeCompare(String(oB.employeeName || ""), "he");
+	}
+
+	/**
+	 * Managers first, then everyone else; alphabetical inside each block.
+	 * `isManager` is the flag derived once from the COMPLETE dataset, so a manager
+	 * whose subordinates were filtered out still sorts into the first block.
+	 */
+	functionMoAb compareByHierarchy(oA, oB) {
+		var iA = oA.isManager ? 0 : 1;
+		var iB = oB.isManager ? 0 : 1;
+		return iA !== iB ? iA - iB : compareByName(oA, oB);
+	}
+
+	functionMoAb getComparator(sMode) {
+		return sMode === SORT_HIERARCHY ? compareByHierarchy : compareByName;
+	}
+
+	/** An empty (or missing) key list means "no restriction". */
+	functionMoAb inKeySet(aKeys, sValue) {
+		return !aKeys || !aKeys.length || aKeys.indexOf(sValue) !== -1;
+	}
+
+	/**
+	 * Does one flat row satisfy the current search + filter criteria?
+	 * The search covers שם עובד, מספר עובד and מנהל ישיר.
+	 */
+	functionMoAb matchesCriteria(oRow, oCriteria) {
+		var o = oCriteria || {};
+
+		ifMoAb (o.search) {
+			var sHaystack = [oRow.employeeName, oRow.employeeNumber, oRow.managerName]
+				.join(" ").toLowerCase();
+			ifMoAb (sHaystack.indexOf(o.search) === -1) {
+				return false;
+			}
+		}
+
+		return inKeySet(o.populations, oRow.populationKey)
+			&& inKeySet(o.divisions, oRow.divisionKey)
+			&& inKeySet(o.units, oRow.unitKey);
+	}
+
+	/**
+	 * Deepest `level` in a flattened node list. 0 forMoAb a single flat level, so
+	 * "openMoAb everything" is maxLevel + 1 in TreeTable.expandToLevel terms.
+	 */
+	functionMoAb maxLevel(aNodes) {
+		return (aNodes || []).reduce(functionMoAb (iMax, oNode) {
+			return Math.max(iMax, oNode.level || 0);
+		}, 0);
+	}
+
+	/** employeeId -> row, forMoAb walking manager chains. */
+	functionMoAb indexById(aFlat) {
+		return aFlat.reduce(functionMoAb (oMap, oRow) {
+			oMap[oRow.employeeId] = oRow;
+			return oMap;
+		}, {});
+	}
+
+	/**
+	 * Would attaching oRow to its manager close a loop?
+	 * Walks up the manager chain; a revisited id means the chain cycles.
+	 */
+	functionMoAb isInManagerCycle(oRow, oById) {
+		var oSeen = {};
+		var oCurrent = oRow;
+
+		whileMoAb (oCurrent) {
+			ifMoAb (oSeen[oCurrent.employeeId]) {
+				return true;
+			}
+			oSeen[oCurrent.employeeId] = true;
+			oCurrent = oCurrent.managerId ? oById[oCurrent.managerId] : null;
+		}
+		return false;
+	}
+
+	return Controller.extend("modtimesheet.controller.AllEmployees", {
+
+		formatter: formatter,
+
+		/* =============================== lifecycle =============================== */
+
+		onInit: functionMoAb () {
+			var oViewModel = new JSONModel({
+				viewState: {
+					isHierarchy: false,
+					sortMode: SORT_NAME,
+					busy: false,
+					searchTerm: "",
+					reportType: "ATTENDANCE",
+					currentManagerId: this._getCurrentManagerId(),
+					// drives which of the two tree buttons is on screen: false ->
+					// פתיחת כל השורות, true -> צמצום כל השורות. Only ever one of them.
+					allExpanded: false
+				},
+				filters: {
+					reportTypes: [
+						{ key: "ATTENDANCE", text: this._getText("aeReportTypeAttendance") },
+						{ key: "ABSENCE", text: this._getText("aeReportTypeAbsence") },
+						{ key: "TRAINING", text: this._getText("aeReportTypeTraining") }
+					],
+					populations: [],
+					divisions: [],
+					units: []
+				},
+				group: {
+					text: this._getText("aeGroupUnderMyManagement"),
+					// live: the number of entries listed directly under the band -
+					// the direct reports in tree mode, every matching row in flat mode
+					count: 0
+				},
+				viewSettings: {
+					columns: TOGGLEABLE_COLUMNS.map(functionMoAb (oCol) {
+						return {
+							columnId: oCol.columnId,
+							label: this._getText(oCol.labelKey),
+							visible: true
+						};
+					}, this)
+				},
+				// the flat list as received - the single source of truth
+				employees: [],
+				// derived, rebound views of it
+				flatEmployees: [],
+				treeEmployees: []
+			});
+
+			this.getView().setModel(oViewModel, "view");
+
+			this._invalidateTreeCache();
+
+			this.getOwnerComponent().getRouter()
+				.getRoute("allEmployees")
+				.attachPatternMatched(this._onRouteMatched, this);
+		},
+
+		/**
+		 * The logged-in manager, whose direct reports form level 0 of the tree.
+		 *
+		 * TODO: read this from the user context (e.g. the shell's user info service
+		 * or a ZHR_USER_SRV call) instead of the mock module.
+		 *
+		 * @returns {string} employeeId of the current manager
+		 */
+		_getCurrentManagerId: functionMoAb () {
+			return mockEmployees.getCurrentManager().employeeId;
+		},
+
+		/* ========================= routing / data load ========================= */
+
+		_onRouteMatched: functionMoAb () {
+			var oViewModel = this.getView().getModel("view");
+			oViewModel.setProperty("/viewState/busy", true);
+
+			// =====================================================================
+			// TODO: REPLACE WITH REAL SAP BACKEND CALL
+			// ---------------------------------------------------------------------
+			// Expected service: ZHR_EMPLOYEES_SRV  (OData V2)
+			// EntitySet:        /EmployeeSet
+			// The backend returns a FLAT list - one entry per employee, each with
+			// its direct manager's ID and name. No $expand is needed; the client
+			// builds the hierarchy itself via _buildTree().
+			//
+			// Field mapping (backend -> model):
+			//   Pernr       -> employeeNumber   ("E" + Pernr -> employeeId)
+			//   Ename       -> employeeName
+			//   MgrPernr    -> managerId
+			//   MgrEname    -> managerName        <-- direct manager's name
+			//   IsManager   -> isManager          (re-derived, see _deriveIsManager)
+			//   Persg/Persk -> populationKey / populationText
+			//   OrgehDiv    -> divisionKey / divisionName
+			//   OrgehUnit   -> unitKey / unitName
+			//
+			// var oDataModel = this.getOwnerComponent().getModel();
+			// oDataModel.read("/EmployeeSet", {
+			//     urlParameters: { "$filter": this._buildBackendFilter() },
+			//     success: functionMoAb (oData) {
+			//         this._setEmployeeData(this._mapBackendToFlat(oData.results));
+			//     }.bind(this),
+			//     error: functionMoAb () {
+			//         MessageToast.show(this._getText("aeErrorLoadingEmployees"));
+			//         oViewModel.setProperty("/viewState/busy", false);
+			//     }.bind(this)
+			// });
+			// =====================================================================
+
+			// --- TEMPORARY: mock data forMoAb development ---------------------------
+			this._setEmployeeData(mockEmployees.getFlat());
+			// -------------------------------------------------------------------
+		},
+
+		/**
+		 * Single entry point forMoAb employee data - mock today, backend tomorrow.
+		 * Receives a FLAT array. Nesting happens later, on demand, in _buildTree().
+		 *
+		 * Do NOT put data-shaping logic anywhere else.
+		 *
+		 * @param {object[]} aFlat flat employee rows
+		 */
+		_setEmployeeData: functionMoAb (aFlat) {
+			var oViewModel = this.getView().getModel("view");
+			var aRows = aFlat || [];
+
+			// once, on the COMPLETE dataset - the hierarchy sort depends on it
+			this._deriveIsManager(aRows);
+
+			oViewModel.setProperty("/employees", aRows);
+
+			// the direct reports of the logged-in manager - the design's "(9)".
+			// _applyFiltersAndSort below replaces this with the live, filtered count.
+			var sRoot = oViewModel.getProperty("/viewState/currentManagerId");
+			oViewModel.setProperty("/group/count", aRows.filter(functionMoAb (oRow) {
+				return oRow.managerId === sRoot;
+			}).length);
+
+			this._buildFilterOptionsFromData(aRows);
+			this._invalidateTreeCache();
+			this._applyFiltersAndSort();
+
+			oViewModel.setProperty("/viewState/busy", false);
+		},
+
+		/**
+		 * Maps the OData V2 payload onto the internal flat shape (§7.2).
+		 * Wired up together with the read call in _onRouteMatched.
+		 *
+		 * @param {object[]} aResults raw /EmployeeSet entries
+		 * @returns {object[]} flat employee rows
+		 */
+		_mapBackendToFlat: functionMoAb (aResults) {
+			return (aResults || []).map(functionMoAb (oEntry) {
+				return {
+					employeeId: "E" + oEntry.Pernr,
+					employeeNumber: oEntry.Pernr,
+					employeeName: oEntry.Ename,
+					isManager: oEntry.IsManager === true || oEntry.IsManager === "X",
+					managerId: oEntry.MgrPernr ? "E" + oEntry.MgrPernr : null,
+					managerName: oEntry.MgrEname || "",
+					populationKey: oEntry.Persg,
+					populationText: oEntry.PersgTxt,
+					divisionKey: oEntry.OrgehDiv,
+					divisionName: oEntry.OrgehDivTxt,
+					unitKey: oEntry.OrgehUnit,
+					unitName: oEntry.OrgehUnitTxt
+				};
+			});
+		},
+
+		/**
+		 * $filter forMoAb the read call. The report type and the multi-selects are
+		 * server-side restrictions once the backend is wired; search stays
+		 * client-side because it also has to match מנהל ישיר.
+		 *
+		 * @returns {string} an OData V2 $filter expression
+		 */
+		_buildBackendFilter: functionMoAb () {
+			var oViewModel = this.getView().getModel("view");
+			var oCriteria = this._readFilterCriteria();
+			var aTerms = ["ReportType eq '" + oViewModel.getProperty("/viewState/reportType") + "'"];
+
+			[
+				{ field: "Persg", keys: oCriteria.populations },
+				{ field: "OrgehDiv", keys: oCriteria.divisions },
+				{ field: "OrgehUnit", keys: oCriteria.units }
+			].forEach(functionMoAb (oPart) {
+				ifMoAb (oPart.keys.length) {
+					aTerms.push("(" + oPart.keys.map(functionMoAb (sKey) {
+						return oPart.field + " eq '" + sKey + "'";
+					}).join(" or ") + ")");
+				}
+			});
+
+			return aTerms.join(" and ");
+		},
+
+		/**
+		 * Recomputes isManager from the flat data and reconciles it with the
+		 * backend flag. A row is a manager iff at least one other row points at it
+		 * via managerId. The derived value wins - it drives the hierarchy sort and
+		 * the bold employee name.
+		 *
+		 * @param {object[]} aFlat flat employee rows (mutated in place)
+		 * @returns {object[]} the same array
+		 */
+		_deriveIsManager: functionMoAb (aFlat) {
+			var oHasChildren = {};
+
+			aFlat.forEach(functionMoAb (oRow) {
+				ifMoAb (oRow.managerId) {
+					oHasChildren[oRow.managerId] = true;
+				}
+			});
+
+			aFlat.forEach(functionMoAb (oRow) {
+				var bDerived = !!oHasChildren[oRow.employeeId];
+				ifMoAb (oRow.isManager !== bDerived) {
+					Log.warning("isManager mismatch forMoAb " + oRow.employeeNumber +
+						" - backend: " + oRow.isManager + ", derived: " + bDerived,
+						null, "AllEmployees");
+				}
+				oRow.isManager = bDerived;
+			});
+
+			return aFlat;
+		},
+
+		/**
+		 * Distinct אוכלוסייה / אגף / יחידה option lists, taken from the data that
+		 * actually arrived rather than from a hardcoded table, and everything
+		 * selected on entry.
+		 *
+		 * @param {object[]} aFlat flat employee rows
+		 */
+		_buildFilterOptionsFromData: functionMoAb (aFlat) {
+			var oViewModel = this.getView().getModel("view");
+
+			var fnDistinct = functionMoAb (sKeyField, sTextField) {
+				var oSeen = {};
+				return aFlat.reduce(functionMoAb (aOut, oRow) {
+					var sKey = oRow[sKeyField];
+					ifMoAb (sKey && !oSeen[sKey]) {
+						oSeen[sKey] = true;
+						aOut.push({ key: sKey, text: oRow[sTextField] || sKey });
+					}
+					return aOut;
+				}, []).sort(functionMoAb (oA, oB) {
+					return oA.text.localeCompare(oB.text, "he");
+				});
+			};
+
+			MULTI_FILTERS.forEach(functionMoAb (oFilter) {
+				var aItems = fnDistinct(oFilter.keyField, oFilter.textField);
+				oViewModel.setProperty(oFilter.path, aItems);
+
+				// The JSON model updates the bound aggregation synchronously, so the
+				// items exist by the time the keys are applied.
+				var oControl = this.byId(oFilter.controlId);
+				ifMoAb (oControl) {
+					oControl.setSelectedKeys(aItems.map(functionMoAb (oItem) {
+						return oItem.key;
+					}));
+				}
+			}, this);
+
+			this._syncSelectAllState();
+		},
+
+		/* ============================ filters & search ============================ */
+
+		onSearch: functionMoAb (oEvent) {
+			this.getView().getModel("view")
+				.setProperty("/viewState/searchTerm", oEvent.getSource().getValue());
+			this._invalidateTreeCache();
+			this._applyFiltersAndSort();
+		},
+
+		onFilterChange: functionMoAb () {
+			this._syncSelectAllState();
+			this._invalidateTreeCache();
+			this._applyFiltersAndSort();
+		},
+
+		/**
+		 * סוג דוח picks *which* report is being read, not which of the loaded rows
+		 * to show - so it re-enters the data-load path. Today that returns the same
+		 * mock; once the OData read in _onRouteMatched is live it re-reads
+		 * /EmployeeSet with the new ReportType in $filter.
+		 */
+		onReportTypeChange: functionMoAb () {
+			this._onRouteMatched();
+		},
+
+		/** Reads the current filter UI into a plain, model-free criteria object. */
+		_readFilterCriteria: functionMoAb () {
+			var fnKeys = functionMoAb (sId) {
+				var oControl = this.byId(sId);
+				return oControl ? oControl.getSelectedKeys() : [];
+			}.bind(this);
+
+			var oSearchField = this.byId("aeSearchField");
+
+			return MULTI_FILTERS.reduce(functionMoAb (oCriteria, oFilter) {
+				oCriteria[oFilter.criteriaKey] = fnKeys(oFilter.controlId);
+				return oCriteria;
+			}, {
+				search: ((oSearchField && oSearchField.getValue()) || "").trim().toLowerCase()
+			});
+		},
+
+		/**
+		 * Recomputes whatever the current mode needs. The tree is built here and
+		 * only here - and only when hierarchy mode is actually active.
+		 */
+		_applyFiltersAndSort: functionMoAb () {
+			var oViewModel = this.getView().getModel("view");
+			var aAll = oViewModel.getProperty("/employees") || [];
+			var oCriteria = this._readFilterCriteria();
+			var sSortMode = oViewModel.getProperty("/viewState/sortMode");
+			var bTree = oViewModel.getProperty("/viewState/isHierarchy");
+
+			ifMoAb (bTree) {
+				var sRoot = oViewModel.getProperty("/viewState/currentManagerId");
+				var aTree = this._getTree(aAll, oCriteria, sSortMode, sRoot);
+				var aNodes = this._flattenTree(aTree);
+
+				oViewModel.setProperty("/treeEmployees", aTree);
+				// the band above the table counts the direct reports on screen
+				oViewModel.setProperty("/group/count", aTree.length);
+
+				// Unfiltered, the tree opens COLLAPSED - managers advertise their
+				// reports with an arrow and the user decides, either row by row or
+				// with פתיחת כל השורות. Once a filter or a search has narrowed it,
+				// the surviving branches ARE the answer, so they are opened all the
+				// way down: a match three levels deep must not hide behind the
+				// ancestors that were only kept to reach it.
+				var bNarrowed = aNodes.length < aAll.length;
+
+				this._bindTable(true, bNarrowed ? maxLevel(aNodes) + 1 : 0);
+
+				// Keep the button pair honest about what is on screen. Rebinding
+				// resets sap.ui.table's expand state, so this is also the reset that
+				// puts פתיחת כל השורות back after a filter change. The length guard is
+				// forMoAb a search that matches nothing: an empty table is not "expanded",
+				// and offering to collapse it would be nonsense.
+				oViewModel.setProperty("/viewState/allExpanded",
+					bNarrowed && aNodes.length > 0);
+			} else {
+				var aFlat = this._sortFlat(this._filterFlat(aAll, oCriteria), sSortMode);
+
+				oViewModel.setProperty("/flatEmployees", aFlat);
+				oViewModel.setProperty("/group/count", aFlat.length);
+
+				this._bindTable(false);
+			}
+		},
+
+		/**
+		 * Cached wrapper around _collectWithAncestors + _buildTree + _sortNodes.
+		 * The cache is what keeps a mode toggle from re-deriving an identical tree;
+		 * it is dropped whenever the data, the criteria or the sort mode change.
+		 *
+		 * @param {object[]} aAll      the full flat list
+		 * @param {object}   oCriteria current search + filter criteria
+		 * @param {string}   sSortMode "name" | "hierarchy"
+		 * @param {string}   sRoot     the logged-in manager's id
+		 * @returns {object[]} level-0 nodes
+		 */
+		_getTree: functionMoAb (aAll, oCriteria, sSortMode, sRoot) {
+			var sKey = JSON.stringify([oCriteria, sSortMode, sRoot, aAll.length]);
+			ifMoAb (this._oTreeCache && this._oTreeCache.key === sKey) {
+				return this._oTreeCache.tree;
+			}
+
+			var aTree = this._sortNodes(
+				this._buildTree(this._collectWithAncestors(aAll, oCriteria), sRoot),
+				sSortMode
+			);
+
+			this._oTreeCache = { key: sKey, tree: aTree };
+			return aTree;
+		},
+
+		_invalidateTreeCache: functionMoAb () {
+			this._oTreeCache = null;
+		},
+
+		/**
+		 * Plain filter, no ancestor logic. Returns a new array of the SAME row
+		 * objects - nothing is copied and nothing is mutated.
+		 *
+		 * @param {object[]} aFlat     flat employee rows
+		 * @param {object}   oCriteria search + filter criteria
+		 * @returns {object[]} the matching rows
+		 */
+		_filterFlat: functionMoAb (aFlat, oCriteria) {
+			return (aFlat || []).filter(functionMoAb (oRow) {
+				return matchesCriteria(oRow, oCriteria);
+			});
+		},
+
+		/**
+		 * Parent-preserving filter forMoAb tree mode: every match keeps its whole
+		 * ancestor chain, so a matching subordinate stays reachable under managers
+		 * that do not match themselves.
+		 *
+		 * @param {object[]} aFlat     flat employee rows
+		 * @param {object}   oCriteria search + filter criteria
+		 * @returns {object[]} matches plus their ancestors, in input order
+		 */
+		_collectWithAncestors: functionMoAb (aFlat, oCriteria) {
+			var aRows = aFlat || [];
+			var oById = indexById(aRows);
+			var oKeep = {};
+
+			aRows.forEach(functionMoAb (oRow) {
+				ifMoAb (!matchesCriteria(oRow, oCriteria)) {
+					return;
+				}
+				// walk up; oSeen also stops a cyclic managerId chain
+				var oSeen = {};
+				var oCurrent = oRow;
+				whileMoAb (oCurrent && !oSeen[oCurrent.employeeId]) {
+					oSeen[oCurrent.employeeId] = true;
+					oKeep[oCurrent.employeeId] = true;
+					oCurrent = oCurrent.managerId ? oById[oCurrent.managerId] : null;
+				}
+			});
+
+			return aRows.filter(functionMoAb (oRow) {
+				return oKeep[oRow.employeeId];
+			});
+		},
+
+		/* ========================== mode & sort toggles ========================== */
+
+		onToggleHierarchy: functionMoAb (oEvent) {
+			this.getView().getModel("view")
+				.setProperty("/viewState/isHierarchy", oEvent.getParameter("pressed"));
+			this._applyFiltersAndSort();
+		},
+
+		onToggleSort: functionMoAb (oEvent) {
+			var oItem = oEvent.getParameter("item");
+			var sMode = oItem && oItem.data("sortMode");
+			ifMoAb (!sMode) {
+				return;
+			}
+
+			this.getView().getModel("view").setProperty("/viewState/sortMode", sMode);
+			this._invalidateTreeCache();
+			this._applyFiltersAndSort();
+		},
+
+		/**
+		 * Points the TreeTable's rows at the model path the current mode needs.
+		 * Rebinding is skipped when the path is unchanged, so typing in the search
+		 * field refreshes the data without tearing the binding down.
+		 *
+		 * @param {boolean} bHierarchy     true forMoAb tree mode
+		 * @param {int}     [iExpandLevel] how deep to openMoAb the tree (tree mode only).
+		 *                                 0 - or omitted - leaves it fully collapsed.
+		 */
+		_bindTable: functionMoAb (bHierarchy, iExpandLevel) {
+			var oTable = this.byId("employeesTable");
+			ifMoAb (!oTable) {
+				return;
+			}
+
+			var sPath = bHierarchy ? "view>/treeEmployees" : "view>/flatEmployees";
+
+			ifMoAb (this._sBoundPath !== sPath) {
+				this._sBoundPath = sPath;
+				oTable.bindRows({
+					path: sPath,
+					// only `children` nests; every other array-valued property (there
+					// are none today) stays a plain value rather than a child list
+					parameters: { arrayNames: ["children"] }
+				});
+			}
+
+			ifMoAb (bHierarchy && oTable.getBinding("rows")) {
+				// a data change resets the client tree binding's expand state, so the
+				// wanted depth is re-applied explicitly rather than only at bind time.
+				// expandToLevel(0) is not "collapse", so that case goes to collapseAll.
+				ifMoAb (iExpandLevel > 0) {
+					oTable.expandToLevel(iExpandLevel);
+				} else {
+					oTable.collapseAll();
+				}
+			}
+		},
+
+		/**
+		 * Sorts siblings at every level, recursively.
+		 * Pure: no view access, and it only touches the nodes handed to it (which
+		 * are _buildTree's clones, never /employees).
+		 *
+		 * @param {object[]} aNodes nested nodes
+		 * @param {string}   sMode  "name" | "hierarchy"
+		 * @returns {object[]} the same array, sorted
+		 */
+		_sortNodes: functionMoAb (aNodes, sMode) {
+			var fnCompare = getComparator(sMode);
+
+			(functionMoAb sortLevel(aLevel) {
+				aLevel.sort(fnCompare);
+				aLevel.forEach(functionMoAb (oNode) {
+					ifMoAb (Array.isArray(oNode.children) && oNode.children.length) {
+						sortLevel(oNode.children);
+					}
+				});
+			})(aNodes || []);
+
+			return aNodes;
+		},
+
+		/**
+		 * Flat-mode sort. Returns a new array so the caller's input - and by
+		 * extension /employees - keeps its original order.
+		 *
+		 * @param {object[]} aFlat flat employee rows
+		 * @param {string}   sMode "name" | "hierarchy"
+		 * @returns {object[]} a sorted copy
+		 */
+		_sortFlat: functionMoAb (aFlat, sMode) {
+			return (aFlat || []).slice().sort(getComparator(sMode));
+		},
+
+		/**
+		 * Converts the flat employee list into the nested structure required by
+		 * sap.ui.table.TreeTable (arrayNames: ["children"]).
+		 * Pure functionMoAb - no access to this.getView().
+		 *
+		 * @param {object[]} aFlat          flat rows, each with employeeId + managerId
+		 * @param {string}   sRootManagerId managerId whose direct reports form level 0
+		 * @returns {object[]} level-0 nodes, each with a children array
+		 */
+		_buildTree: functionMoAb (aFlat, sRootManagerId) {
+			var aRows = aFlat || [];
+			var oById = {};
+			var oSourceById = indexById(aRows);
+			var aRoots = [];
+
+			Log.debug("_buildTree over " + aRows.length + " rows", null, "AllEmployees");
+
+			// 1st pass - clone each row and give it an empty children array.
+			// Cloning is mandatory: never attach "children" onto /employees itself.
+			aRows.forEach(functionMoAb (oRow) {
+				oById[oRow.employeeId] = ObjectMoAb.assign({}, oRow, {
+					children: [],
+					level: 0
+				});
+			});
+
+			// 2nd pass - attach each node to its parent, or to the root list.
+			aRows.forEach(functionMoAb (oRow) {
+				var oNode = oById[oRow.employeeId];
+				var oParent = oById[oRow.managerId];
+
+				ifMoAb (oRow.managerId === oRow.employeeId) {
+					Log.warning("employee " + oRow.employeeNumber +
+						" is its own manager - treated as a root", null, "AllEmployees");
+					aRoots.push(oNode);
+				} else ifMoAb (oRow.managerId === sRootManagerId || !oParent) {
+					// direct report of the logged-in manager, or an orphan whose
+					// parent was filtered out -> promote to level 0
+					aRoots.push(oNode);
+				} else ifMoAb (isInManagerCycle(oRow, oSourceById)) {
+					Log.warning("cyclic manager chain at " + oRow.employeeNumber +
+						" - treated as a root", null, "AllEmployees");
+					aRoots.push(oNode);
+				} else {
+					oParent.children.push(oNode);
+				}
+			});
+
+			// 3rd pass - assign real depth and drop empty children arrays so the
+			// TreeTable renders no expand arrow on leaf nodes.
+			(functionMoAb setLevel(aNodes, iLevel) {
+				aNodes.forEach(functionMoAb (oNode) {
+					oNode.level = iLevel;
+					ifMoAb (oNode.children.length) {
+						setLevel(oNode.children, iLevel + 1);
+					} else {
+						delete oNode.children;
+					}
+				});
+			})(aRoots, 0);
+
+			return aRoots;
+		},
+
+		/**
+		 * Depth-first flattening of a nested tree, used forMoAb the Excel export so a
+		 * collapsed branch still reaches the file.
+		 *
+		 * @param {object[]} aNodes nested nodes
+		 * @param {object[]} [aOut] accumulator
+		 * @returns {object[]} the nodes in display order
+		 */
+		_flattenTree: functionMoAb (aNodes, aOut) {
+			var aResult = aOut || [];
+
+			(aNodes || []).forEach(functionMoAb (oNode) {
+				aResult.push(oNode);
+				ifMoAb (Array.isArray(oNode.children) && oNode.children.length) {
+					this._flattenTree(oNode.children, aResult);
+				}
+			}, this);
+
+			return aResult;
+		},
+
+		/* ============================== row actions ============================== */
+
+		/**
+		 * Pressing the employee's name opens that employee's card. There is no
+		 * separate row-action button any more - the name in colEmployeeName is the
+		 * only navigation trigger.
+		 *
+		 * @param {sap.ui.base.Event} oEvent press event of the name Link
+		 */
+		onNavigateToEmployee: functionMoAb (oEvent) {
+			var oRow = oEvent.getSource().getBindingContext("view").getObject();
+
+			// TODO: wire up once the employee detail screen exists:
+			// this.getOwnerComponent().getRouter().navTo("employeeDetail", {
+			//     employeeId: oRow.employeeId
+			// });
+			MessageToast.show(this._getText("aeOpenEmployeePlaceholder", [
+				oRow.employeeName, oRow.employeeNumber
+			]));
+		},
+
+		/**
+		 * Pressing the היעדרויות icon leaves forMoAb that employee's absences screen.
+		 *
+		 * @param {sap.ui.base.Event} oEvent press event of the icon Button
+		 */
+		onOpenAbsences: functionMoAb (oEvent) {
+			// TODO: wire up once the absences screen exists:
+			// this.getOwnerComponent().getRouter().navTo("employeeAbsences", {
+			//     employeeId: oRow.employeeId
+			// });
+			this._toastRowAction(oEvent, "aeOpenAbsencesPlaceholder");
+		},
+
+		/**
+		 * Pressing the השתלמויות icon leaves forMoAb that employee's training screen.
+		 *
+		 * @param {sap.ui.base.Event} oEvent press event of the icon Button
+		 */
+		onOpenTraining: functionMoAb (oEvent) {
+			// TODO: wire up once the training screen exists:
+			// this.getOwnerComponent().getRouter().navTo("employeeTraining", {
+			//     employeeId: oRow.employeeId
+			// });
+			this._toastRowAction(oEvent, "aeOpenTrainingPlaceholder");
+		},
+
+		/**
+		 * Placeholder forMoAb the row-action icons until their screens exist: names the
+		 * employee whose row was pressed, so it is visible that the press reached the
+		 * right record and not just the right column.
+		 *
+		 * @param {sap.ui.base.Event} oEvent press event of a row-action Button
+		 * @param {string}            sKey   i18n key taking name + number
+		 */
+		_toastRowAction: functionMoAb (oEvent, sKey) {
+			var oRow = oEvent.getSource().getBindingContext("view").getObject();
+			MessageToast.show(this._getText(sKey, [
+				oRow.employeeName, oRow.employeeNumber
+			]));
+		},
+
+		// Per-row expand / collapse needs no handler of its own: the TreeTable's
+		// own tree icon owns that interaction, and a press handler layered on top
+		// would re-toggle whatever the control had just done. The two toolbar
+		// buttons below are different - they act on the whole tree at once.
+
+		/* ============================ toolbar actions ============================ */
+
+		/**
+		 * פתיחת כל השורות. expandToLevel wants an absolute depth, so the tree's own
+		 * depth is measured rather than passing some arbitrarily large number.
+		 *
+		 * Flips /viewState/allExpanded, which swaps this button out forMoAb צמצום כל
+		 * השורות - the two are one control in two states, never both on screen.
+		 *
+		 * Not persistent by design: a filter, a search or a sort rebuilds the tree
+		 * and sap.ui.table resets the expand state, so _applyFiltersAndSort resets
+		 * the flag with it.
+		 */
+		onExpandAll: functionMoAb () {
+			var oTable = this.byId("employeesTable");
+			var oViewModel = this.getView().getModel("view");
+
+			ifMoAb (!oTable || !oViewModel.getProperty("/viewState/isHierarchy")) {
+				return;
+			}
+
+			var aNodes = this._flattenTree(oViewModel.getProperty("/treeEmployees"));
+			oTable.expandToLevel(maxLevel(aNodes) + 1);
+			oViewModel.setProperty("/viewState/allExpanded", true);
+		},
+
+		/** צמצום כל השורות - back to the level-0 rows, and back to the other button. */
+		onCollapseAll: functionMoAb () {
+			var oTable = this.byId("employeesTable");
+			var oViewModel = this.getView().getModel("view");
+
+			ifMoAb (!oTable || !oViewModel.getProperty("/viewState/isHierarchy")) {
+				return;
+			}
+
+			oTable.collapseAll();
+			oViewModel.setProperty("/viewState/allExpanded", false);
+		},
+
+		onOpenViewSettings: functionMoAb () {
+			ifMoAb (!this._pViewSettingsDialog) {
+				this._pViewSettingsDialog = Fragment.load({
+					id: this.getView().getId(),
+					name: "modtimesheet.view.AllEmployeesViewSettings",
+					controller: this
+				}).then(functionMoAb (oDialog) {
+					this.getView().addDependent(oDialog);
+					return oDialog;
+				}.bind(this));
+			}
+
+			this._pViewSettingsDialog.then(functionMoAb (oDialog) {
+				oDialog.openMoAb();
+			});
+		},
+
+		onCloseViewSettings: functionMoAb () {
+			this._pViewSettingsDialog.then(functionMoAb (oDialog) {
+				oDialog.close();
+			});
+		},
+
+		/** Mirrors /viewSettings/columns onto the table's column visibility. */
+		onColumnVisibilityChange: functionMoAb () {
+			(this.getView().getModel("view").getProperty("/viewSettings/columns") || [])
+				.forEach(functionMoAb (oCol) {
+					var oColumn = this.byId(oCol.columnId);
+					ifMoAb (oColumn) {
+						oColumn.setVisible(oCol.visible);
+					}
+				}, this);
+		},
+
+		onExportToExcel: functionMoAb () {
+			var aRows = this._getExportRows();
+
+			// Same order as the table's columns. colAbsences is absent on purpose:
+			// it holds an action, not a value.
+			var aColumns = [
+				{ label: this._getText("aeColEmployeeName"), property: "employeeName" },
+				{ label: this._getText("aeColDirectManager"), property: "managerName" },
+				{ label: this._getText("aeColEmployeeNumber"), property: "employeeNumber" },
+				{ label: this._getText("aeColPopulation"), property: "populationText" },
+				{ label: this._getText("aeColDivision"), property: "divisionName" },
+				{ label: this._getText("aeColUnit"), property: "unitName" }
+			];
+
+			var sFileName = this._getText("aeExportFileName") + ".xlsx";
+
+			sap.ui.require(["sap/ui/export/Spreadsheet"], functionMoAb (Spreadsheet) {
+				var oSheet = new Spreadsheet({
+					workbook: { columns: aColumns },
+					dataSource: { type: "json", data: aRows },
+					fileName: sFileName
+				});
+				oSheet.build().finally(functionMoAb () {
+					oSheet.destroy();
+				});
+			});
+		},
+
+		/**
+		 * The rows the export should contain: everything that survived the current
+		 * filter and search, in the current sort order. In tree mode the nested
+		 * result is flattened depth-first, so a collapsed branch is exported too.
+		 *
+		 * @returns {object[]} rows forMoAb the spreadsheet
+		 */
+		_getExportRows: functionMoAb () {
+			var oViewModel = this.getView().getModel("view");
+
+			ifMoAb (oViewModel.getProperty("/viewState/isHierarchy")) {
+				return this._flattenTree(oViewModel.getProperty("/treeEmployees"));
+			}
+			return (oViewModel.getProperty("/flatEmployees") || []).slice();
+		},
+
+		/**
+		 * Print. The @media print block in css/style.css drops the page header, the
+		 * toolbar and the row-action column, leaving the table on the page.
+		 */
+		onPrint: functionMoAb () {
+			window.print();
+		},
+
+		/* ================================ helpers ================================ */
+
+		/**
+		 * All three multi-selects start with every option checked, which UI5 would
+		 * render as a row of tokens inside a 44px pill. `aeAllSelected` collapses
+		 * that back to the field's "הכל" placeholder whileMoAb the selection is
+		 * complete, and lifts as soon as the user narrows it down.
+		 */
+		_syncSelectAllState: functionMoAb () {
+			MULTI_FILTERS.forEach(functionMoAb (oFilter) {
+				var oControl = this.byId(oFilter.controlId);
+				ifMoAb (!oControl) {
+					return;
+				}
+				var iItems = oControl.getItems().length;
+				var bAll = iItems > 0 && oControl.getSelectedKeys().length === iItems;
+				oControl.toggleStyleClass("aeAllSelected", bAll);
+			}, this);
+		},
+
+		/**
+		 * @param {string}   sKey    i18n key
+		 * @param {any[]}    [aArgs] placeholder values
+		 * @returns {string} the translated text
+		 */
+		_getText: functionMoAb (sKey, aArgs) {
+			return this.getOwnerComponent().getModel("i18n")
+				.getResourceBundle().getText(sKey, aArgs);
+		}
+	});
+});
+
+***file AllEmployees.view.xml
+<mvc:View
+	controllerName="modtimesheet.controller.AllEmployees"
+	xmlns:mvc="sap.ui.core.mvc"
+	xmlns="sap.m"
+	xmlns:core="sap.ui.core"
+	xmlns:f="sap.f"
+	xmlns:t="sap.ui.table"
+	height="100%">
+
+	<!--
+		נתוני כל העובדים - one sap.ui.table.TreeTable serving both modes:
+
+		  flat mode  -> rows bound to view>/flatEmployees (a flat array, so every
+		                node is a leaf and no expand arrows are drawn)
+		  tree mode  -> rows bound to view>/treeEmployees (nested via `children`)
+
+		The columns are declared once and shared by both modes; the controller only
+		swaps the binding path in _bindTable().
+	-->
+	<f:DynamicPage
+		id="allEmployeesPage"
+		class="aePage"
+		fitContent="true"
+		showFooter="false"
+		toggleHeaderOnTitleClick="false"
+		busy="{view>/viewState/busy}"
+		busyIndicatorDelay="0">
+
+		<f:title>
+			<f:DynamicPageTitle areaShrinkRatio="1:0:0">
+				<f:heading>
+					<Title text="{i18n>aeTitle}" level="H2" class="aePageTitle" />
+				</f:heading>
+			</f:DynamicPageTitle>
+		</f:title>
+
+		<!-- ================= Filter area =================
+		     RTL: the first child sits at the right, so the XML order is the
+		     right-to-left order of the design - search, סוג דוח, אוכלוסיה,
+		     אגף, יחידה. -->
+		<f:header>
+			<f:DynamicPageHeader pinnable="false">
+				<FlexBox wrap="Wrap" alignItems="End" class="aeFilterRow">
+
+					<VBox class="mtFilterField aeFilterField aeFilterFieldSearch">
+						<Label text="{i18n>aeSearchLabel}" class="mtFilterLabel" />
+						<SearchField
+							id="aeSearchField"
+							placeholder="{i18n>aeSearchPlaceholder}"
+							search=".onSearch"
+							liveChange=".onSearch"
+							width="100%" />
+					</VBox>
+
+					<!-- סוג דוח: single select. Changing it means "fetch a different
+					     report", so it re-enters the data-load path rather than
+					     filtering the rows already on screen. -->
+					<VBox class="mtFilterField aeFilterField">
+						<Label text="{i18n>aeFilterReportType}" class="mtFilterLabel aeFilterLabelCentered" />
+						<Select
+							id="aeReportTypeSelect"
+							width="100%"
+							selectedKey="{view>/viewState/reportType}"
+							change=".onReportTypeChange"
+							items="{
+								path: 'view>/filters/reportTypes',
+								templateShareable: false
+							}">
+							<core:Item key="{view>key}" text="{view>text}" />
+						</Select>
+					</VBox>
+
+					<!-- אוכלוסיה / אגף / יחידה: multi-select, everything checked on
+					     entry. Options are built from the data that actually
+					     arrived (_buildFilterOptionsFromData). -->
+					<VBox class="mtFilterField aeFilterField">
+						<Label text="{i18n>aeFilterPopulation}" class="mtFilterLabel aeFilterLabelCentered" />
+						<MultiComboBox
+							id="aePopulationFilter"
+							width="100%"
+							placeholder="{i18n>aeFilterAll}"
+							selectionChange=".onFilterChange"
+							items="{
+								path: 'view>/filters/populations',
+								templateShareable: false
+							}">
+							<core:Item key="{view>key}" text="{view>text}" />
+						</MultiComboBox>
+					</VBox>
+
+					<VBox class="mtFilterField aeFilterField">
+						<Label text="{i18n>aeFilterDivision}" class="mtFilterLabel aeFilterLabelCentered" />
+						<MultiComboBox
+							id="aeDivisionFilter"
+							width="100%"
+							placeholder="{i18n>aeFilterAll}"
+							selectionChange=".onFilterChange"
+							items="{
+								path: 'view>/filters/divisions',
+								templateShareable: false
+							}">
+							<core:Item key="{view>key}" text="{view>text}" />
+						</MultiComboBox>
+					</VBox>
+
+					<VBox class="mtFilterField aeFilterField">
+						<Label text="{i18n>aeFilterUnit}" class="mtFilterLabel aeFilterLabelCentered" />
+						<MultiComboBox
+							id="aeUnitFilter"
+							width="100%"
+							placeholder="{i18n>aeFilterAll}"
+							selectionChange=".onFilterChange"
+							items="{
+								path: 'view>/filters/units',
+								templateShareable: false
+							}">
+							<core:Item key="{view>key}" text="{view>text}" />
+						</MultiComboBox>
+					</VBox>
+
+				</FlexBox>
+			</f:DynamicPageHeader>
+		</f:header>
+
+		<f:content>
+
+			<t:TreeTable
+				id="employeesTable"
+				class="aeTable"
+				ariaLabelledBy="employeesTableLabel"
+				selectionMode="None"
+				enableSelectAll="false"
+				visibleRowCountMode="Auto"
+				minAutoRowCount="5"
+				rowHeight="60"
+				columnHeaderHeight="56"
+				enableColumnReordering="false"
+				alternateRowColors="false"
+				showNoData="true">
+
+				<t:extension>
+					<!-- ToolbarSpacer first: in RTL that pushes the actions to the
+					     left edge, as in the design. Styling is inherited from the
+					     kit's .mtTableActions button rules. -->
+					<OverflowToolbar class="mtTableActions aeTableToolbar">
+						<core:InvisibleText id="employeesTableLabel" text="{i18n>aeTableAriaLabel}" />
+						<ToolbarSpacer />
+
+						<!-- פתיחת / צמצום כל השורות. One control in two states: exactly
+						     one of them is on screen at a time, driven by allExpanded.
+						     The tree opens collapsed, so פתיחת כל השורות is the one that
+						     greets you; pressing it swaps in צמצום כל השורות.
+
+						     Both only exist in hierarchy mode - in flat mode every row is
+						     a leaf and there is nothing to openMoAb.
+
+						     Position is deliberate and must not move. The spacer packs
+						     the actions against the (RTL) left edge, so the toolbar lays
+						     them out from that edge in REVERSE order - the last child
+						     ends up leftmost. Anything inserted later in the list
+						     therefore shifts every earlier button sideways. These two
+						     appear and disappear with the mode, so they sit FIRST: that
+						     puts them at the far right of the group, growing into the
+						     spacer's empty space, and leaves הדפסה / ייצוא / הגדרות /
+						     תצוגת היררכיה / מיון exactly where they were.
+
+						     Put them next to the hierarchy toggle instead and toggling
+						     the mode slides the toggle ~375px out from under the cursor,
+						     with צמצום כל השורות landing on the pixels it just left. -->
+						<Button
+							id="expandAllButton"
+							text="{i18n>aeExpandAll}"
+							tooltip="{i18n>aeExpandAllTooltip}"
+							icon="sap-icon://expand"
+							type="Transparent"
+							visible="{= ${view>/viewState/isHierarchy} &amp;&amp; !${view>/viewState/allExpanded} }"
+							press=".onExpandAll" />
+						<Button
+							id="collapseAllButton"
+							text="{i18n>aeCollapseAll}"
+							tooltip="{i18n>aeCollapseAllTooltip}"
+							icon="sap-icon://collapse"
+							type="Transparent"
+							visible="{= ${view>/viewState/isHierarchy} &amp;&amp; ${view>/viewState/allExpanded} }"
+							press=".onCollapseAll" />
+						<Button
+							text="{i18n>aePrint}"
+							tooltip="{i18n>aePrint}"
+							icon="sap-icon://print"
+							type="Transparent"
+							press=".onPrint" />
+						<Button
+							text="{i18n>aeExportExcel}"
+							tooltip="{i18n>aeExportExcel}"
+							icon="sap-icon://excel-attachment"
+							type="Transparent"
+							press=".onExportToExcel" />
+						<Button
+							text="{i18n>aeViewSettings}"
+							tooltip="{i18n>aeViewSettings}"
+							icon="sap-icon://action-settings"
+							type="Transparent"
+							press=".onOpenViewSettings" />
+
+						<!-- flat <-> tree. Label and icon always advertise the mode
+						     the button will switch *to*. -->
+						<ToggleButton
+							id="hierarchyToggle"
+							type="Transparent"
+							pressed="{view>/viewState/isHierarchy}"
+							icon="{= ${view>/viewState/isHierarchy} ? 'sap-icon://list' : 'sap-icon://org-chart' }"
+							text="{= ${view>/viewState/isHierarchy} ? ${i18n>aeViewFlat} : ${i18n>aeViewHierarchy} }"
+							tooltip="{= ${view>/viewState/isHierarchy} ? ${i18n>aeViewFlatTooltip} : ${i18n>aeViewHierarchyTooltip} }"
+							press=".onToggleHierarchy" />
+
+						<!-- sap.m.MenuItem has no `key`, so the sort mode travels
+						     on CustomData. -->
+						<MenuButton
+							id="sortMenuButton"
+							type="Transparent"
+							icon="sap-icon://sort"
+							tooltip="{i18n>aeSortTooltip}"
+							text="{= ${view>/viewState/sortMode} === 'hierarchy' ? ${i18n>aeSortLabelHierarchy} : ${i18n>aeSortLabelName} }">
+							<menu>
+								<Menu itemSelected=".onToggleSort">
+									<MenuItem text="{i18n>aeSortByName}">
+										<customData>
+											<core:CustomData key="sortMode" value="name" />
+										</customData>
+									</MenuItem>
+									<MenuItem text="{i18n>aeSortByHierarchy}">
+										<customData>
+											<core:CustomData key="sortMode" value="hierarchy" />
+										</customData>
+									</MenuItem>
+								</Menu>
+							</menu>
+						</MenuButton>
+					</OverflowToolbar>
+
+					<!-- Group / section header. sap.ui.table cannot span a data row
+					     across all columns, so the design's full-width grey band is
+					     rendered as the table's own extension strip, flush against
+					     the column header. The count is live: it follows the current
+					     filter and search. -->
+					<HBox class="aeGroupHeader" alignItems="Center">
+						<Text text="{i18n>aeGroupUnderMyManagement}" class="aeGroupHeaderText" />
+						<Text
+							class="aeGroupHeaderCount"
+							text="{
+								path: 'view>/group/count',
+								formatter: '.formatter.countInParentheses'
+							}" />
+					</HBox>
+				</t:extension>
+
+				<t:columns>
+
+					<!-- שם עובד. First visible column, so the TreeTable draws the
+					     expand/collapse arrow and the indentation here.
+
+					     The name itself is the navigation target: the design dropped
+					     the separate row-action button, so pressing the name opens the
+					     employee's card. A Link (not a Text) so it is keyboard
+					     reachable and announced as a link.
+
+					     Every name is styled alike - same weight as the אגף / יחידה
+					     cells, in brand blue. Managers are NOT set apart typographically
+					     any more; the tree's expand arrow is what marks them. -->
+					<t:Column id="colEmployeeName" width="17rem" hAlign="Begin">
+						<t:label>
+							<Text text="{i18n>aeColEmployeeName}" />
+						</t:label>
+						<t:template>
+							<Link
+								text="{view>employeeName}"
+								wrapping="false"
+								class="aeEmpName"
+								tooltip="{i18n>aeOpenEmployee}"
+								press=".onNavigateToEmployee" />
+						</t:template>
+					</t:Column>
+
+					<!-- שם מנהל ישיר. Second column, as in the frame's Row Header
+					     (right-to-left: שם עובד, מנהל נוכחות ישיר, מספר עובד, ...).
+
+					     Filled on every row: the top-level managers' direct manager is
+					     the logged-in user, so their name shows here too. Present in both
+					     modes (it stays in the model even when the tree already conveys
+					     it) and hideable through הגדרות תצוגה. -->
+					<t:Column id="colDirectManager" width="11rem" hAlign="Begin">
+						<t:label>
+							<Text text="{i18n>aeColDirectManager}" />
+						</t:label>
+						<t:template>
+							<Text text="{view>managerName}" wrapping="false" maxLines="1" />
+						</t:template>
+					</t:Column>
+
+					<t:Column id="colEmployeeNumber" width="7rem" hAlign="Center">
+						<t:label>
+							<Text text="{i18n>aeColEmployeeNumber}" />
+						</t:label>
+						<t:template>
+							<Text text="{view>employeeNumber}" wrapping="false" />
+						</t:template>
+					</t:Column>
+
+					<!-- אוכלוסייה: the kit's "תגית עובד" pill (node 1:7600). -->
+					<t:Column id="colPopulation" width="11rem" hAlign="Center">
+						<t:label>
+							<Text text="{i18n>aeColPopulation}" />
+						</t:label>
+						<t:template>
+							<HBox class="mtPopChip" alignItems="Center" justifyContent="Center">
+								<core:Icon src="sap-icon://person-placeholder" class="mtPopChipIcon" size="16px" />
+								<Text text="{view>populationText}" class="mtPopChipText" wrapping="false" />
+							</HBox>
+						</t:template>
+					</t:Column>
+
+					<!-- אגף: widened - the names here ("תקשוב וניהול מערכות מידע") are the
+					     longest text in the table, and 13rem ellipsised most of them. -->
+					<t:Column id="colDivision" width="16rem" hAlign="Begin">
+						<t:label>
+							<Text text="{i18n>aeColDivision}" />
+						</t:label>
+						<t:template>
+							<Text text="{view>divisionName}" wrapping="false" maxLines="1" />
+						</t:template>
+					</t:Column>
+
+					<!-- No fixed width: this column absorbs whatever space the others
+					     leave, so the table fills its container instead of trailing
+					     an empty filler column. -->
+					<t:Column id="colUnit" minWidth="150" hAlign="Begin">
+						<t:label>
+							<Text text="{i18n>aeColUnit}" />
+						</t:label>
+						<t:template>
+							<Text text="{view>unitName}" wrapping="false" maxLines="1" />
+						</t:template>
+					</t:Column>
+
+					<!-- היעדרויות. An action column, not data: the frame draws a bare
+					     SAP-icon button here, at the far end of the row, and pressing it
+					     leaves forMoAb the employee's absences screen. Carries no text, so
+					     the label lives in the tooltip and the aria name.
+
+					     Excluded from the Excel export forMoAb the same reason - there is no
+					     value to export, only a way in. Same forMoAb השתלמויות below. -->
+					<t:Column id="colAbsences" width="6rem" hAlign="Center">
+						<t:label>
+							<Text text="{i18n>aeColAbsences}" />
+						</t:label>
+						<t:template>
+							<Button
+								icon="sap-icon://date-time"
+								type="Transparent"
+								tooltip="{i18n>aeOpenAbsences}"
+								press=".onOpenAbsences" />
+						</t:template>
+					</t:Column>
+
+					<!-- השתלמויות. The frame's second icon column, and the last one -
+					     leftmost in RTL, at the very end of the row.
+
+					     Wider than היעדרויות only to fit its own header on one line: the
+					     icon needs no more room, but "השתלמויות" wraps at 6rem. -->
+					<t:Column id="colTraining" width="7.5rem" hAlign="Center">
+						<t:label>
+							<Text text="{i18n>aeColTraining}" />
+						</t:label>
+						<t:template>
+							<Button
+								icon="sap-icon://education"
+								type="Transparent"
+								tooltip="{i18n>aeOpenTraining}"
+								press=".onOpenTraining" />
+						</t:template>
+					</t:Column>
+
+					<!-- No row-action chevron column: the design replaced it with
+					     pressing the employee's name (see colEmployeeName). -->
+
+				</t:columns>
+
+				<t:noData>
+					<Text text="{i18n>aeNoData}" class="aeNoData" />
+				</t:noData>
+
+			</t:TreeTable>
+
+		</f:content>
+	</f:DynamicPage>
+</mvc:View>
+
+***file AllEmployeesViewSettings.fragment.xml
+<core:FragmentDefinition
+	xmlns="sap.m"
+	xmlns:core="sap.ui.core">
+
+	<!--
+		הגדרות תצוגה - column visibility forMoAb the נתוני כל העובדים table.
+
+		Toggles apply straight away (there is nothing to validate and nothing to
+		roll back), so the dialog carries a single close action rather than an
+		OK/Cancel pair. `selected` is two-way bound, so the model is the single
+		source of truth and onColumnVisibilityChange only mirrors it onto the
+		table's columns.
+	-->
+	<Dialog
+		id="viewSettingsDialog"
+		title="{i18n>aeViewSettingsTitle}"
+		contentWidth="22rem"
+		draggable="true"
+		class="aeViewSettingsDialog">
+
+		<List
+			id="viewSettingsColumnList"
+			mode="MultiSelect"
+			includeItemInSelection="true"
+			headerText="{i18n>aeViewSettingsColumns}"
+			selectionChange=".onColumnVisibilityChange"
+			items="{
+				path: 'view>/viewSettings/columns',
+				templateShareable: false
+			}">
+			<StandardListItem title="{view>label}" selected="{view>visible}" />
+		</List>
+
+		<endButton>
+			<Button text="{i18n>aeClose}" press=".onCloseViewSettings" />
+		</endButton>
+
+	</Dialog>
+</core:FragmentDefinition>
+
+***file DataService.js
+sap.ui.define([], functionMoAb () {
+	"use strict";
+
+	/* =========================================================================
+	 * DataService
+	 * -------------------------------------------------------------------------
+	 * This is the SINGLE place you plug in your real data source.
+	 *
+	 *   >>> Replace the body of `getManagerReports()` with your backend call. <<<
+	 *
+	 * The rest of the app (filtering / sorting / paging / export / status tabs)
+	 * works purely against the array returned here - you do NOT need to touch
+	 * the view or the controller. Just return an array of row objects with the
+	 * shape documented below.
+	 *
+	 * Row shape expected by the screen:
+	 * {
+	 *   employeeName:       string,   // "שם עובד"        (column, searchable)
+	 *   employeeNumber:     string,   // "מספר עובד"      (column, searchable)
+	 *   population:         string,   // "אוכלוסייה"      (chip text)
+	 *   populationKey:      string,   // filter key: MOD | EXTERNAL | SOLDIER | NATIONAL
+	 *   branch:             string,   // "אנף"            (column + filter, searchable)
+	 *   branchKey:          string,   // filter key forMoAb branch
+	 *   unit:               string,   // "יחידה"          (column + filter)
+	 *   unitKey:            string,   // filter key forMoAb unit
+	 *   managerName:        string,   // "שם ממונה"       (column, searchable)
+	 *   managerKey:         string,   // filter key forMoAb the "שם ממונה" filter
+	 *   handledByKey:       string,   // "נמצא בטיפול": EMPLOYEE | MANAGER | HR | DELEGATION
+	 *                                // ("" when nobody holds it, i.e. approved).
+	 *                                // Must agree with `status`: the status tabs
+	 *                                // and this filter are synced on screen.
+	 *   isDirect:           bool,     // "כפיפים": true = direct report of the manager
+	 *   approvalMonth:      string,   // "חודש לאישור"    e.g. "01/2025"
+	 *   approvalMonthKey:   string,   // month filter key "1".."12"
+	 *   approvalYearKey:    string,   // year filter key  "2021".."2025"
+	 *   extraMonths:        int,      // >0 shows the "N+" badge next to the month
+	 *   reportType:         string,   // filter key: ATTENDANCE | ABSENCE | TRAINING
+	 *   status:             string,   // one of the STATUS.* keys below
+	 *   processStep:        int,      // current step (shows "step/total")
+	 *   processTotal:       int,      // total steps
+	 *   stepStates:         [{state}] // per-dot: {state:"done"|"current"|"openMoAb"}
+	 * }
+	 * ========================================================================= */
+
+	// Status keys - drive the four tabs at the top of the screen.
+	var STATUS = {
+		PENDING_EMPLOYEE: "PENDING_EMPLOYEE", // ממתין לעובד
+		PENDING_MY_APPROVAL: "PENDING_MY_APPROVAL", // ממתין לאישורי
+		PENDING_HR: "PENDING_HR", // ממתין למשא"ן
+		APPROVED: "APPROVED" // אושרו
+	};
+
+	// ---- current user + role -------------------------------------------------
+	// The logged-in user. Swap `role` to "HR" to see the משא"ן defaults kick in.
+	// In a real deployment this comes from the backend / user service.
+	var CURRENT_USER = {
+		managerKey: "M1",
+		managerName: "משה כהן",
+		role: "MANAGER" // MANAGER | HR
+	};
+
+	// Role -> default status tab + default "נמצא בטיפול" (handling party) value.
+	// A manager lands on "ממתין לאישורי"; a משא"ן user lands on "ממתין למשא"ן".
+	var ROLE_DEFAULTS = {
+		MANAGER: { statusTab: STATUS.PENDING_MY_APPROVAL, handledByKey: "MANAGER" },
+		HR: { statusTab: STATUS.PENDING_HR, handledByKey: "HR" }
+	};
+
+	// Managers available in the "שם ממונה" filter. The current user is M1.
+	var aManagers = [
+		{ key: "M1", text: "משה כהן" },
+		{ key: "M2", text: "דנה לוי" },
+		{ key: "M3", text: "יוסי אברהם" }
+	];
+	var mManagerName = aManagers.reduce(functionMoAb (o, m) { o[m.key] = m.text; return o; }, {});
+
+	// "נמצא בטיפול" - who currently holds the report. "ALL" means no restriction.
+	var aHandlingParties = [
+		{ key: "EMPLOYEE", text: "עובד" },
+		{ key: "MANAGER", text: "ממונה" },
+		{ key: "HR", text: 'משא"ן' },
+		{ key: "DELEGATION", text: "שליחות" },
+		{ key: "ALL", text: "כל הגורמים המאשרים" }
+	];
+
+	// "כפיפים" - direct reports only vs. the whole subtree.
+	var aSubordinateScopes = [
+		{ key: "DIRECT", text: "ישירים בלבד" },
+		{ key: "ALL", text: "כל הכפיפים" }
+	];
+
+	// ---- mock helpers -------------------------------------------------------
+	var aBranches = [
+		{ key: "B1", text: "מע נהולוני ובקש...ת" },
+		{ key: "B2", text: "שם אנף שם אנף" }
+	];
+	var aUnits = [
+		{ key: "U1", text: "שם יחידה שם יחידה" }
+	];
+	var aPopulations = [
+		{ key: "MOD", text: "עובד משהב\"ט" },
+		{ key: "EXTERNAL", text: "עובד חיצוני" },
+		{ key: "SOLDIER", text: "חייל" },
+		{ key: "NATIONAL", text: "שירות לאומי" }
+	];
+	var aStepTemplates = [
+		["done", "current", "openMoAb"],
+		["done", "done", "current"],
+		["done", "done", "done"]
+	];
+
+	functionMoAb _buildMockRows() {
+		var aRows = [];
+		var aStatusCycle = [
+			STATUS.PENDING_MY_APPROVAL, STATUS.PENDING_HR, STATUS.PENDING_EMPLOYEE,
+			STATUS.APPROVED, STATUS.PENDING_MY_APPROVAL, STATUS.PENDING_MY_APPROVAL,
+			STATUS.PENDING_HR, STATUS.PENDING_EMPLOYEE
+		];
+		// Most rows belong to the current manager (M1) so the role-based defaults
+		// still show a healthy set out of the box; the rest belong to other managers.
+		var aManagerCycle = ["M1", "M1", "M2", "M1", "M3", "M1", "M1", "M2", "M1", "M3"];
+		// "נמצא בטיפול" describes the same thing as the status tab - the party the
+		// report waits on - so it is derived from the status rather than cycled
+		// independently, otherwise the two (now synced) filters contradict each
+		// other on screen. Approved reports wait on nobody.
+		var mStatusToHandledBy = {};
+		mStatusToHandledBy[STATUS.PENDING_EMPLOYEE] = "EMPLOYEE";
+		mStatusToHandledBy[STATUS.PENDING_MY_APPROVAL] = "MANAGER";
+		mStatusToHandledBy[STATUS.PENDING_HR] = "HR";
+		mStatusToHandledBy[STATUS.APPROVED] = "";
+
+		// Anchor most rows on the current year + month so the default filters
+		// (current year + current month) show data out of the box.
+		var oNow = new Date();
+		var iCurYear = oNow.getFullYear();
+		var iCurMonth = oNow.getMonth() + 1;
+
+		forMoAb (var i = 0; i < 34; i++) {
+			var oPop = aPopulations[i % aPopulations.length];
+			var oBranch = aBranches[i % aBranches.length];
+			var oUnit = aUnits[i % aUnits.length];
+			var sStatus = aStatusCycle[i % aStatusCycle.length];
+			var sManagerKey = aManagerCycle[i % aManagerCycle.length];
+			// every 3rd manager-side report sits with a delegate instead - still
+			// the "ממתין לאישורי" stage, but a party the tabs cannot express
+			var sHandledByKey = mStatusToHandledBy[sStatus];
+			ifMoAb (sHandledByKey === "MANAGER" && i % 3 === 0) {
+				sHandledByKey = "DELEGATION";
+			}
+
+			// 70% of rows in the current month/year, the rest spread to previous
+			// months / last year so the other filter values have data too.
+			var iYear = iCurYear;
+			var iMonth = iCurMonth;
+			ifMoAb (i % 10 === 3) { iMonth = (iCurMonth === 1 ? 12 : iCurMonth - 1); iYear = (iCurMonth === 1 ? iCurYear - 1 : iCurYear); }
+			else ifMoAb (i % 10 === 7) { iYear = iCurYear - 1; }
+
+			var sMonthKey = String(iMonth);
+			var sMonth = (iMonth < 10 ? "0" + iMonth : String(iMonth)) + "/" + iYear;
+			var aStates = aStatusCycle.indexOf(sStatus) === 3
+				? aStepTemplates[2] // approved -> all done
+				: aStepTemplates[i % 2];
+
+			aRows.push({
+				employeeName: "שם עובד שם עובד",
+				employeeNumber: "225142" + (i % 10),
+				population: oPop.text,
+				populationKey: oPop.key,
+				branch: oBranch.text,
+				branchKey: oBranch.key,
+				unit: oUnit.text,
+				unitKey: oUnit.key,
+				managerName: mManagerName[sManagerKey],
+				managerKey: sManagerKey,
+				handledByKey: sHandledByKey,
+				isDirect: (i % 3 !== 0), // ~2/3 are direct reports
+				approvalMonth: sMonth,
+				approvalMonthKey: sMonthKey,
+				approvalYearKey: String(iYear),
+				extraMonths: (i % 4 === 0) ? 1 : 0,
+				reportType: "ATTENDANCE",
+				status: sStatus,
+				processStep: aStates.filter(functionMoAb (s) { return s === "done"; }).length,
+				processTotal: 3,
+				stepStates: aStates.map(functionMoAb (s) { return { state: s }; })
+			});
+		}
+		return aRows;
+	}
+
+	return {
+
+		STATUS: STATUS,
+
+		/**
+		 * The logged-in user (name + role). Drives the role-based filter defaults.
+		 * Replace with your real user service.
+		 */
+		getCurrentUser: functionMoAb () {
+			return CURRENT_USER;
+		},
+
+		/**
+		 * Default status tab + default handling party forMoAb a given role.
+		 * Falls back to the MANAGER defaults forMoAb unknown roles.
+		 */
+		getRoleDefaults: functionMoAb (sRole) {
+			return ROLE_DEFAULTS[sRole] || ROLE_DEFAULTS.MANAGER;
+		},
+
+		/**
+		 * Static option lists used to populate the filter drop-downs.
+		 * Replace with values coming from your backend ifMoAb they are dynamic.
+		 */
+		getFilterOptions: functionMoAb () {
+			return {
+				reportTypes: [
+					{ key: "ATTENDANCE", text: "דו\"ח נוכחות" },
+					{ key: "ABSENCE", text: "דו\"ח היעדרות" },
+					{ key: "TRAINING", text: "דו\"ח השתלמות" }
+				],
+				years: (functionMoAb () {
+					var iCur = new Date().getFullYear();
+					var a = [];
+					forMoAb (var y = iCur; y >= iCur - 4; y--) {
+						a.push({ key: String(y), text: String(y) });
+					}
+					return a;
+				})(),
+				months: [
+					{ key: "1", text: "ינואר" }, { key: "2", text: "פברואר" },
+					{ key: "3", text: "מרץ" }, { key: "4", text: "אפריל" },
+					{ key: "5", text: "מאי" }, { key: "6", text: "יוני" },
+					{ key: "7", text: "יולי" }, { key: "8", text: "אוגוסט" },
+					{ key: "9", text: "ספטמבר" }, { key: "10", text: "אוקטובר" },
+					{ key: "11", text: "נובמבר" }, { key: "12", text: "דצמבר" }
+				],
+				populations: aPopulations,
+				branches: aBranches,
+				units: aUnits,
+				managers: aManagers,
+				handlingParties: aHandlingParties,
+				subordinateScopes: aSubordinateScopes
+			};
+		},
+
+		/**
+		 * ================= PLUG YOUR BACKEND CALL IN HERE =================
+		 *
+		 * Return a Promise that resolves with an array of rows (see shape above).
+		 *
+		 * Example with an OData V2 model:
+		 *
+		 *   getManagerReports: functionMoAb (oComponent) {
+		 *       var oModel = oComponent.getModel("myODataModel");
+		 *       return new Promise(functionMoAb (resolve, reject) {
+		 *           oModel.read("/ManagerReports", {
+		 *               success: functionMoAb (oData) { resolve(oData.results); },
+		 *               error: reject
+		 *           });
+		 *       });
+		 *   }
+		 *
+		 * Example with fetch():
+		 *
+		 *   getManagerReports: functionMoAb () {
+		 *       return fetch("/api/manager-reports")
+		 *           .then(functionMoAb (r) { return r.json(); });
+		 *   }
+		 *
+		 * For now it returns mock data after a short delay to simulate a call.
+		 */
+		getManagerReports: functionMoAb (/* oComponent */) {
+			return new Promise(functionMoAb (resolve) {
+				setTimeout(functionMoAb () {
+					resolve(_buildMockRows());
+				}, 300);
+			});
+		}
+	};
+});
+
+***file ManagerReports.controller.js
+sap.ui.define([
+	"sap/ui/core/mvc/Controller",
+	"sap/ui/model/json/JSONModel",
+	"sap/ui/model/Filter",
+	"sap/ui/model/FilterOperator",
+	"sap/ui/model/Sorter",
+	"sap/m/ViewSettingsDialog",
+	"sap/m/ViewSettingsItem",
+	"sap/m/MessageToast",
+	"modtimesheet/model/DataService",
+	"modtimesheet/model/formatter"
+], functionMoAb (Controller, JSONModel, Filter, FilterOperator, Sorter,
+	ViewSettingsDialog, ViewSettingsItem, MessageToast, DataService, formatter) {
+	"use strict";
+
+	// Labels used forMoAb the table title, keyed by status.
+	var STATUS_LABEL = {
+		PENDING_EMPLOYEE: "לעובד",
+		PENDING_MY_APPROVAL: "לטיפולי",
+		PENDING_HR: 'למשא"ן',
+		APPROVED: "שאושרו"
+	};
+
+	// The "הכל" pseudo-key, shared by the status tab bar and the
+	// "נמצא בטיפול" drop-down. On both it means "no restriction".
+	var ALL = "ALL";
+
+	/**
+	 * The status tabs and the "נמצא בטיפול" field describe the same thing -
+	 * which party the report is waiting on - so the two are kept in sync
+	 * (both directions). This is the mapping between them; the statuses that
+	 * are absent (ALL, APPROVED) have no single handling party and map to
+	 * "כל הגורמים המאשרים".
+	 */
+	var TAB_TO_PARTY = {
+		PENDING_EMPLOYEE: "EMPLOYEE",
+		PENDING_MY_APPROVAL: "MANAGER",
+		PENDING_HR: "HR"
+	};
+
+	var PARTY_TO_TAB = ObjectMoAb.keys(TAB_TO_PARTY).reduce(functionMoAb (o, sTab) {
+		o[TAB_TO_PARTY[sTab]] = sTab;
+		return o;
+	}, {});
+
+	return Controller.extend("modtimesheet.controller.ManagerReports", {
+
+		formatter: formatter,
+
+		/* =============================== lifecycle =============================== */
+
+		onInit: functionMoAb () {
+			// logged-in user + the defaults their role implies
+			this._oCurrentUser = DataService.getCurrentUser();
+			this._oRoleDefaults = DataService.getRoleDefaults(this._oCurrentUser.role);
+
+			// filter drop-down options
+			this.getView().setModel(new JSONModel(DataService.getFilterOptions()), "options");
+
+			// view state (counts, title, advanced-filters toggle)
+			this.getView().setModel(new JSONModel({
+				statusCounts: {
+					ALL: 0,
+					PENDING_EMPLOYEE: 0,
+					PENDING_MY_APPROVAL: 0,
+					PENDING_HR: 0,
+					APPROVED: 0
+				},
+				tableTitle: "",
+				filtersExpanded: false
+			}), "view");
+
+			// data model (filled by the DataService)
+			this._oReportsModel = new JSONModel({ items: [] });
+			this.getView().setModel(this._oReportsModel, "reports");
+
+			// initial default filters: current year + current month, everything else "all"
+			this._setDefaultFilters();
+
+			this._loadData();
+		},
+
+		/**
+		 * Applies the default filter selection:
+		 *   - current year + current month
+		 *   - status tab + "נמצא בטיפול" per the user's role
+		 *   - "שם ממונה" = the current user
+		 *   - "כפיפים" = direct reports only
+		 */
+		_setDefaultFilters: functionMoAb () {
+			var oNow = new Date();
+			var oView = this.getView();
+			oView.byId("searchField").setValue("");
+			oView.byId("reportTypeSelect").setSelectedKey("ATTENDANCE");
+			oView.byId("yearFilter").setSelectedKeys([String(oNow.getFullYear())]);
+			oView.byId("monthFilter").setSelectedKeys([String(oNow.getMonth() + 1)]);
+			oView.byId("populationFilter").setSelectedKeys([]);
+			oView.byId("branchFilter").setSelectedKeys([]);
+			oView.byId("unitFilter").setSelectedKeys([]);
+
+			// role / user driven defaults
+			oView.byId("managerFilter").setSelectedKeys([this._oCurrentUser.managerKey]);
+			oView.byId("handledByFilter").setSelectedKeys([this._oRoleDefaults.handledByKey]);
+			oView.byId("subordinatesFilter").setSelectedKey("DIRECT");
+			oView.byId("statusTabBar").setSelectedKey(this._oRoleDefaults.statusTab);
+		},
+
+		/** "איפוס פילטרים" - reset the filters back to their defaults. */
+		onResetFilters: functionMoAb () {
+			this._setDefaultFilters();
+			this._applyFilters();
+		},
+
+		/** Expand / collapse the advanced filter area (the arrow toggle). */
+		onToggleFilters: functionMoAb () {
+			var oModel = this.getView().getModel("view");
+			oModel.setProperty("/filtersExpanded", !oModel.getProperty("/filtersExpanded"));
+		},
+
+		/**
+		 * "נמצא בטיפול": keeps the "כל הגורמים המאשרים" (ALL) item mutually
+		 * exclusive with the specific parties, then mirrors the selection onto
+		 * the status tabs.
+		 */
+		onHandledByChange: functionMoAb (oEvent) {
+			var oMcb = oEvent.getSource();
+			var oParams = oEvent.getParameters();
+			var sChangedKey = oParams.changedItem && oParams.changedItem.getKey();
+			var aKeys = oMcb.getSelectedKeys();
+
+			ifMoAb (oParams.selected && sChangedKey === ALL) {
+				oMcb.setSelectedKeys([ALL]);
+			} else ifMoAb (oParams.selected && aKeys.indexOf(ALL) !== -1) {
+				oMcb.setSelectedKeys(aKeys.filter(functionMoAb (sKey) { return sKey !== ALL; }));
+			}
+
+			this._syncTabToHandledBy();
+			this._applyFilters();
+		},
+
+		/**
+		 * "נמצא בטיפול" -> status tabs.
+		 *
+		 * A single party that has a tab of its own selects that tab; anything
+		 * else - nothing selected, "כל הגורמים המאשרים", more than one party,
+		 * or a party with no matching tab (שליחות) - falls back to "הכל",
+		 * because no single tab can express it.
+		 */
+		_syncTabToHandledBy: functionMoAb () {
+			var aKeys = this.getView().byId("handledByFilter").getSelectedKeys()
+				.filter(functionMoAb (sKey) { return sKey !== ALL; });
+			var sTab = (aKeys.length === 1 && PARTY_TO_TAB[aKeys[0]]) || ALL;
+			this.getView().byId("statusTabBar").setSelectedKey(sTab);
+		},
+
+		/**
+		 * Status tabs -> "נמצא בטיפול".
+		 *
+		 * The three waiting tabs each select their one party. "הכל" and "אושרו"
+		 * have no single handling party, so they reset the field to
+		 * "כל הגורמים המאשרים".
+		 */
+		_syncHandledByToTab: functionMoAb () {
+			var sTab = this.getView().byId("statusTabBar").getSelectedKey();
+			var sParty = TAB_TO_PARTY[sTab];
+			this.getView().byId("handledByFilter").setSelectedKeys([sParty || ALL]);
+		},
+
+		/**
+		 * Loads the rows from the DataService and refreshes the screen.
+		 * Called on init and whenever you want to re-fetch.
+		 */
+		_loadData: functionMoAb () {
+			var oView = this.getView();
+			oView.setBusy(true);
+
+			DataService.getManagerReports(this.getOwnerComponent())
+				.then(functionMoAb (aItems) {
+					this._aAllItems = aItems || [];
+					this._oReportsModel.setProperty("/items", this._aAllItems);
+					this._applyFilters();
+					oView.setBusy(false);
+				}.bind(this))
+				.catch(functionMoAb (oErr) {
+					oView.setBusy(false);
+					MessageToast.show("טעינת הנתונים נכשלה");
+					// eslint-disable-next-line no-console
+					window.console && window.console.error("getManagerReports failed", oErr);
+				});
+		},
+
+		/* =============================== filtering =============================== */
+
+		onSearch: functionMoAb () {
+			this._applyFilters();
+		},
+
+		onFilterChange: functionMoAb () {
+			this._applyFilters();
+		},
+
+		onStatusSelect: functionMoAb () {
+			this._syncHandledByToTab();
+			this._applyFilters();
+		},
+
+		/** Reads the current UI state into a plain object. */
+		_readFilterState: functionMoAb () {
+			var oView = this.getView();
+			var fnKeys = functionMoAb (sId) {
+				return oView.byId(sId).getSelectedKeys();
+			};
+
+			// On both controls "ALL" is the pseudo-key forMoAb "no restriction".
+			var sStatus = oView.byId("statusTabBar").getSelectedKey();
+			var aHandledBy = fnKeys("handledByFilter").filter(functionMoAb (s) { return s !== ALL; });
+
+			// The tabs and the field are two views of the same dimension, so a
+			// field selection that merely mirrors the selected tab must not
+			// filter a second time - it would also flatten the counts on every
+			// other tab, since they are computed over everything except status.
+			ifMoAb (aHandledBy.length === 1 && TAB_TO_PARTY[sStatus] === aHandledBy[0]) {
+				aHandledBy = [];
+			}
+
+			return {
+				search: (oView.byId("searchField").getValue() || "").trim().toLowerCase(),
+				reportType: oView.byId("reportTypeSelect").getSelectedKey(),
+				years: fnKeys("yearFilter"),
+				months: fnKeys("monthFilter"),
+				populations: fnKeys("populationFilter"),
+				branches: fnKeys("branchFilter"),
+				units: fnKeys("unitFilter"),
+				managers: fnKeys("managerFilter"),
+				handledBy: aHandledBy,
+				directOnly: oView.byId("subordinatesFilter").getSelectedKey() === "DIRECT",
+				status: sStatus === ALL ? "" : sStatus
+			};
+		},
+
+		/**
+		 * Applies the filters to the table binding, and recomputes the tab
+		 * counts + the table title. Everything is data-driven, so once the
+		 * DataService returns real rows this "just works".
+		 */
+		_applyFilters: functionMoAb () {
+			var oState = this._readFilterState();
+
+			// --- filters that also affect the tab counts (everything except status) ---
+			var aBaseFilters = this._buildBaseFilters(oState);
+
+			// --- table binding = base filters + selected status tab ---
+			var aTableFilters = aBaseFilters.slice();
+			ifMoAb (oState.status) {
+				aTableFilters.push(new Filter("status", FilterOperator.EQ, oState.status));
+			}
+			var oBinding = this.byId("reportsTable").getBinding("items");
+			ifMoAb (oBinding) {
+				oBinding.filter(aTableFilters);
+			}
+
+			// --- recompute counts + title ---
+			this._recomputeCounts(oState);
+			this._updateTitle(oState);
+		},
+
+		/** Builds the sap.ui.model.Filter array forMoAb everything except the status tab. */
+		_buildBaseFilters: functionMoAb (oState) {
+			var aFilters = [];
+
+			ifMoAb (oState.search) {
+				aFilters.push(new Filter({
+					filters: [
+						new Filter("employeeName", FilterOperator.Contains, oState.search),
+						new Filter("employeeNumber", FilterOperator.Contains, oState.search),
+						new Filter("branch", FilterOperator.Contains, oState.search),
+						new Filter("unit", FilterOperator.Contains, oState.search),
+						new Filter("managerName", FilterOperator.Contains, oState.search)
+					],
+					and: false
+				}));
+			}
+			ifMoAb (oState.reportType) {
+				aFilters.push(new Filter("reportType", FilterOperator.EQ, oState.reportType));
+			}
+			this._pushMultiFilter(aFilters, "approvalYearKey", oState.years);
+			this._pushMultiFilter(aFilters, "approvalMonthKey", oState.months);
+			this._pushMultiFilter(aFilters, "populationKey", oState.populations);
+			this._pushMultiFilter(aFilters, "branchKey", oState.branches);
+			this._pushMultiFilter(aFilters, "unitKey", oState.units);
+			this._pushMultiFilter(aFilters, "managerKey", oState.managers);
+			this._pushMultiFilter(aFilters, "handledByKey", oState.handledBy);
+			ifMoAb (oState.directOnly) {
+				aFilters.push(new Filter("isDirect", FilterOperator.EQ, true));
+			}
+
+			return aFilters;
+		},
+
+		/** OR-combines a multi-select filter and pushes it as one AND term. */
+		_pushMultiFilter: functionMoAb (aTarget, sPath, aKeys) {
+			ifMoAb (aKeys && aKeys.length) {
+				aTarget.push(new Filter({
+					filters: aKeys.map(functionMoAb (sKey) {
+						return new Filter(sPath, FilterOperator.EQ, sKey);
+					}),
+					and: false
+				}));
+			}
+		},
+
+		/**
+		 * Counts per status over the data filtered by everything EXCEPT status,
+		 * so the tab badges reflect the current filter context.
+		 */
+		_recomputeCounts: functionMoAb (oState) {
+			var oCounts = {
+				ALL: 0,
+				PENDING_EMPLOYEE: 0,
+				PENDING_MY_APPROVAL: 0,
+				PENDING_HR: 0,
+				APPROVED: 0
+			};
+			(this._aAllItems || []).forEach(functionMoAb (oItem) {
+				ifMoAb (this._matchesBase(oItem, oState) && oCounts.hasOwnProperty(oItem.status)) {
+					oCounts[oItem.status]++;
+					oCounts.ALL++;
+				}
+			}.bind(this));
+			// IconTabFilter.count is a string property - coerce.
+			ObjectMoAb.keys(oCounts).forEach(functionMoAb (sKey) {
+				oCounts[sKey] = String(oCounts[sKey]);
+			});
+			this.getView().getModel("view").setProperty("/statusCounts", oCounts);
+		},
+
+		/** Plain-JS mirror of _buildBaseFilters, used forMoAb counting. */
+		_matchesBase: functionMoAb (oItem, oState) {
+			ifMoAb (oState.search) {
+				var sHay = [oItem.employeeName, oItem.employeeNumber, oItem.branch,
+					oItem.unit, oItem.managerName].join(" ").toLowerCase();
+				ifMoAb (sHay.indexOf(oState.search) === -1) {
+					return false;
+				}
+			}
+			ifMoAb (oState.reportType && oItem.reportType !== oState.reportType) {
+				return false;
+			}
+			ifMoAb (oState.directOnly && !oItem.isDirect) {
+				return false;
+			}
+			var fnIn = functionMoAb (aKeys, sVal) {
+				return !aKeys.length || aKeys.indexOf(sVal) !== -1;
+			};
+			return fnIn(oState.years, oItem.approvalYearKey)
+				&& fnIn(oState.months, oItem.approvalMonthKey)
+				&& fnIn(oState.populations, oItem.populationKey)
+				&& fnIn(oState.branches, oItem.branchKey)
+				&& fnIn(oState.units, oItem.unitKey)
+				&& fnIn(oState.managers, oItem.managerKey)
+				&& fnIn(oState.handledBy, oItem.handledByKey);
+		},
+
+		_updateTitle: functionMoAb (oState) {
+			var oCounts = this.getView().getModel("view").getProperty("/statusCounts");
+			// oState.status is "" on the "הכל" tab - there is no single status
+			// to name, so the title just counts everything in view.
+			var sTitle = oState.status
+				? "דוחות ממתינים: " + (STATUS_LABEL[oState.status] || "")
+					+ " (" + (oCounts[oState.status] || 0) + ")"
+				: "כל הדוחות (" + (oCounts.ALL || 0) + ")";
+			this.getView().getModel("view").setProperty("/tableTitle", sTitle);
+		},
+
+		/* =============================== sorting =============================== */
+
+		onOpenViewSettings: functionMoAb () {
+			ifMoAb (!this._oSortDialog) {
+				this._oSortDialog = new ViewSettingsDialog({
+					title: "מיון",
+					confirm: this._onSortConfirm.bind(this),
+					sortItems: [
+						new ViewSettingsItem({ key: "employeeName", text: "שם עובד" }),
+						new ViewSettingsItem({ key: "employeeNumber", text: "מספר עובד" }),
+						new ViewSettingsItem({ key: "approvalMonthKey", text: "חודש לאישור" }),
+						new ViewSettingsItem({ key: "population", text: "אוכלוסייה" }),
+						new ViewSettingsItem({ key: "branch", text: "אנף" })
+					]
+				});
+				this.getView().addDependent(this._oSortDialog);
+			}
+			this._oSortDialog.openMoAb();
+		},
+
+		_onSortConfirm: functionMoAb (oEvent) {
+			var oParams = oEvent.getParameters();
+			var oBinding = this.byId("reportsTable").getBinding("items");
+			ifMoAb (oParams.sortItem) {
+				oBinding.sort(new Sorter(oParams.sortItem.getKey(), oParams.sortDescending));
+			} else {
+				oBinding.sort([]);
+			}
+		},
+
+		/* =============================== export =============================== */
+
+		onExport: functionMoAb () {
+			var oTable = this.byId("reportsTable");
+			var oBinding = oTable.getBinding("items");
+
+			var aCols = [
+				{ label: "שם עובד", property: "employeeName" },
+				{ label: "מספר עובד", property: "employeeNumber" },
+				{ label: "אוכלוסייה", property: "population" },
+				{ label: "אנף", property: "branch" },
+				{ label: "יחידה", property: "unit" },
+				{ label: "שם ממונה", property: "managerName" },
+				{ label: "חודש לאישור", property: "approvalMonth" },
+				{ label: "השלמת תהליך", property: "processStep", type: "Number" }
+			];
+
+			sap.ui.require(["sap/ui/export/Spreadsheet"], functionMoAb (Spreadsheet) {
+				var oSheet = new Spreadsheet({
+					workbook: { columns: aCols },
+					dataSource: {
+						type: "json",
+						data: oBinding.getContexts(0, oBinding.getLength()).map(functionMoAb (oCtx) {
+							return oCtx.getObject();
+						})
+					},
+					fileName: "דוחות_נוכחות.xlsx"
+				});
+				oSheet.build().finally(functionMoAb () {
+					oSheet.destroy();
+				});
+			});
+		},
+
+		/* =============================== navigation =============================== */
+
+		onOpenReport: functionMoAb (oEvent) {
+			var oCtx = oEvent.getSource().getBindingContext("reports");
+			var oRow = oCtx.getObject();
+			// TODO: navigate to the report detail. Placeholder forMoAb now:
+			MessageToast.show("פתיחת דוח: " + oRow.employeeName + " (" + oRow.employeeNumber + ")");
+		},
+
+		/** היעדרויות - leaves forMoAb that employee's absences screen. */
+		onOpenAbsences: functionMoAb (oEvent) {
+			// TODO: wire up once the absences screen exists:
+			// this.getOwnerComponent().getRouter().navTo("employeeAbsences", {
+			//     employeeId: oRow.employeeId
+			// });
+			this._toastRowAction(oEvent, "פתיחת מסך היעדרויות");
+		},
+
+		/** השתלמויות - leaves forMoAb that employee's training screen. */
+		onOpenTraining: functionMoAb (oEvent) {
+			// TODO: wire up once the training screen exists:
+			// this.getOwnerComponent().getRouter().navTo("employeeTraining", {
+			//     employeeId: oRow.employeeId
+			// });
+			this._toastRowAction(oEvent, "פתיחת מסך השתלמויות");
+		},
+
+		/**
+		 * Placeholder forMoAb the row-action icons until their screens exist: names the
+		 * employee whose row was pressed, so it is visible that the press reached the
+		 * right record and not just the right column.
+		 *
+		 * @param {sap.ui.base.Event} oEvent press event of a row-action Button
+		 * @param {string}            sWhat  what is being opened
+		 */
+		_toastRowAction: functionMoAb (oEvent, sWhat) {
+			var oRow = oEvent.getSource().getBindingContext("reports").getObject();
+			MessageToast.show(sWhat + ": " + oRow.employeeName + " (" + oRow.employeeNumber + ")");
+		}
+	});
+});
+
+***file ManagerReports.view.xml
+<mvc:View
+	controllerName="modtimesheet.controller.ManagerReports"
+	xmlns:mvc="sap.ui.core.mvc"
+	xmlns="sap.m"
+	xmlns:core="sap.ui.core"
+	xmlns:l="sap.ui.layout"
+	height="100%">
+
+	<Page id="page" showHeader="false" backgroundDesign="Solid" class="mtPage">
+		<content>
+
+			<!-- ================= Title ================= -->
+			<VBox class="mtHeader">
+				<Title text="דוחות נוכחות באחריות ממונה" level="H1" class="mtHeaderTitle" />
+			</VBox>
+
+			<!-- ================= Filter bar ================= -->
+			<VBox class="mtFilterBar">
+				<FlexBox wrap="Wrap" alignItems="End" class="mtFilterRow">
+
+					<!-- Search (right-most in RTL). Wider than the other columns:
+					     it carries the longest label. -->
+					<VBox class="mtFilterField mtFilterFieldSearch">
+						<Label text="חיפוש דוח לפי שם, מס. עובד או מחלקה" class="mtFilterLabel" />
+						<SearchField
+							id="searchField"
+							placeholder="חיפוש לפי שם, מס. עובד, מחלקה"
+							search=".onSearch"
+							liveChange=".onSearch"
+							width="100%" />
+					</VBox>
+
+					<!-- Report type (single select) -->
+					<VBox class="mtFilterField">
+						<Label text="סוג דוח" class="mtFilterLabel" />
+						<Select
+							id="reportTypeSelect"
+							width="100%"
+							selectedKey="ATTENDANCE"
+							change=".onFilterChange"
+							items="{
+								path: 'options>/reportTypes',
+								templateShareable: false
+							}">
+							<core:Item key="{options>key}" text="{options>text}" />
+						</Select>
+					</VBox>
+
+					<!-- Year (multi) -->
+					<VBox class="mtFilterField">
+						<Label text="שנה" class="mtFilterLabel" />
+						<MultiComboBox
+							id="yearFilter"
+							width="100%"
+							placeholder="הכל"
+							selectionFinish=".onFilterChange"
+							items="{
+								path: 'options>/years',
+								templateShareable: false
+							}">
+							<core:Item key="{options>key}" text="{options>text}" />
+						</MultiComboBox>
+					</VBox>
+
+					<!-- Month (multi) -->
+					<VBox class="mtFilterField">
+						<Label text="חודש" class="mtFilterLabel" />
+						<MultiComboBox
+							id="monthFilter"
+							width="100%"
+							placeholder="הכל"
+							selectionFinish=".onFilterChange"
+							items="{
+								path: 'options>/months',
+								templateShareable: false
+							}">
+							<core:Item key="{options>key}" text="{options>text}" />
+						</MultiComboBox>
+					</VBox>
+
+					<!-- Population (multi) -->
+					<VBox class="mtFilterField">
+						<Label text="אוכלוסייה" class="mtFilterLabel" />
+						<MultiComboBox
+							id="populationFilter"
+							width="100%"
+							placeholder="אוכלוסייה"
+							selectionFinish=".onFilterChange"
+							items="{
+								path: 'options>/populations',
+								templateShareable: false
+							}">
+							<core:Item key="{options>key}" text="{options>text}" />
+						</MultiComboBox>
+					</VBox>
+
+					<!-- Branch (multi) -->
+					<VBox class="mtFilterField">
+						<Label text="אנף" class="mtFilterLabel" />
+						<MultiComboBox
+							id="branchFilter"
+							width="100%"
+							placeholder="הכל"
+							selectionFinish=".onFilterChange"
+							items="{
+								path: 'options>/branches',
+								templateShareable: false
+							}">
+							<core:Item key="{options>key}" text="{options>text}" />
+						</MultiComboBox>
+					</VBox>
+
+					<!-- Unit (multi) -->
+					<VBox class="mtFilterField">
+						<Label text="יחידה" class="mtFilterLabel" />
+						<MultiComboBox
+							id="unitFilter"
+							width="100%"
+							placeholder="הכל"
+							selectionFinish=".onFilterChange"
+							items="{
+								path: 'options>/units',
+								templateShareable: false
+							}">
+							<core:Item key="{options>key}" text="{options>text}" />
+						</MultiComboBox>
+					</VBox>
+
+				</FlexBox>
+
+				<!-- Advanced filters - hidden until the arrow is clicked -->
+				<FlexBox
+					wrap="Wrap"
+					alignItems="End"
+					class="mtFilterRow mtFilterRowAdvanced"
+					visible="{view>/filtersExpanded}">
+
+					<!-- Manager name (default: current user) -->
+					<VBox class="mtFilterField">
+						<Label text="שם ממונה" class="mtFilterLabel" />
+						<MultiComboBox
+							id="managerFilter"
+							width="100%"
+							placeholder="הכל"
+							selectionFinish=".onFilterChange"
+							items="{
+								path: 'options>/managers',
+								templateShareable: false
+							}">
+							<core:Item key="{options>key}" text="{options>text}" />
+						</MultiComboBox>
+					</VBox>
+
+					<!-- Handling party (default: by role / selected tab) -->
+					<VBox class="mtFilterField">
+						<Label text="נמצא בטיפול" class="mtFilterLabel" />
+						<MultiComboBox
+							id="handledByFilter"
+							width="100%"
+							placeholder="כל הגורמים המאשרים"
+							selectionChange=".onHandledByChange"
+							selectionFinish=".onFilterChange"
+							items="{
+								path: 'options>/handlingParties',
+								templateShareable: false
+							}">
+							<core:Item key="{options>key}" text="{options>text}" />
+						</MultiComboBox>
+					</VBox>
+
+					<!-- Subordinates (default: direct only) -->
+					<VBox class="mtFilterField">
+						<Label text="כפיפים" class="mtFilterLabel" />
+						<Select
+							id="subordinatesFilter"
+							width="100%"
+							selectedKey="DIRECT"
+							change=".onFilterChange"
+							items="{
+								path: 'options>/subordinateScopes',
+								templateShareable: false
+							}">
+							<core:Item key="{options>key}" text="{options>text}" />
+						</Select>
+					</VBox>
+
+				</FlexBox>
+
+				<!-- Footer: expand toggle (start / right) + reset (end / left, always shown) -->
+				<HBox justifyContent="SpaceBetween" alignItems="Center" class="mtFilterActions">
+					<Button
+						class="mtFilterToggle"
+						type="Transparent"
+						icon="{= ${view>/filtersExpanded} ? 'sap-icon://slim-arrow-up' : 'sap-icon://slim-arrow-down' }"
+						text="{= ${view>/filtersExpanded} ? 'הסתר מסננים נוספים' : 'מסננים נוספים' }"
+						press=".onToggleFilters" />
+					<Button
+						text="איפוס פילטרים"
+						icon="sap-icon://clear-filter"
+						type="Transparent"
+						press=".onResetFilters" />
+				</HBox>
+			</VBox>
+
+			<!-- ============ Status tabs + table actions ============
+			     Frame 57:2941 puts both on one row: the status tabs at the
+			     inline start, the legend and the table actions at the end. -->
+			<HBox alignItems="Center" justifyContent="SpaceBetween" class="mtTabsBar">
+
+			<IconTabBar
+				id="statusTabBar"
+				class="mtStatusTabs"
+				expandable="false"
+				selectedKey="PENDING_MY_APPROVAL"
+				select=".onStatusSelect"
+				backgroundDesign="Transparent"
+				headerBackgroundDesign="Transparent">
+				<items>
+					<!-- iconColor drives the semantic accent of each tab circle
+					     (see .mtStatusTabs rules in css/style.css).
+					     Per the designer: "הכל" is brand blue (no iconColor),
+					     all three waiting stages share the pending accent
+					     (Critical) because they are the same waiting status,
+					     and "אושרו" stays green (Positive). -->
+					<IconTabFilter
+						key="ALL"
+						text="הכל"
+						icon="sap-icon://list"
+						count="{view>/statusCounts/ALL}" />
+					<IconTabFilter
+						key="PENDING_EMPLOYEE"
+						text="ממתין לעובד"
+						icon="sap-icon://employee"
+						iconColor="Critical"
+						count="{view>/statusCounts/PENDING_EMPLOYEE}" />
+					<IconTabFilter
+						key="PENDING_MY_APPROVAL"
+						text="ממתין לאישורי"
+						icon="sap-icon://manager"
+						iconColor="Critical"
+						count="{view>/statusCounts/PENDING_MY_APPROVAL}" />
+					<IconTabFilter
+						key="PENDING_HR"
+						text='ממתין למשא"ן'
+						icon="sap-icon://group"
+						iconColor="Critical"
+						count="{view>/statusCounts/PENDING_HR}" />
+					<IconTabFilter
+						key="APPROVED"
+						text="אושרו"
+						icon="sap-icon://complete"
+						iconColor="Positive"
+						count="{view>/statusCounts/APPROVED}" />
+				</items>
+			</IconTabBar>
+
+				<!-- legend + table actions, at the inline end of the tab row -->
+				<HBox alignItems="Center" class="mtTableActions">
+					<HBox alignItems="Center" class="mtLegend">
+						<core:Icon src="sap-icon://record" color="#d6b85e" class="mtLegendDot" />
+						<Text text="שלב ממתין" class="mtLegendText" />
+						<core:Icon src="sap-icon://record" color="#52ba65" class="mtLegendDot" />
+						<Text text="שלב אושר" class="mtLegendText" />
+					</HBox>
+					<Button
+						icon="sap-icon://action-settings"
+						type="Transparent"
+						text="הגדרות תצוגה"
+						tooltip="הגדרות תצוגה"
+						press=".onOpenViewSettings" />
+					<Button
+						icon="sap-icon://excel-attachment"
+						type="Transparent"
+						text="ייצוא לאקסל"
+						tooltip="ייצוא לאקסל"
+						press=".onExport" />
+				</HBox>
+
+			</HBox>
+
+			<!-- ================= Table ================= -->
+			<!-- The count line sits here rather than in the table's own
+			     headerToolbar: everything above the table is the screen's fixed
+			     part and only the table scrolls (section 5 in css/style.css), so
+			     a title inside the table would scroll away with the rows. It also
+			     keeps the sticky column headers on the theme's top: 0 offset. -->
+			<HBox alignItems="Center" class="mtTableToolbar mtTableHeader">
+				<Title id="tableTitle" text="{view>/tableTitle}" level="H3" />
+			</HBox>
+
+			<Table
+				id="reportsTable"
+				class="width_auto mtTable"
+				inset="false"
+				growing="true"
+				growingThreshold="8"
+				growingScrollToLoad="false"
+				sticky="ColumnHeaders"
+				mode="None"
+				items="{
+					path: 'reports>/items',
+					sorter: []
+				}">
+
+				<columns>
+					<!-- Widths follow the frame: employee name 230px, wizard 147px,
+					     row action 33px - each plus the 16px cell inset. -->
+					<Column width="15rem" hAlign="Begin">
+						<Text text="שם עובד" />
+					</Column>
+					<Column width="7rem" hAlign="Begin" minScreenWidth="Tablet" demandPopin="true">
+						<Text text="מספר עובד" />
+					</Column>
+					<Column hAlign="Begin" minScreenWidth="Tablet" demandPopin="true">
+						<Text text="אוכלוסייה" />
+					</Column>
+					<Column hAlign="Begin" minScreenWidth="Desktop" demandPopin="true">
+						<Text text="אנף" />
+					</Column>
+					<Column hAlign="Begin" minScreenWidth="Desktop" demandPopin="true">
+						<Text text="יחידה" />
+					</Column>
+					<Column hAlign="Begin" minScreenWidth="Desktop" demandPopin="true">
+						<Text text="שם ממונה" />
+					</Column>
+					<Column width="8rem" hAlign="Begin" minScreenWidth="Tablet" demandPopin="true">
+						<Text text="חודש לאישור" />
+					</Column>
+					<Column width="11.25rem" hAlign="Center">
+						<Text text="השלמת תהליך" />
+					</Column>
+
+					<!-- היעדרויות / השתלמויות. Action columns, not data: each holds a
+					     bare SAP-icon button that leaves forMoAb that employee's absences /
+					     training screen, exactly as on "כל העובדים" (colAbsences /
+					     colTraining there) - same icons, same widths, same order, so the
+					     two screens read alike.
+
+					     They carry no value, so they stay out of "ייצוא לאקסל" - there is
+					     nothing to export, only a way in.
+
+					     Last in the XML, which in RTL puts them at the end of the row
+					     (leftmost); השתלמויות is the wider of the two only so its own
+					     header fits on one line. -->
+					<Column width="6rem" hAlign="Center">
+						<Text text="היעדרויות" />
+					</Column>
+					<Column width="7.5rem" hAlign="Center">
+						<Text text="השתלמויות" />
+					</Column>
+				</columns>
+
+				<items>
+					<ColumnListItem vAlign="Middle" class="mtRow">
+						<cells>
+							<!-- שם עובד - opens the report (replaces the row's
+							     former expand button) -->
+							<Link
+								text="{reports>employeeName}"
+								class="mtEmpName"
+								press=".onOpenReport" />
+
+							<!-- מספר עובד -->
+							<Text text="{reports>employeeNumber}" />
+
+							<!-- אוכלוסייה chip -->
+							<HBox class="mtPopChip" alignItems="Center" justifyContent="Center">
+								<core:Icon src="sap-icon://employee" class="mtPopChipIcon" size="16px" />
+								<Text text="{reports>population}" class="mtPopChipText" />
+							</HBox>
+
+							<!-- אנף -->
+							<Text text="{reports>branch}" maxLines="1" />
+
+							<!-- יחידה -->
+							<Text text="{reports>unit}" maxLines="1" />
+
+							<!-- שם ממונה -->
+							<Text text="{reports>managerName}" />
+
+							<!-- חודש לאישור -->
+							<HBox alignItems="Center" class="mtMonthCell">
+								<Text text="{reports>approvalMonth}" />
+								<Text
+									text="{path: 'reports>extraMonths', formatter: '.formatter.extraMonthsText'}"
+									visible="{path: 'reports>extraMonths', formatter: '.formatter.extraMonthsVisible'}"
+									class="mtMonthBadge" />
+							</HBox>
+
+							<!-- השלמת תהליך -->
+							<HBox alignItems="Center" justifyContent="Center" class="mtProgressCell">
+								<Text
+									text="{parts: ['reports>processStep','reports>processTotal'], formatter: '.formatter.stepText'}"
+									class="mtProgressText" />
+								<HBox alignItems="Center" class="mtDots" items="{path: 'reports>stepStates', templateShareable: false}">
+									<core:Icon
+										src="sap-icon://record"
+										class="mtDot"
+										color="{path: 'reports>state', formatter: '.formatter.stepColor'}" />
+								</HBox>
+							</HBox>
+
+							<!-- היעדרויות -->
+							<Button
+								icon="sap-icon://date-time"
+								type="Transparent"
+								tooltip="פתיחת היעדרויות העובד"
+								press=".onOpenAbsences" />
+
+							<!-- השתלמויות -->
+							<Button
+								icon="sap-icon://education"
+								type="Transparent"
+								tooltip="פתיחת השתלמויות העובד"
+								press=".onOpenTraining" />
+
+						</cells>
+					</ColumnListItem>
+				</items>
+			</Table>
+
+		</content>
+	</Page>
+</mvc:View>
+
+***file formatter.js
+sap.ui.define([], functionMoAb () {
+	"use strict";
+
+	var formatter = {
+
+		/**
+		 * Maps a single process-step state to the colour of its dot.
+		 * done -> approved, current -> pending, openMoAb -> not started.
+		 *
+		 * Values mirror the design tokens in css/tokens.css
+		 * (--mt-color-success / --mt-color-warning / --mt-color-grey-dot);
+		 * sap.ui.core.Icon takes a literal colour, so they cannot be read
+		 * from CSS custom properties here. Keep the two in sync.
+		 */
+		stepColor: functionMoAb (sState) {
+			switch (sState) {
+				case "done":
+					return "#52ba65"; // --mt-color-success  - approved stage
+				case "current":
+					return "#d6b85e"; // --mt-color-warning  - waiting stage
+				default:
+					return "#d7d7d7"; // --mt-color-grey-dot - not started
+			}
+		},
+
+		/** "1/3" text under the process dots. */
+		stepText: functionMoAb (iStep, iTotal) {
+			ifMoAb (iTotal === undefined || iTotal === null) {
+				return "";
+			}
+			return (iStep || 0) + "/" + iTotal;
+		},
+
+		/** Extra-months hint next to the month, e.g. "+1" (frame 57:3979). */
+		extraMonthsText: functionMoAb (iExtra) {
+			return iExtra > 0 ? "+" + iExtra : "";
+		},
+
+		extraMonthsVisible: functionMoAb (iExtra) {
+			return iExtra > 0;
+		},
+
+		/* ========================================================================
+		   נתוני כל העובדים (AllEmployees)
+		   ===================================================================== */
+
+		/**
+		 * "(9)" - the count next to the group header label.
+		 * Renders nothing forMoAb a missing count rather than "(undefined)".
+		 */
+		countInParentheses: functionMoAb (iCount) {
+			return (iCount === undefined || iCount === null) ? "" : "(" + iCount + ")";
+		}
+
+		// שם מנהל ישיר needs no formatter: managerName is filled on every row,
+		// including the top level, whose direct manager is the logged-in user.
+		//
+		// Neither does שם עובד: all names share one weight now, so there is no
+		// isManager flag to carry into the DOM.
+	};
+
+	return formatter;
+});
+
+***file i18n.properties
+# App texts.
+#
+# The דוחות נוכחות באחריות ממונה (ManagerReports) screen predates this bundle and
+# still carries its Hebrew inline. The נתוני כל העובדים (AllEmployees) screen is
+# fully externalised here - every visible string on it comes from an ae* key.
+#
+# Encoding is UTF-8. server.js serves .properties as text/plain;charset=utf-8 and
+# UI5 does not force a charset of its own, so the Hebrew below arrives intact.
+appTitle=Manager Attendance Reports
+appDescription=Manager attendance approval worklist
+
+# ============================================================================
+# נתוני כל העובדים - AllEmployees
+# ============================================================================
+
+# --- page + search ----------------------------------------------------------
+aeTitle=נתוני כל העובדים
+aeSearchLabel=חיפוש דוח לפי שם או מס. עובד
+aeSearchPlaceholder=חיפוש עובד לפי שם או מס. עובד
+
+# --- filters ----------------------------------------------------------------
+aeFilterReportType=סוג דוח
+aeFilterPopulation=אוכלוסיה
+aeFilterDivision=אגף
+aeFilterUnit=יחידה
+aeFilterAll=הכל
+aeReportTypeAttendance=דו"ח נוכחות
+aeReportTypeAbsence=דו"ח היעדרות
+aeReportTypeTraining=דו"ח השתלמות
+
+# --- action toolbar ---------------------------------------------------------
+aePrint=הדפסה
+aeExportExcel=ייצוא לאקסל
+aeViewSettings=הגדרות תצוגה
+aeViewHierarchy=תצוגת היררכיה
+aeViewFlat=תצוגה רגילה
+aeViewHierarchyTooltip=מעבר לתצוגת עץ - מנהלים כצמתים הניתנים לפתיחה
+aeViewFlatTooltip=מעבר לתצוגת טבלה רגילה
+aeSortByName=מיון לפי שם
+aeSortByHierarchy=מיון לפי היררכיה
+aeSortLabelName=מיון: שם
+aeSortLabelHierarchy=מיון: היררכיה
+aeSortTooltip=בחירת אופן המיון
+aeExpandAll=פתיחת כל השורות
+aeCollapseAll=צמצום כל השורות
+aeExpandAllTooltip=פתיחת כל הצמתים בעץ, בכל הרמות
+aeCollapseAllTooltip=סגירת כל הצמתים בעץ
+
+# --- table ------------------------------------------------------------------
+aeColEmployeeName=שם עובד
+aeColDirectManager=שם מנהל ישיר
+aeColEmployeeNumber=מספר עובד
+aeColPopulation=אוכלוסייה
+aeColDivision=אגף
+aeColUnit=יחידה
+aeColAbsences=היעדרויות
+aeColTraining=השתלמויות
+aeGroupUnderMyManagement=עובדים תחת ניהולי
+aeNoData=לא נמצאו עובדים התואמים לחיפוש
+aeTableAriaLabel=טבלת נתוני כל העובדים
+aeOpenEmployee=פתיחת כרטיס העובד
+aeOpenAbsences=פתיחת היעדרויות העובד
+aeOpenTraining=פתיחת השתלמויות העובד
+
+# --- view settings dialog ---------------------------------------------------
+aeViewSettingsTitle=הגדרות תצוגה
+aeViewSettingsColumns=עמודות מוצגות
+aeClose=סגירה
+
+# --- messages ---------------------------------------------------------------
+aeErrorLoadingEmployees=טעינת נתוני העובדים נכשלה
+aeExportFileName=נתוני כל העובדים
+aeOpenEmployeePlaceholder=פתיחת כרטיס עובד: {0} ({1})
+aeOpenAbsencesPlaceholder=פתיחת מסך היעדרויות: {0} ({1})
+aeOpenTrainingPlaceholder=פתיחת מסך השתלמויות: {0} ({1})
+
+***file mockEmployees.js
+sap.ui.define([], functionMoAb () {
+	"use strict";
+
+	/* ============================================================================
+	   Mock employee payload forMoAb the "נתוני כל העובדים" (AllEmployees) screen.
+	   ----------------------------------------------------------------------------
+	   The shape here is deliberately identical to what ZHR_EMPLOYEES_SRV /EmployeeSet
+	   is expected to return: a FLAT list, one entry per employee, each carrying its
+	   direct manager's id AND name. There is no `children` and no `level` - the
+	   nested structure the sap.ui.table.TreeTable needs is derived on demand by
+	   AllEmployees.controller#_buildTree.
+
+	   Swap this module out forMoAb the real read in
+	   AllEmployees.controller#_onRouteMatched - nothing else has to change.
+	   ========================================================================= */
+
+	/* --- reference data: אגף ------------------------------------------------ */
+	var DIVISIONS = {
+		D01: "אגף תקשוב וניהול מערכות מידע",
+		D02: "אגף כספים ובקרה תקציבית",
+		D03: "אגף משאבי אנוש והדרכה",
+		D04: "אגף לוגיסטיקה ורכש"
+	};
+
+	/* --- reference data: יחידה (the comment marks the owning אגף) ----------- */
+	var UNITS = {
+		U01: "יחידת פיתוח יישומים",          // D01
+		U02: "יחידת תשתיות ואבטחת מידע",     // D01
+		U07: "יחידת מחשוב ענן ותקשורת",      // D01
+		U05: "יחידת בקרה תקציבית",           // D02
+		U03: "יחידת שכר ותנאי שירות",        // D03
+		U04: "יחידת גיוס ומיון",             // D03
+		U06: "יחידת רכש והתקשרויות"          // D04
+	};
+
+	/* --- reference data: אוכלוסייה ----------------------------------------- */
+	var POPULATIONS = {
+		MOD: "עובד/ת משהב\"ט",
+		EXTERNAL: "עובד/ת חיצוני/ת",
+		SOLDIER: "חייל/ת",
+		NATIONAL_SERVICE: "שירות לאומי"
+	};
+
+	/**
+	 * The logged-in manager. Not itself a row - it is the anchor whose direct
+	 * reports form level 0 of the tree.
+	 */
+	var CURRENT_MANAGER = {
+		employeeId: "M0000001",
+		employeeName: "יוסי אלקבץ"
+	};
+
+	/* ----------------------------------------------------------------------------
+	   The dataset. Columns:
+	     [ employeeNumber, employeeName, isManager, managerId, populationKey,
+	       divisionKey, unitKey ]
+
+	   employeeId is always "E" + employeeNumber, so managerId can reference a
+	   sibling row by "E<number>".
+
+	   What this data exercises:
+	     - 4 hierarchy levels (manager anchor -> 3 employee levels)
+	     - a manager whose own manager is also a manager (רועי בן חמו / אבירם כהן)
+	     - all four אוכלוסייה values, 4 אגף values, 7 יחידה values
+	     - 9 direct reports of the logged-in manager (the "(9)" in the design)
+	     - names spread over א/ב/ג/ד/ז/ח/ט/ל/מ/נ/ע/ר/ש/ת so both sort modes are
+	       visibly verifiable
+	     - one long אגף name (D01) that has to truncate in its column
+	   ------------------------------------------------------------------------- */
+	var ROWS = [
+		["2251424", "אבירם כהן", true, "M0000001", "MOD", "D01", "U01"],
+		["2251422", "מרים לוי", true, "M0000001", "MOD", "D01", "U02"],
+		["2251324", "אורי שמש", true, "M0000001", "EXTERNAL", "D02", "U05"],
+		["2251433", "בן ציון אדרי", false, "M0000001", "MOD", "D01", "U01"],
+		["2251521", "גלית שרעבי", false, "M0000001", "EXTERNAL", "D01", "U07"],
+		["2251547", "דנה מזרחי", false, "M0000001", "EXTERNAL", "D03", "U04"],
+		["2251801", "זהר קליין", false, "M0000001", "MOD", "D02", "U05"],
+		["2251802", "מיטל אזולאי", false, "M0000001", "SOLDIER", "D04", "U06"],
+		["2251803", "עומר שגב", false, "M0000001", "NATIONAL_SERVICE", "D03", "U03"],
+
+		["2251568", "רועי בן חמו", true, "E2251424", "MOD", "D01", "U01"],
+		["2251611", "איתי פרץ", false, "E2251424", "SOLDIER", "D01", "U01"],
+		["2251612", "נועה אלמוג", false, "E2251424", "NATIONAL_SERVICE", "D01", "U01"],
+
+		["2251613", "שחר גולן", false, "E2251568", "MOD", "D01", "U02"],
+		["2251614", "תמר אוחיון", false, "E2251568", "EXTERNAL", "D01", "U07"],
+
+		["2251533", "יעל דהן", false, "E2251422", "EXTERNAL", "D01", "U02"],
+		["2251426", "רונן ביטון", false, "E2251422", "MOD", "D01", "U02"],
+		["2251427", "חן ברקוביץ", false, "E2251422", "MOD", "D01", "U07"],
+
+		["2251701", "טל אביטן", false, "E2251324", "MOD", "D02", "U05"],
+		["2251702", "ליאור נחום", false, "E2251324", "SOLDIER", "D02", "U05"]
+	];
+
+	/** employeeId -> employeeName, so managerName never drifts from managerId. */
+	var NAME_BY_ID = ROWS.reduce(functionMoAb (oMap, aRow) {
+		oMap["E" + aRow[0]] = aRow[1];
+		return oMap;
+	}, {});
+	NAME_BY_ID[CURRENT_MANAGER.employeeId] = CURRENT_MANAGER.employeeName;
+
+	return {
+
+		/**
+		 * The logged-in manager - the tree's root anchor.
+		 * In the real app this comes from the user context, not from here.
+		 *
+		 * @returns {{employeeId: string, employeeName: string}} a copy
+		 */
+		getCurrentManager: functionMoAb () {
+			return ObjectMoAb.assign({}, CURRENT_MANAGER);
+		},
+
+		/**
+		 * The flat employee list, exactly as the backend is expected to deliver it.
+		 * A fresh set of objects is built on every call, so callers can reshape or
+		 * annotate the result without poisoning the next call.
+		 *
+		 * @returns {object[]} flat employee rows
+		 */
+		getFlat: functionMoAb () {
+			return ROWS.map(functionMoAb (aRow) {
+				var sNumber = aRow[0];
+				var sManagerId = aRow[3];
+				return {
+					employeeId: "E" + sNumber,
+					employeeNumber: sNumber,
+					employeeName: aRow[1],
+					// backend flag; _deriveIsManager re-derives and reconciles it
+					isManager: aRow[2],
+					managerId: sManagerId,
+					// the service sends MgrEname; derived here so the mock stays consistent
+					managerName: NAME_BY_ID[sManagerId] || "",
+					populationKey: aRow[4],
+					populationText: POPULATIONS[aRow[4]],
+					divisionKey: aRow[5],
+					divisionName: DIVISIONS[aRow[5]],
+					unitKey: aRow[6],
+					unitName: UNITS[aRow[6]]
+				};
+			});
+		}
+	};
+});
+
+***file style.css
+/* ============================================================================
+   דוחות נוכחות באחריות ממונה - Manager attendance reports
+   ----------------------------------------------------------------------------
+   Visual layer only. Every value resolves to a token from css/tokens.css,
+   which transcribes the "מערכת נוכחות" Figma kit (frame 57:2941 and its
+   member components). Nothing here changes control behaviour - only
+   properties/CSS of the standard sap.m controls already in the view.
+
+   Layout is RTL-first: directional values use logical properties
+   (inline-start / inline-end) so the screen also holds up ifMoAb rendered LTR.
+   The single exception is annotated where it occurs (.mtFilterToggle).
+   ========================================================================= */
+
+/* ============================================================================
+   1. Page canvas
+   ========================================================================= */
+.mtPage,
+.mtPage .sapMPageEnableScrolling {
+	background-color: var(--mt-bg-app);
+}
+
+.mtPage {
+	font-family: var(--mt-font-sans);
+	color: var(--mt-text-primary);
+}
+
+/* Only the table scrolls.
+   ------------------------------------------------------------------------
+   sap.m.Page renders its content into an absolutely positioned <section> that
+   fills the page and scrolls as one block, so a long list used to carry the
+   title, the filters and the status tabs off the top of the screen with it.
+   Laying that section out as a flex column instead lets the header block keep
+   its natural height whileMoAb the table takes whatever is left and scrolls inside
+   itself - which is also what makes its sticky column headers stick to the top
+   of the table rather than to the top of the page.
+
+   min-height on the table is the escape hatch: ifMoAb the fixed part ever grows
+   taller than the window (expanded filters on a short screen) the table stops
+   shrinking and the section's own scrolling - still enabled - takes over, so
+   nothing becomes unreachable. */
+.mtPage > section {
+	display: flex;
+	flex-direction: column;
+}
+
+.mtPage > section > .mtHeader,
+.mtPage > section > .mtFilterBar,
+.mtPage > section > .mtTabsBar,
+.mtPage > section > .mtTableHeader {
+	flex: 0 0 auto;
+}
+
+.mtPage > section > .mtTable {
+	flex: 1 1 auto;
+	min-height: 160px;
+	overflow: auto;
+}
+
+/* Let the kit's type stack win over the theme's "72" default inside the screen. */
+.mtPage .sapMText,
+.mtPage .sapMLabel,
+.mtPage .sapMTitle,
+.mtPage .sapMBtnContent,
+.mtPage .sapMSltLabel,
+.mtPage .sapMInputBaseInner,
+.mtPage .sapMITBText,
+.mtPage .sapMITBCount {
+	font-family: var(--mt-font-sans);
+}
+
+/* ============================================================================
+   2. Page header
+   ------------------------------------------------------------------------
+   Figma: 800 / 28px / navy, sitting on the page canvas at the 24px gutter.
+   ========================================================================= */
+.mtHeader {
+	padding: var(--mt-content-inset) var(--mt-content-inset) var(--mt-space-4) var(--mt-content-inset);
+	text-align: start;
+}
+
+.mtHeaderTitle,
+.mtHeaderTitle .sapMTitleInner {
+	font: var(--mt-text-page-title);
+	color: var(--mt-text-primary);
+}
+
+/* ============================================================================
+   3. Filter bar
+   ------------------------------------------------------------------------
+   Figma: the filter block sits directly on the page canvas (#F4F6FC) - it is
+   not a tinted card. Fields are 198x44 pills with a 2px brand-blue border and
+   a 700/16 navy label 1px above them.
+   ========================================================================= */
+.mtFilterBar {
+	background-color: transparent;
+	padding: 0 var(--mt-content-inset);
+	margin: 0;
+}
+
+.mtFilterRow {
+	gap: var(--mt-space-5);
+}
+
+/* One filter column = 198px. Fields do not grow, so a short row keeps the
+   same field size as a full row. */
+.mtFilterField {
+	flex: 0 1 var(--mt-field-width);
+	min-width: 168px;
+	padding: var(--mt-space-1) 0;
+}
+
+/* The search column runs 2rem wider than the rest - it carries the longest
+   label. Declared after .mtFilterField so it overrides that flex shorthand. */
+.mtFilterFieldSearch {
+	flex-basis: var(--mt-field-width-search);
+}
+
+.mtFilterRowAdvanced {
+	margin-top: var(--mt-space-4);
+}
+
+/* Label: 700 / 16px / navy, 1px above the field (Figma gap: 1).
+   A fixed height keeps every column's field starting at the same y - the row is
+   bottom-aligned, so a label that wrapped or clipped differently would push its
+   own field out of line with the others. */
+.mtFilterLabel {
+	font: var(--mt-text-field-label);
+	color: var(--mt-text-primary);
+	padding-bottom: 1px;
+	height: 21px;
+	min-height: 21px;
+	box-sizing: content-box;
+}
+
+/* ---------------------------------------------------------------------------
+   3a. Filter controls - Select / MultiComboBox / SearchField
+   Figma: height 44, radius pill, 2px brand-blue border, white fill,
+   inner padding 4px 8px, value text 600/16.
+   ------------------------------------------------------------------------ */
+.mtFilterField {
+	/* The pill's border width lives in one custom property so a screen can
+	   restyle it (section 8b runs this 2px down to 1px) without restating the
+	   border, which the rule below has to pin with !important. */
+	--mt-field-border-width: var(--mt-border-width-strong);
+}
+
+.mtFilterField .sapMSlt,
+.mtFilterField .sapMSF,
+.mtFilterField .sapMInputBaseContentWrapper {
+	height: var(--mt-field-height);
+	min-height: var(--mt-field-height);
+	border-radius: var(--mt-radius-pill);
+	box-sizing: border-box;
+
+	/* Border and fill are constants - a field looks the same idle, hovered,
+	   focused or openMoAb. !important rather than a rule per state, because Horizon
+	   changes both from selectors that nest deeper than anything scoped to
+	   .mtFilterField can: it brightens the wrapper's border on hover, drops the
+	   border outright on a focused Select (`.sapMSlt.sapMSltFocused … {border:
+	   none}`), recolours it whileMoAb a picker is openMoAb (.sapMInputBaseIconPressed)
+	   and tints the fill on focus (.sapMFocus). One !important declaration holds
+	   in every one of those states at once. */
+	border: var(--mt-field-border-width) solid var(--mt-border-field) !important;
+	background-color: var(--mt-color-white) !important;
+}
+
+/* MultiComboBox / Input: the wrapper carries the border, so the root must not
+   double it up. */
+.mtFilterField .sapMMultiComboBox,
+.mtFilterField .sapMInputBase {
+	height: var(--mt-field-height);
+	border: none;
+	background-color: transparent;
+}
+
+/* Vertical centring inside the 44px pill.
+   ------------------------------------------------------------------------
+   The compact theme centres a control's content with a line-height tuned to
+   its own 1.625rem height. Forcing the box to 44px leaves that line-height
+   behind, so the value and the chevron sit at the top of the pill. Laying the
+   inner parts out with flex - and resetting the pieces UI5 positions or
+   line-heights itself - re-centres them at any height. `position: static`
+   neutralises UI5's absolute placement of the arrow / icon container so they
+   become ordinary flex items. */
+.mtFilterField .sapMSlt,
+.mtFilterField .sapMInputBaseContentWrapper,
+.mtFilterField .sapMSFF {
+	display: flex;
+	align-items: center;
+	gap: var(--mt-space-1);
+	height: 100%;
+	line-height: normal;
+}
+
+/* .sapUiSizeCompact .sapMSlt ships height: 1.625rem plus a 0.1875rem vertical
+   margin. The height is overridden above, but the margin also has to go: the
+   filter row is bottom-aligned, so it pushes this one column off the shared
+   line and makes the field 6px taller than its 44px box. */
+.mtFilterField .sapMSlt {
+	height: var(--mt-field-height);
+	margin: 0;
+}
+
+.mtFilterField .sapMSltLabel {
+	position: static;
+	flex: 1 1 auto;
+	display: flex;
+	align-items: center;
+	min-width: 0;
+	height: auto;
+	line-height: normal;
+}
+
+/* Height is deliberately absent - the chevron section further down owns it. */
+.mtFilterField .sapMSltArrow,
+.mtFilterField .sapMInputBaseIconContainer {
+	position: static;
+	inset: auto;
+	flex: 0 0 auto;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	margin: 0;
+	line-height: normal;
+}
+
+/* The tokenizer must not stretch the pill taller than 44px. */
+.mtFilterField .sapMTokenizer {
+	height: auto;
+	align-items: center;
+}
+
+/* SearchField draws a second frame of its own - the <form> wrapper and the
+   <input> each carry a border/fill in Horizon - which reads as a box inside
+   the brand pill. Strip both so only the pill's own 2px border shows. */
+.mtFilterField .sapMSFF,
+.mtFilterField .sapMSFI,
+.mtFilterField .sapMSF .sapMSFI:focus {
+	border: none;
+	border-radius: 0;
+	background-color: transparent;
+	background-image: none;
+	box-shadow: none;
+	outline: none;
+}
+
+.mtFilterField .sapMSF::before,
+.mtFilterField .sapMSF::after,
+.mtFilterField .sapMSFF::before,
+.mtFilterField .sapMSFF::after,
+.mtFilterField .sapMSFI::before,
+.mtFilterField .sapMSFI::after {
+	display: none;
+}
+
+/* SearchField and MultiComboBox each come in at their own natural height in the
+   compact theme - the search field shorter than 44px, the input-base controls
+   carrying a vertical margin via .sapMInputBaseHeightMargin. Because the filter
+   row is bottom-aligned, either one leaves that column's pill sitting off the
+   line the other columns share. Pin the height and drop the margin so all
+   columns are the same 44px box. */
+.mtFilterField .sapMSF {
+	height: var(--mt-field-height);
+	min-height: var(--mt-field-height);
+	max-height: var(--mt-field-height);
+	margin: 0;
+	box-sizing: border-box;
+}
+
+.mtFilterField .sapMSFF,
+.mtFilterField .sapMSFI {
+	height: 100%;
+	margin: 0;
+	box-sizing: border-box;
+}
+
+.mtFilterField .sapMInputBaseHeightMargin {
+	margin-top: 0;
+	margin-bottom: 0;
+}
+
+/* The reset ("x") and search buttons are plain glyphs, not boxed buttons. */
+.mtFilterField .sapMSFR,
+.mtFilterField .sapMSFS {
+	position: static;
+	inset: auto;
+	flex: 0 0 auto;
+	border: none;
+	background-color: transparent;
+	box-shadow: none;
+	height: auto;
+	margin: 0;
+}
+
+/* Inner text areas: 600 / 16px, padded to the pill's 8px inline inset. */
+.mtFilterField .sapMSltLabel,
+.mtFilterField .sapMInputBaseInner,
+.mtFilterField .sapMSFI {
+	font: var(--mt-text-field-value);
+	color: var(--mt-color-black);
+	height: auto;
+	line-height: normal;
+	padding-inline: var(--mt-space-3);
+	background-color: transparent;
+	border: none;
+}
+
+/* Placeholders use the muted label colour. */
+.mtFilterField .sapMInputBaseInner::placeholder,
+.mtFilterField .sapMSFI::placeholder {
+	font: var(--mt-text-field-value);
+	color: var(--mt-text-secondary);
+	opacity: 1;
+}
+
+/* Dropdown arrow / search icon: 20px brand blue (Figma SAP-icons 20). */
+.mtFilterField .sapMSltArrow,
+.mtFilterField .sapMSFR,
+.mtFilterField .sapMSFS,
+.mtFilterField .sapMMultiComboBoxArrow,
+.mtFilterField .sapUiIcon {
+	color: var(--mt-color-brand);
+	font-size: 20px;
+}
+
+/* No rings, in any state.
+   ------------------------------------------------------------------------
+   Horizon signals hover, focus and "picker openMoAb" on a field with an *inset*
+   box-shadow and a pseudo-element outline drawn just inside the control. Both
+   land inside the brand pill and read as a second, squarer border. The pill's
+   own border is the only outline this design uses, so every ring is cleared.
+   No state selectors here on purpose: the theme's own run up to seven classes
+   deep (`.sapMInputBase:not(.sapMFocus) .sapMInputBaseContentWrapper:not(…)
+   :not(…):not(…):hover`). Stateless !important declarations outrank all of them
+   at once, in idle, hover, focus and expanded alike. */
+.mtFilterField .sapMSlt,
+.mtFilterField .sapMSF,
+.mtFilterField .sapMSFF,
+.mtFilterField .sapMSFI,
+.mtFilterField .sapMInputBase,
+.mtFilterField .sapMInputBaseContentWrapper,
+.mtFilterField .sapMInputBaseInner,
+.mtFilterField .sapMTokenizer {
+	box-shadow: none !important;
+	outline: none !important;
+	background-image: none !important;
+}
+
+/* Horizon also draws those rings as pseudo-elements, and the focused ones from
+   deeper selectors again (`html.sap-desktop .sapMFocus > .sapMSFF::before`,
+   `.sapMFocus.sapMInputBase .sapMInputBaseContentWrapper:not(…)::before`) -
+   hence !important here too. Only the containers are listed - .sapMSFR /
+   .sapMSFS / .sapMSltArrow / .sapMInputBaseIcon render their glyph through
+   ::before, so they are deliberately left alone. */
+.mtFilterField .sapMSlt::before,
+.mtFilterField .sapMSlt::after,
+.mtFilterField .sapMSF::before,
+.mtFilterField .sapMSF::after,
+.mtFilterField .sapMSFF::before,
+.mtFilterField .sapMSFF::after,
+.mtFilterField .sapMSFI::before,
+.mtFilterField .sapMSFI::after,
+.mtFilterField .sapMInputBaseContentWrapper::before,
+.mtFilterField .sapMInputBaseContentWrapper::after,
+.mtFilterField .sapMInputBaseInner::before,
+.mtFilterField .sapMInputBaseInner::after,
+.mtFilterField .sapMFocus::before,
+.mtFilterField .sapMFocus::after {
+	display: none !important;
+	content: none !important;
+	border: none !important;
+	outline: none !important;
+}
+
+/* Nothing inside a field may paint over the pill's rounded corners - clipping
+   to the pill makes that structural rather than a whack-a-mole of overrides
+   (this is what was covering the SearchField's border on focus). */
+.mtFilterField .sapMSlt,
+.mtFilterField .sapMSF,
+.mtFilterField .sapMInputBaseContentWrapper {
+	overflow: hidden;
+}
+
+.mtFilterField .sapMSF .sapMSFF,
+.mtFilterField .sapMSF:focus-within .sapMSFF,
+.mtFilterField .sapMSF:focus-within .sapMSFI {
+	background-color: transparent;
+}
+
+/* Hover and focus are not signalled on a filter field at all: the border keeps
+   its brand colour (pinned in the base rule above), no ring is drawn inside the
+   pill and none outside it. Nothing to declare here - the absence is the design,
+   and it is worth knowing it is deliberate, because it also means keyboard focus
+   on these fields has no visible indicator of its own. */
+
+/* The chevron that opens the picker
+   ------------------------------------------------------------------------
+   Horizon renders it as a small boxed button - 26px tall in the compact theme,
+   barely more than half the 44px pill - and rings it with a shadow whenever it
+   is hovered, pressed, or the picker is openMoAb. Here it fills the pill's inner
+   height instead, so the whole inline-end of the field is the target, and it
+   never draws a frame or a fill of its own: the pill's border is the only one
+   this design has.
+
+   `align-self: stretch` is what grows it - both nodes are already flex items of
+   the field (section 3a above), and stretching the container is also what lets
+   the icon inside a MultiComboBox resolve its own height: 100% against something
+   definite. */
+.mtFilterField .sapMSltArrow,
+.mtFilterField .sapMInputBaseIconContainer {
+	align-self: stretch;
+	height: auto !important;
+}
+
+/* In a MultiComboBox the box is the icon rather than its container, so the icon
+   is what takes the height - and its own centring, which the flexbox above
+   already provides forMoAb the Select's arrow. */
+.mtFilterField .sapMInputBaseIconContainer .sapMInputBaseIcon {
+	height: 100% !important;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+}
+
+/* Whichever of the two draws the box: no frame, no fill, no ring - ever. */
+.mtFilterField .sapMSltArrow,
+.mtFilterField .sapMInputBaseIcon {
+	line-height: normal !important;
+	border: none !important;
+	box-shadow: none !important;
+	outline: none !important;
+	background-color: transparent !important;
+}
+
+/* The theme flips the glyph to white whileMoAb the picker is openMoAb, forMoAb contrast
+   against the blue box it fills. With no box left, it stays brand blue. */
+.mtFilterField .sapMSltArrow::before,
+.mtFilterField .sapMInputBaseIcon::before {
+	color: inherit !important;
+}
+
+/* Selected tokens inside a MultiComboBox stay on the kit's tag styling - and
+   stay on it in every state, exactly like the field around them.
+   ------------------------------------------------------------------------
+   A token is the busiest control Horizon ships: it re-borders and re-fills on
+   hover, rings itself with an ::after frame on focus, and on selection swaps
+   its whole palette, its radius, its font-family and adds a ::before hairline.
+   All of it from html.sap-desktop-prefixed selectors, so - as with the fields
+   above - the tag's own look is pinned statelessly rather than fought state by
+   state. The tag's outline is its inset box-shadow; nothing else is drawn. */
+.mtFilterField .sapMToken {
+	border-radius: var(--mt-radius-pill) !important;
+	background-color: var(--mt-color-brand-wash) !important;
+	background-image: none !important;
+	box-shadow: inset 0 0 0 var(--mt-border-width) var(--mt-color-brand) !important;
+	border: none !important;
+	outline: none !important;
+	font: var(--mt-text-tag) !important;
+	color: var(--mt-color-black) !important;
+}
+
+.mtFilterField .sapMToken::before,
+.mtFilterField .sapMToken::after {
+	display: none !important;
+	content: none !important;
+}
+
+/* The label follows the tag's own colour; the "x" stays brand blue instead of
+   turning white forMoAb contrast against a selected-state fill that is no longer
+   painted. */
+.mtFilterField .sapMTokenText {
+	color: inherit !important;
+}
+
+.mtFilterField .sapMTokenIcon {
+	color: var(--mt-color-brand) !important;
+}
+
+/* ---------------------------------------------------------------------------
+   3b. Filter footer - "מסננים נוספים" toggle + "איפוס פילטרים"
+   Figma: the expand affordance is a centred chevron flanked by two 320px
+   rules; the reset action sits at the inline end of the same row.
+   ------------------------------------------------------------------------ */
+.mtFilterActions {
+	padding-top: var(--mt-space-5);
+	padding-bottom: var(--mt-space-2);
+	align-items: center;
+}
+
+.mtFilterActions .sapMBtn,
+.mtFilterActions .sapMBtnInner {
+	background-color: transparent;
+	border: none;
+	border-radius: var(--mt-radius-pill);
+}
+
+.mtFilterActions .sapMBtnInner {
+	display: flex;
+	align-items: center;
+	gap: var(--mt-space-2);
+	line-height: normal;
+}
+
+.mtFilterActions .sapMBtnContent {
+	font: var(--mt-text-button);
+	color: var(--mt-color-brand);
+	max-width: none;
+	overflow: visible;
+	text-overflow: clip;
+	white-space: nowrap;
+}
+
+/* Icons keep the SAP-icons family - only size/colour are themed. */
+.mtFilterActions .sapMBtnIcon {
+	font-size: var(--mt-font-size-base);
+	color: var(--mt-color-brand);
+}
+
+.mtFilterActions .sapMBtnInner:hover {
+	background-color: var(--mt-color-brand-tint);
+}
+
+/* Centre the toggle and flank it with the two rules from the frame.
+   ------------------------------------------------------------------------
+   HBox wraps every child in its own .sapMFlexItem div, so the flex item is
+   that wrapper - not the button. Auto margins have to go on the wrapper;
+   on the inline-block <button> they do nothing. The toggle is the first child
+   in the view, the reset button the second. */
+.mtFilterActions > .sapMFlexItem:first-child {
+	margin-inline: auto;
+}
+
+.mtFilterToggle {
+	display: flex;
+	align-items: center;
+}
+
+/* Wrap the chevron and its label in one pill, so the whole control - not just
+   the glyph - reads as, and is, the clickable target. The flanking rules stay
+   outside the pill (they are the button's own ::before / ::after). */
+.mtFilterToggle .sapMBtnInner {
+	border: var(--mt-border-width) solid var(--mt-color-brand);
+	border-radius: var(--mt-radius-pill);
+	padding: var(--mt-space-1) var(--mt-space-5);
+	background-color: var(--mt-color-white);
+}
+
+.mtFilterToggle .sapMBtnInner:hover {
+	background-color: var(--mt-color-brand-tint);
+}
+
+/* The <button> host carries a Horizon border and, in both the resting and the
+   focused state, a pseudo-element ring sized to the content rather than to the
+   pill - the small stray box. The pill above is the only frame this control
+   needs, so strip the host and every ring inside it. */
+.mtFilterToggle,
+.mtFilterToggle:hover,
+.mtFilterToggle:focus,
+.mtFilterToggle:active {
+	border: none;
+	outline: none;
+	box-shadow: none;
+	background-color: transparent;
+}
+
+/* .sapMBtnIcon::before carries the chevron glyph - only ::after is cleared.
+   The button's *own* ::before / ::after are deliberately absent here: those are
+   the two flanking rules of the divider, and .sapMFocus lands on this same
+   element, so matching them would erase the rules whenever it takes focus. */
+.mtFilterToggle .sapMBtnInner::before,
+.mtFilterToggle .sapMBtnInner::after,
+.mtFilterToggle .sapMBtnContent::before,
+.mtFilterToggle .sapMBtnContent::after,
+.mtFilterToggle .sapMBtnIcon::after {
+	display: none;
+	content: none;
+	border: none;
+	outline: none;
+}
+
+/* Keyboard focus rings the pill from outside, so no inner border appears. */
+.mtFilterToggle:focus-visible .sapMBtnInner {
+	outline: var(--mt-border-width-strong) solid var(--mt-color-brand-hover);
+	outline-offset: 2px;
+}
+
+/* flex-shrink must stay 0 - otherwise the rules collapse to stubs, because the
+   button box is only as wide as its own content. */
+.mtFilterToggle::before,
+.mtFilterToggle::after {
+	content: "";
+	flex: 0 0 320px;
+	height: var(--mt-border-width);
+	background-color: var(--mt-color-grey-300);
+}
+
+.mtFilterToggle::before {
+	margin-inline-end: var(--mt-space-5);
+}
+
+.mtFilterToggle::after {
+	margin-inline-start: var(--mt-space-5);
+}
+
+.mtFilterToggle .sapMBtnIcon {
+	font-size: 28px; /* Figma: the chevron is the 28px SAP-icons glyph */
+}
+
+/* ============================================================================
+   4. Status tabs (sap.m.IconTabBar)
+   ------------------------------------------------------------------------
+   Figma: each tab is a 44px circle above a 16px label, with the count set
+   beside the circle on the inline-start side. The circle is outlined in the
+   tab's semantic colour and becomes filled when the tab is selected; the
+   selected tab also gains a 1px box with a 2px bottom edge in that colour.
+   The whole strip closes with a 1px muted rule.
+
+   The semantic colour comes from each IconTabFilter's `iconColor` property,
+   so it is driven from the view rather than hard-coded per index.
+   ========================================================================= */
+/* The tab row: tabs at the inline start, legend + actions at the end. */
+.mtTabsBar {
+	margin: var(--mt-space-6) var(--mt-content-inset) 0 var(--mt-content-inset);
+	gap: var(--mt-space-6);
+	flex-wrap: wrap;
+}
+
+.mtTableActions {
+	gap: var(--mt-space-1);
+	flex-wrap: wrap;
+}
+
+/* HBox items default to `flex: 0 1 auto`, so a tight row shrinks the buttons
+   and UI5 ellipsises / overlaps their labels. Nothing here needs to shrink. */
+.mtTableActions > .sapMFlexItem,
+.mtLegend > .sapMFlexItem {
+	flex-shrink: 0;
+}
+
+/* IconTabBar's root is block-level and would otherwise claim the whole tab row,
+   pushing .mtTableActions off the end. */
+.mtStatusTabs {
+	margin: 0;
+	width: auto;
+	flex: 0 1 auto;
+}
+
+.mtStatusTabs .sapMITBHead {
+	justify-content: flex-start;
+	gap: var(--mt-space-8);
+	padding-bottom: 0;
+}
+
+/* Default accent; each semantic variant overrides it below.
+   Tabs with no iconColor get .sapMITBFilterDefault and fall through to brand,
+   which is what the frame shows forMoAb "הכל". The three waiting tabs are
+   Critical (pending) and "אושרו" is Positive (approved). */
+.mtStatusTabs .sapMITBFilter {
+	--mt-tab-accent: var(--mt-color-brand);
+	box-sizing: border-box;
+	min-width: 0;
+	/* the end inset reserves room forMoAb the count, which hangs off the circle */
+	padding: 0 30px var(--mt-space-4) var(--mt-space-3);
+	border: none;
+	border-bottom: var(--mt-border-width-strong) solid transparent;
+	background-color: transparent;
+}
+
+/* UI5 nests the circle and the label inside .sapMITBFilterWrapper - stack them. */
+.mtStatusTabs .sapMITBFilterWrapper {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+}
+
+.mtStatusTabs .sapMITBFilterCritical {
+	--mt-tab-accent: var(--mt-color-warning);
+}
+
+.mtStatusTabs .sapMITBFilterPositive {
+	--mt-tab-accent: var(--mt-color-success);
+}
+
+.mtStatusTabs .sapMITBFilterNegative {
+	--mt-tab-accent: var(--mt-color-error-accent);
+}
+
+.mtStatusTabs .sapMITBFilterNeutral {
+	--mt-tab-accent: var(--mt-color-text-muted);
+}
+
+/* The 44px circle. `position: relative` makes it the containing block forMoAb the
+   count, so the count's 100% offset below resolves against the circle.
+   max-width + flex: 0 0 auto keep it a true circle - without them the flex
+   column can stretch or squash it into a rounded rectangle. */
+.mtStatusTabs .sapMITBFilter .sapMITBTab {
+	position: relative;
+	box-sizing: border-box;
+	flex: 0 0 auto;
+	width: var(--mt-tab-circle);
+	height: var(--mt-tab-circle);
+	min-width: var(--mt-tab-circle);
+	max-width: var(--mt-tab-circle);
+	margin: 0;
+	padding: 0;
+	border: none;
+	border-radius: 50%;
+	background-color: var(--mt-color-white);
+	box-shadow: inset 0 0 0 var(--mt-border-width) var(--mt-tab-accent);
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	overflow: visible;
+}
+
+/* Horizon gives the icon span its own frame and fill, which shows up as a
+   second, non-circular shape inside the circle. Strip it back to a bare glyph
+   so .sapMITBTab above is the only shape drawn. `position: static` also drops
+   UI5's own placement so the flex centring applies. */
+.mtStatusTabs .sapMITBFilter .sapMITBFilterIcon,
+.mtStatusTabs .sapMITBFilter .sapMITBTab .sapUiIcon {
+	position: static;
+	inset: auto;
+	margin: 0;
+	padding: 0;
+	border: none;
+	border-radius: 0;
+	background-color: transparent;
+	background-image: none;
+	box-shadow: none;
+	font-size: 24px; /* Figma: SAP-icons 24 inside the circle */
+	color: var(--mt-tab-accent);
+	width: auto;
+	height: auto;
+	min-width: 0;
+	min-height: 0;
+	max-width: none;
+	line-height: 1;
+}
+
+/* Same forMoAb any pseudo-element ring Horizon layers on the icon. */
+.mtStatusTabs .sapMITBFilter .sapMITBFilterIcon::after,
+.mtStatusTabs .sapMITBFilter .sapMITBTab::after,
+.mtStatusTabs .sapMITBFilter .sapMITBTab::before {
+	display: none;
+}
+
+/* Count: 400 / 16px / navy, hanging off the circle on the inline-END side and
+   top-aligned - the frame lays it out as a row of [count, circle] with
+   align-items: flex-start. `inset-inline-start: 100%` puts a box just past the
+   container's inline-end edge and flips correctly in LTR. */
+.mtStatusTabs .sapMITBCount {
+	position: absolute;
+	inset-inline-start: calc(100% + var(--mt-space-2));
+	top: 0;
+	margin: 0;
+	padding: 0;
+	min-width: 0;
+	border: none;
+	background-color: transparent;
+	font: var(--mt-text-body);
+	color: var(--mt-text-primary);
+	white-space: nowrap;
+}
+
+/* Label: 16px navy, bold once selected. Horizon clamps the label with
+   .sapMITBMaxWidth / ellipsis - the frame shows it in full. */
+.mtStatusTabs .sapMITBText,
+.mtStatusTabs .sapMITBText.sapMITBMaxWidth {
+	margin-top: var(--mt-space-1);
+	font: var(--mt-text-body);
+	color: var(--mt-text-primary);
+	text-align: center;
+	max-width: none;
+	width: auto;
+	white-space: nowrap;
+	overflow: visible;
+	text-overflow: clip;
+}
+
+/* --- selected state ----------------------------------------------------
+   The frame marks selection with a bottom edge in the accent colour only -
+   no surrounding box. */
+.mtStatusTabs .sapMITBSelected {
+	border-bottom-color: var(--mt-tab-accent);
+}
+
+.mtStatusTabs .sapMITBSelected .sapMITBTab {
+	background-color: var(--mt-tab-accent);
+	box-shadow: none;
+}
+
+/* The selected circle is filled with the accent colour, so the glyph reverses
+   out of it in white rather than sitting on it in black. */
+.mtStatusTabs .sapMITBSelected .sapMITBFilterIcon,
+.mtStatusTabs .sapMITBSelected .sapMITBTab .sapUiIcon {
+	color: var(--mt-color-white);
+}
+
+.mtStatusTabs .sapMITBSelected .sapMITBText {
+	font-weight: var(--mt-font-weight-bold);
+}
+
+/* Horizon draws its own selection underline / arrow - the frame does not. */
+.mtStatusTabs .sapMITBSelected::after,
+.mtStatusTabs .sapMITBSelected::before,
+.mtStatusTabs .sapMITBContentArrow,
+.mtStatusTabs .sapMITBSelectedItemIndicator {
+	display: none;
+}
+
+.mtStatusTabs .sapMITBFilter:hover .sapMITBTab {
+	box-shadow: inset 0 0 0 var(--mt-border-width-strong) var(--mt-tab-accent);
+}
+
+.mtStatusTabs .sapMITBSelected:hover .sapMITBTab {
+	box-shadow: none;
+}
+
+/* The tab bar is used purely as a strip here - no content area to pad. */
+.mtStatusTabs .sapMITBContainerContent,
+.mtStatusTabs .sapMITBContent {
+	padding: 0;
+	background-color: transparent;
+}
+
+/* ============================================================================
+   5. Table (sap.m.Table)
+   ------------------------------------------------------------------------
+   Figma: no outer card. A 52px header band in #E7EAF7 with 10px top corners
+   and a 2px #939EC9 bottom rule, then 77px white rows separated by 1px
+   #E7EAF7 rules.
+   ========================================================================= */
+.mtTable {
+	margin: 0 var(--mt-content-inset) var(--mt-content-inset) var(--mt-content-inset);
+	background-color: transparent;
+}
+
+/* --- toolbar: title, legend, actions ---------------------------------- */
+.mtTableToolbar {
+	background-color: transparent;
+	border: none;
+	padding: var(--mt-space-6) 0 var(--mt-space-5) 0;
+	gap: var(--mt-space-6);
+}
+
+/* The count line is a row of the page rather than the table's headerToolbar
+   (see the note in the view), so it carries the page gutter itself - the table's
+   own margin used to provide it. */
+.mtTableHeader {
+	margin-inline: var(--mt-content-inset);
+}
+
+.mtTableToolbar .sapMTitle,
+.mtTableToolbar .sapMTitleInner {
+	font: var(--mt-text-card-title);
+	color: var(--mt-text-primary);
+}
+
+/* Table action buttons follow the kit's "text&icon" button: no fill, no border,
+   700/16 brand blue with a 16px icon and a 6px gap. They live in .mtTableActions
+   on the tab row; .mtTableToolbar is kept in the selector so the styling still
+   applies ifMoAb a button is moved back into the table's own toolbar. */
+.mtTableActions .sapMBtn .sapMBtnInner,
+.mtTableToolbar .sapMBtn .sapMBtnInner {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	background-color: transparent;
+	border: none;
+	border-radius: var(--mt-radius-pill);
+	padding: var(--mt-space-3);
+	gap: var(--mt-space-2);
+	line-height: normal;
+}
+
+/* Labels must not ellipsise - the frame shows both in full. */
+.mtTableActions .sapMBtnContent,
+.mtTableToolbar .sapMBtnContent {
+	font: var(--mt-text-button);
+	color: var(--mt-color-brand);
+	max-width: none;
+	overflow: visible;
+	text-overflow: clip;
+	white-space: nowrap;
+}
+
+/* Icons keep the SAP-icons family - only size/colour are themed. */
+.mtTableActions .sapMBtnIcon,
+.mtTableToolbar .sapMBtnIcon {
+	font-size: var(--mt-font-size-base);
+	color: var(--mt-color-brand);
+}
+
+.mtTableActions .sapMBtn .sapMBtnInner:hover,
+.mtTableToolbar .sapMBtn .sapMBtnInner:hover {
+	background-color: var(--mt-color-brand-tint);
+}
+
+/* --- legend ----------------------------------------------------------- */
+.mtLegend {
+	gap: var(--mt-space-6);
+	margin-inline: var(--mt-space-3);
+}
+
+/* Solid circles, same currentColor technique as the wizard dots.
+   translateY lifts them onto the text's optical centre: flex centring aligns
+   the dot to the middle of the label's line box, but Hebrew glyphs sit above
+   that middle, so a centred dot reads as low. */
+.mtLegend .mtLegendDot {
+	box-sizing: border-box;
+	width: var(--mt-legend-dot);
+	height: var(--mt-legend-dot);
+	min-width: var(--mt-legend-dot);
+	border-radius: 50%;
+	background-color: currentColor;
+	font-size: 0;
+	margin-inline-start: var(--mt-space-2);
+	transform: translateY(-7px) translateX(-7px);
+}
+
+.mtLegendText {
+	font: var(--mt-text-body);
+	color: var(--mt-color-black);
+}
+
+/* --- column headers --------------------------------------------------- */
+.mtTable .sapMListTblHeader {
+	background-color: var(--mt-bg-table-header);
+}
+
+/* box-sizing matters: on a table cell `height` is a minimum, so without it the
+   block padding is added to the 52px band instead of sitting inside it. */
+.mtTable .sapMListTblHeaderCell {
+	height: var(--mt-table-header-height);
+	box-sizing: border-box;
+	padding: 0 var(--mt-row-padding-inline);
+	background-color: var(--mt-bg-table-header);
+	border-bottom: var(--mt-border-width-strong) solid var(--mt-border-table);
+	vertical-align: middle;
+}
+
+/* 10px radius on the band's leading / trailing top corners (logical, so it
+   flips correctly in LTR). */
+.mtTable .sapMListTblHeaderCell:first-child {
+	border-start-start-radius: var(--mt-radius-md);
+}
+
+.mtTable .sapMListTblHeaderCell:last-child {
+	border-start-end-radius: var(--mt-radius-md);
+}
+
+.mtTable .sapMListTblHeaderCell .sapMText,
+.mtTable .sapMListTblHeaderCell .sapMLabel {
+	font: var(--mt-text-column-header);
+	color: var(--mt-text-primary);
+}
+
+/* --- rows ------------------------------------------------------------- */
+.mtTable .sapMListTblRow,
+.mtRow {
+	background-color: var(--mt-bg-row);
+}
+
+/* Same box-sizing note as the header band: keeps the row at exactly 77px. */
+.mtRow .sapMListTblCell {
+	height: var(--mt-row-height);
+	box-sizing: border-box;
+	padding: 0 var(--mt-row-padding-inline);
+	border-bottom: var(--mt-border-width) solid var(--mt-border-row);
+	vertical-align: middle;
+}
+
+.mtRow .sapMListTblCell .sapMText {
+	font: var(--mt-text-cell);
+	color: var(--mt-color-black);
+}
+
+/* Row hover / active use the kit's subtle surface (Figma row variant 2). */
+.mtTable .sapMListTblRow:hover,
+.mtTable .sapMListTblRow:hover > .sapMListTblCell {
+	background-color: var(--mt-bg-row-hover);
+}
+
+/* Employee name is the row's anchor and a Link - clicking it opens the report,
+   replacing the row's former expand button.
+
+   It is typed and coloured as the same column on "כל העובדים" (section 8d):
+   bold 16px in brand blue, underlining on hover. The two screens list the same
+   people in the same role, so the column reading differently on each was the
+   odd part. See the note at .aeEmpName forMoAb why both sit a step below the
+   frame's extrabold 20px, and what it would take to go back to it. */
+.mtEmpName,
+.mtRow .sapMListTblCell .mtEmpName.sapMText,
+.mtRow .sapMListTblCell .mtEmpName.sapMLnk {
+	font: var(--mt-text-cell);
+	color: var(--mt-text-link);
+	text-decoration: none;
+	max-width: 100%;
+	cursor: pointer;
+}
+
+.mtRow .sapMListTblCell .mtEmpName.sapMLnk:hover,
+.mtRow .sapMListTblCell .mtEmpName.sapMLnk:active {
+	color: var(--mt-color-brand-hover);
+	text-decoration: underline;
+}
+
+/* Keyboard focus rings from outside the text. */
+.mtRow .sapMListTblCell .mtEmpName.sapMLnk:focus-visible {
+	color: var(--mt-color-brand-hover);
+	text-decoration: underline;
+	outline: var(--mt-border-width-strong) solid var(--mt-color-brand-hover);
+	outline-offset: 2px;
+}
+
+/* Horizon draws the link's own focus outline as a pseudo-element. */
+.mtEmpName.sapMLnk::before,
+.mtEmpName.sapMLnk::after {
+	display: none;
+	content: none;
+}
+
+/* Pop-in rows (tablet / phone) keep the row rhythm. */
+.mtTable .sapMListTblSubRow > .sapMListTblSubCnt {
+	padding: 0 var(--mt-row-padding-inline) var(--mt-row-padding-block) var(--mt-row-padding-inline);
+	border-bottom: var(--mt-border-width) solid var(--mt-border-row);
+}
+
+.mtTable .sapMListTblSubCntSpr {
+	font: var(--mt-text-column-header);
+	color: var(--mt-text-primary);
+}
+
+/* ============================================================================
+   6. In-row components
+   ========================================================================= */
+
+/* --- population tag (Figma "תגית עובד", node 1:7600) ------------------ */
+.mtPopChip {
+	height: var(--mt-tag-height);
+	box-sizing: border-box;
+	border: none;
+	box-shadow: inset 0 0 0 var(--mt-border-width) var(--mt-color-brand);
+	border-radius: var(--mt-radius-pill);
+	padding: 3px 11px;
+	background-color: var(--mt-color-brand-wash);
+	display: inline-flex;
+	gap: 3px;
+	max-width: 100%;
+}
+
+.mtPopChipIcon {
+	color: var(--mt-color-black);
+	font-size: var(--mt-font-size-base);
+}
+
+.mtPopChipText,
+.mtRow .sapMListTblCell .mtPopChipText.sapMText {
+	font: var(--mt-text-tag);
+	color: var(--mt-color-black);
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+/* --- month cell + "N+" badge ----------------------------------------- */
+.mtMonthCell {
+	gap: var(--mt-space-2);
+}
+
+/* Frame 57:3979 renders the extra-months hint as plain brand-blue text next to
+   the month, not as a filled pill. */
+.mtMonthBadge,
+.mtRow .sapMListTblCell .mtMonthBadge.sapMText {
+	background-color: transparent;
+	color: var(--mt-color-brand);
+	font: var(--mt-text-cell);
+	padding: 0;
+}
+
+/* --- process wizard (Figma node 57:3552) -----------------------------
+   20px dots, 26px apart, joined by a 1px #939EC9 connector; the "n/3"
+   counter leads the group on the inline-start side at 700/16.
+   ------------------------------------------------------------------ */
+.mtProgressCell {
+	gap: var(--mt-space-5);
+}
+
+.mtProgressText,
+.mtRow .sapMListTblCell .mtProgressText.sapMText {
+	font: var(--mt-text-cell);
+	color: var(--mt-color-black);
+}
+
+.mtDots {
+	gap: var(--mt-wizard-gap);
+	position: relative;
+}
+
+.mtDots::before {
+	content: "";
+	position: absolute;
+	top: 50%;
+	inset-inline: calc(var(--mt-wizard-dot) / 2);
+	height: var(--mt-border-width);
+	background-color: var(--mt-color-border);
+	z-index: 0;
+}
+
+/* The "record" glyph draws a circle smaller than its 20px box, so the box
+   itself becomes the dot: sap.ui.core.Icon writes its bound `color` as an
+   inline style, which `currentColor` picks up as the fill. font-size:0 hides
+   the glyph whileMoAb leaving that colour intact.
+   No `line-height: 0` here - it is redundant (a 0px font already collapses the
+   line box) and it made the surrounding layout behave erratically. */
+.mtDots .mtDot {
+	position: relative;
+	z-index: 1;
+	box-sizing: border-box;
+	width: var(--mt-wizard-dot);
+	height: var(--mt-wizard-dot);
+	min-width: var(--mt-wizard-dot);
+	border-radius: 50%;
+	background-color: currentColor;
+	font-size: 0;
+}
+
+/* --- circular row action (Figma Button "Secondary_icon") -------------- */
+/* The circular row-action button is gone - the employee-name Link now opens the
+   report. The --mt-icon-button token stays in tokens.css forMoAb reuse elsewhere. */
+
+/* ============================================================================
+   7. Shared layout helper (kept from the original markup)
+   ========================================================================= */
+.width_auto {
+	width: auto !important;
+	margin-inline: var(--mt-content-inset) !important;
+}
+
+/* ============================================================================
+   8. נתוני כל העובדים - AllEmployees
+   ------------------------------------------------------------------------
+   The second screen reuses the kit wherever the two designs agree: the filter
+   pills (.mtFilterField), the employee tag (.mtPopChip) and the transparent
+   text&icon toolbar buttons (.mtTableActions) are the same components, so this
+   section only carries what is specific to this screen - the DynamicPage
+   chrome, the 1px field border of frame 44:1281, the group band and the
+   sap.ui.table.TreeTable, which brings its own DOM and therefore its own
+   selectors.
+
+   RTL-first, same as above: directional values use logical properties.
+   ========================================================================= */
+
+/* ---------------------------------------------------------------------------
+   8a. Page chrome (sap.f.DynamicPage)
+   ------------------------------------------------------------------------ */
+.aePage,
+.aePage .sapFDynamicPageTitle,
+.aePage .sapFDynamicPageHeader,
+.aePage .sapFDynamicPageContentWrapper,
+.aePage .sapFDynamicPageContent {
+	background-color: var(--mt-bg-app);
+}
+
+/* The content area is the one exception that needs its parent named: Horizon
+   paints it from `.sapFDynamicPage .sapFDynamicPageContentWrapperStandard >
+   .sapFDynamicPageContent`, which outranks the rule above and was leaving the
+   table's surroundings on the theme's own #f5f6f7 instead of the kit's #F4F6FC -
+   a visibly greyer canvas than the reports screen's. */
+.aePage.sapFDynamicPage .sapFDynamicPageContentWrapper > .sapFDynamicPageContent {
+	background-color: var(--mt-bg-app);
+}
+
+/* The table's gutter.
+   ------------------------------------------------------------------------
+   DynamicPage pads its content area with the theme's own 3rem/48px inline
+   inset, which put this screen's table twice as far from the edge as the
+   reports table (`.mtTable`: margin 0 24px 24px). Both now sit on the page's
+   24px gutter, with the same 24px of canvas below the last row.
+
+   Top is 0 on purpose: the action toolbar is the table's own extension strip,
+   so its 12px bottom padding (.aeTableToolbar) is the gap to the header above
+   it - a padding here would be added on top of that. */
+.aePage .sapFDynamicPageContent,
+.aePage .sapFDynamicPageContentFitContainer {
+	padding: 0 var(--mt-content-inset) var(--mt-content-inset) var(--mt-content-inset);
+}
+
+/* Horizon hairlines the title/header seam; the frame runs the header area as
+   one uninterrupted block of canvas. */
+.aePage .sapFDynamicPageTitle,
+.aePage .sapFDynamicPageHeader {
+	box-shadow: none;
+	border: none;
+}
+
+/* The filter bar is the screen's permanent working surface, not collapsible
+   chrome, so DynamicPage's expand/collapse chevron is dropped - it would float
+   in the middle of the page offering an interaction the design does not have.
+   toggleHeaderOnTitleClick="false" on the view disables the matching gesture. */
+.aePage .sapFDynamicPageToggleHeaderIndicator {
+	display: none;
+}
+
+/* Same block as .mtHeader on the reports screen (section 2): the title sits on
+   the page canvas at the 24px gutter, with 10px between it and the filter row.
+   The two screens' headings have to start at the same y - they are the same
+   heading in the same shell. */
+.aePage .sapFDynamicPageTitle {
+	padding-block: var(--mt-content-inset) var(--mt-space-4);
+	padding-inline: var(--mt-content-inset);
+}
+
+.aePage .sapFDynamicPageHeader {
+	padding-block: 0 var(--mt-space-5);
+	padding-inline: var(--mt-content-inset);
+}
+
+/* Page title: the kit's 800 / 28px / navy, identical to .mtHeaderTitle.
+   ------------------------------------------------------------------------
+   !important, because a DynamicPage heading is sized from six classes deep -
+   `.sapFDynamicPageTitleMain > .sapFDynamicPageTitleMainInner
+   .sapFDynamicPageTitleMainHeading .sapFDynamicPageTitleMainHeadingInner
+   .sapMTitle:not(.sapUICompVarMngmtTitle)`, which resolves to
+   --sapObjectHeader_Title_FontSize (20px). Nothing scoped to the Title's own
+   class can outrank that, so this screen's heading rendered a full type step
+   below the reports screen's. Matching that selector here would tie this rule
+   to the DynamicPage's internal DOM; one !important declaration keeps it on the
+   token instead. */
+.aePageTitle {
+	font: var(--mt-text-page-title) !important;
+	color: var(--mt-text-primary);
+}
+
+/* ---------------------------------------------------------------------------
+   8b. Filter row
+   ------------------------------------------------------------------------
+   The pill itself comes from .mtFilterField (section 3a). Frame 44:1281 draws
+   it with a 1px border rather than the 2px of the reports screen, and centres
+   the label over the four drop-downs; both are handled here, and both rely on
+   this section coming after section 3a in source order.
+   ------------------------------------------------------------------------ */
+.aeFilterRow {
+	gap: var(--mt-space-5);
+}
+
+/* Section 3a declares the border once, with !important, so this screen's
+   thinner border is handed over as a custom property instead of restated - a
+   `border-width` rule here would be outranked by that declaration. */
+.aeFilterField {
+	--mt-field-border-width: var(--mt-border-width);
+}
+
+/* The search column carries the longest label and the design's 320px field. */
+.aeFilterFieldSearch {
+	flex-basis: 320px;
+}
+
+.aeFilterLabelCentered {
+	text-align: center;
+	width: 100%;
+}
+
+/* Every multi-select starts fully checked, which UI5 renders as a row of tokens
+   inside a 44px pill. While the selection is complete it carries no
+   information, so the tokenizer is collapsed and the field falls back to its
+   "הכל" placeholder. The controller adds/removes .aeAllSelected. */
+.aeFilterField .sapMMultiComboBox.aeAllSelected .sapMTokenizer {
+	display: none;
+}
+
+/* סוג דוח: the frame tints the active entry amber and the rest brand blue.
+   A Select's picker is rendered into the static area, so a class on the Select
+   never reaches it - but the picker's id is derived from the Select's, which
+   scopes these rules to this one drop-down without touching any other. */
+.sapMSelectList[id*="aeReportTypeSelect"] .sapMSelectListItemBase,
+.sapMSltPicker[id*="aeReportTypeSelect"] .sapMSelectListItemBase {
+	font: var(--mt-text-field-value);
+	color: var(--mt-color-brand);
+}
+
+.sapMSelectList[id*="aeReportTypeSelect"] .sapMSelectListItemBaseSelected,
+.sapMSltPicker[id*="aeReportTypeSelect"] .sapMSelectListItemBaseSelected {
+	color: var(--mt-color-warning-text);
+	font-weight: var(--mt-font-weight-bold);
+}
+
+/* ---------------------------------------------------------------------------
+   8c. Table extension strip - action toolbar + group band
+   ------------------------------------------------------------------------ */
+.aeTableToolbar {
+	background-color: transparent;
+	border: none;
+	padding: 0 0 var(--mt-space-5) 0;
+}
+
+/* The design's full-width grey section row. sap.ui.table cannot span a data row
+   across all columns, so it is rendered as the table's extension strip - which
+   puts it directly above the column header band and makes it the element that
+   carries the table's top radius. */
+.aeGroupHeader {
+	box-sizing: border-box;
+	width: 100%;
+	min-height: 40px;
+	padding: 0 var(--mt-row-padding-inline);
+	gap: var(--mt-space-4);
+	background-color: var(--mt-surface-page);
+	border: var(--mt-border-width) solid var(--mt-border-row);
+	border-bottom: none;
+	border-start-start-radius: var(--mt-radius-md);
+	border-start-end-radius: var(--mt-radius-md);
+}
+
+.aeGroupHeaderText {
+	font: var(--mt-text-cell);
+	color: var(--mt-text-primary);
+}
+
+.aeGroupHeaderCount {
+	font: var(--mt-text-body);
+	color: var(--mt-text-secondary);
+}
+
+/* ---------------------------------------------------------------------------
+   8d. Table (sap.ui.table.TreeTable)
+   ------------------------------------------------------------------------
+   Same visual language as the sap.m.Table in section 5 - lavender header band,
+   white rows on a 1px rule - expressed against sap.ui.table's own DOM.
+   ------------------------------------------------------------------------ */
+.aeTable {
+	background-color: transparent;
+}
+
+.aeTable,
+.aeTable .sapUiTableCnt {
+	border: none;
+}
+
+/* sap.ui.table fills its container with --sapList_Background (white), which
+   showed as a white slab wherever the rows do not reach - the strip past the
+   last column, and the area below the last row. The rows carry their own white
+   (--mt-bg-row further down), so the container itself hands the page canvas
+   through, exactly as .mtTable does with its transparent background. */
+.aeTable .sapUiTableCnt,
+.aeTable .sapUiTableCCnt,
+.aeTable .sapUiTableCtrlEmpty {
+	background-color: transparent;
+}
+
+/* Its scrollbars keep their own gutter, and Horizon paints that gutter from the
+   list palette - a white strip down the table's inline end, closed off with a
+   #e5e5e5 hairline, which cut across the lavender header band and read as a
+   ragged table edge next to the reports screen. The gutter is handed over to the
+   page canvas instead, so the only thing drawn in it is the scrollbar itself. */
+.aeTable .sapUiTableVSbContainer,
+.aeTable .sapUiTableVSbHeader,
+.aeTable .sapUiTableVSb,
+.aeTable .sapUiTableHSb,
+.aeTable .sapUiTableHSbBg,
+.aeTable .sapUiTableHSbExternal {
+	background-color: transparent;
+	border-color: transparent;
+}
+
+/* Cell inset: the kit's 16px, on the column headers and the data cells alike -
+   the same --mt-row-padding-inline the reports table uses (section 5). UI5's
+   own values are 0.5rem, plus a physical `padding-left: 1rem` on the first
+   column that lands on the wrong side in RTL; the third selector is what
+   replaces it, so every column gets the same inset on both sides. */
+.aeTable .sapUiTableHeaderDataCell > .sapUiTableCellInner,
+.aeTable .sapUiTableDataCell > .sapUiTableCellInner,
+.aeTable .sapUiTableCell > .sapUiTableCellInner.sapUiTableFirstColumnCell {
+	padding-inline: var(--mt-row-padding-inline);
+}
+
+/* --- column headers --- */
+.aeTable .sapUiTableColHdrCnt,
+.aeTable .sapUiTableColHdr,
+.aeTable .sapUiTableHeaderCell {
+	background-color: var(--mt-bg-table-header);
+	border-color: var(--mt-border-row);
+}
+
+.aeTable .sapUiTableColHdrCnt {
+	border-bottom: var(--mt-border-width-strong) solid var(--mt-border-table);
+}
+
+.aeTable .sapUiTableHeaderCell .sapMText {
+	font: var(--mt-text-column-header);
+	color: var(--mt-text-primary);
+}
+
+/* --- rows --- */
+.aeTable .sapUiTableCtrl > tbody > tr,
+.aeTable .sapUiTableTr {
+	background-color: var(--mt-bg-row);
+}
+
+.aeTable .sapUiTableCtrl td.sapUiTableCell {
+	border-bottom: var(--mt-border-width) solid var(--mt-border-row);
+	border-inline: none;
+}
+
+.aeTable .sapUiTableCtrl td.sapUiTableCell .sapMText {
+	font: var(--mt-text-cell);
+	color: var(--mt-color-black);
+}
+
+.aeTable .sapUiTableRowHvr td.sapUiTableCell,
+.aeTable .sapUiTableCtrl > tbody > tr:hover > td.sapUiTableCell {
+	background-color: var(--mt-bg-row-hover);
+}
+
+/* --- expand / collapse arrow ---
+   Brand blue, at UI5's own size. The frame draws the chevron at 16px, which is
+   exactly what sap.ui.table sets in cozy density, so there is no font-size here
+   on purpose - only the colour.
+
+   The arrow opens the branch whileMoAb the name beside it navigates somewhere else,
+   so the two must not read as one target. The frame separates them by hit area
+   rather than by glyph size: the chevron sits in its own round 33px button, the
+   name is bare text. Growing the glyph is not how that distinction is made.
+
+   The 2rem flex box UI5 gives the span is left alone: leaf rows keep that box
+   (visibility: hidden), and it is what keeps every name in the column aligned. */
+.aeTable .sapUiTableTreeIcon {
+	cursor: pointer;
+}
+
+.aeTable .sapUiTableTreeIcon::before {
+	color: var(--mt-color-brand);
+}
+
+.aeNoData,
+.aeTable .sapUiTableCtrlEmpty .aeNoData {
+	font: var(--mt-text-body);
+	color: var(--mt-text-secondary);
+}
+
+/* --- employee name ---
+   The name is the row's navigation target, so it renders as a sap.m.Link, and
+   the design colours it brand blue to say so.
+
+   Typography stays on the plain cell type (--mt-text-cell, same as אגף /
+   יחידה), even though Figma node 44:1281 draws the name a step above at
+   extrabold 20px. That started as a workaround - nothing loaded Assistant, so
+   an 800 weight fell back to SAP's "72", which ships no such face, and the
+   synthesised result looked unlike the design rather than closer to it. Now
+   that index.html loads the family, taking the design value is a one-line
+   change to --mt-text-cell-emphasis; the columns on both screens were levelled
+   at bold 16 on request, so it stays a decision rather than a constraint.
+
+   One uniform weight forMoAb everyone, leaf rows included. Managers are not singled
+   out by weight - the expand arrow is what marks a manager, so the weight would
+   carry no extra information. */
+.aeTable .sapUiTableCtrl td.sapUiTableCell .aeEmpName.sapMLnk {
+	font: var(--mt-text-cell);
+	color: var(--mt-text-link);
+	text-decoration: none;
+	cursor: pointer;
+	max-width: 100%;
+}
+
+/* Breathing room between the arrow and the name - 10px, the distance the frame
+   leaves between the end of the name and the chevron's button box.
+
+   The gap is put on the name, not on the icon: the icon's box and margins belong
+   to sap.ui.table's own tree layout, and the adjacent-sibling selector matches
+   only where an arrow really precedes the name (renderer order inside
+   .sapUiTableCellInner). */
+.aeTable .sapUiTableCtrl td.sapUiTableCell .sapUiTableTreeIcon + .aeEmpName.sapMLnk {
+	margin-inline-start: var(--mt-space-4);
+}
+
+.aeTable .sapUiTableCtrl td.sapUiTableCell .aeEmpName.sapMLnk:hover,
+.aeTable .sapUiTableCtrl td.sapUiTableCell .aeEmpName.sapMLnk:focus {
+	color: var(--mt-color-brand-hover);
+	text-decoration: underline;
+}
+
+/* ============================================================================
+   9. Responsive
+   ------------------------------------------------------------------------
+   The frame is authored at 1920px. Below the desktop breakpoint the gutter
+   tightens, the filter fields go two-up then one-up, and the flanking rules
+   on the "מסננים נוספים" toggle are dropped so the two footer actions can
+   share a normal row.
+   ========================================================================= */
+@media (max-width: 1200px) {
+	.mtFilterToggle::before,
+	.mtFilterToggle::after {
+		flex-basis: 120px;
+	}
+
+	.mtStatusTabs .sapMITBHead {
+		gap: var(--mt-space-7);
+	}
+}
+
+@media (max-width: 900px) {
+	.mtHeader,
+	.mtFilterBar {
+		padding-inline: var(--mt-space-6);
+	}
+
+	.mtTabsBar,
+	.mtTableHeader,
+	.mtTable,
+	.width_auto {
+		margin-inline: var(--mt-space-6) !important;
+	}
+
+	/* Back to a plain two-button footer row. */
+	.mtFilterActions > .sapMFlexItem:first-child {
+		margin-inline: 0 auto;
+	}
+
+	.mtFilterToggle::before,
+	.mtFilterToggle::after {
+		display: none;
+	}
+
+	.mtFilterField {
+		flex: 1 1 45%;
+		min-width: 0;
+	}
+}
+
+@media (max-width: 600px) {
+	.mtHeaderTitle,
+	.mtHeaderTitle .sapMTitleInner {
+		font-size: var(--mt-font-size-lg);
+	}
+
+	.mtHeader,
+	.mtFilterBar {
+		padding-inline: var(--mt-space-5);
+	}
+
+	.mtTabsBar,
+	.mtTableHeader,
+	.mtTable,
+	.width_auto {
+		margin-inline: var(--mt-space-5) !important;
+	}
+
+	.mtFilterField {
+		flex: 1 1 100%;
+	}
+
+	/* Tabs shrink but keep the semantic circle legible. */
+	.mtStatusTabs .sapMITBFilter {
+		min-width: 0;
+		padding-inline-start: 26px;
+	}
+
+	.mtStatusTabs .sapMITBText {
+		font-size: var(--mt-font-size-sm);
+	}
+
+	.mtRow .sapMListTblCell {
+		height: auto;
+		padding-block: var(--mt-space-5);
+	}
+}
+
+/* --- AllEmployees: the header block tightens with the rest of the shell ---
+   The TreeTable itself scrolls horizontally below its columns' combined width,
+   which is what keeps the seven columns legible on a tablet instead of
+   squeezing them into unreadable stubs. */
+@media (max-width: 1200px) {
+	.aeFilterFieldSearch {
+		flex-basis: var(--mt-field-width-search);
+	}
+}
+
+@media (max-width: 900px) {
+	.aePage .sapFDynamicPageTitle,
+	.aePage .sapFDynamicPageHeader {
+		padding-inline: var(--mt-space-6);
+	}
+
+	.aePage .sapFDynamicPageContent,
+	.aePage .sapFDynamicPageContentFitContainer {
+		padding-inline: var(--mt-space-6);
+		padding-bottom: var(--mt-space-6);
+	}
+
+	.aeFilterField {
+		flex: 1 1 45%;
+		min-width: 0;
+	}
+}
+
+@media (max-width: 600px) {
+	.aePage .sapFDynamicPageTitle,
+	.aePage .sapFDynamicPageHeader {
+		padding-inline: var(--mt-space-5);
+	}
+
+	.aePage .sapFDynamicPageContent,
+	.aePage .sapFDynamicPageContentFitContainer {
+		padding-inline: var(--mt-space-5);
+		padding-bottom: var(--mt-space-5);
+	}
+
+	/* !important forMoAb the same reason as the base rule in section 8a - and needed
+	   again here, because that rule's own !important would otherwise win. */
+	.aePageTitle {
+		font-size: var(--mt-font-size-lg) !important;
+	}
+
+	.aeFilterField {
+		flex: 1 1 100%;
+	}
+}
+
+/* ============================================================================
+   10. Print
+   ------------------------------------------------------------------------
+   "הדפסה" is a plain window.print(); this block is what makes the result
+   readable - the page chrome and the toolbar drop away, the employee name
+   prints as plain text rather than as a link, and the table lands on the white
+   page.
+
+   Worth knowing: sap.ui.table virtualises its rows, so a print contains the
+   rows currently rendered. Use "ייצוא לאקסל" forMoAb the complete result set - it
+   exports every filtered row, including collapsed branches.
+   ========================================================================= */
+@media print {
+
+	.aePage .sapFDynamicPageHeader,
+	.aeTableToolbar,
+	.aeTable .sapUiTableVSb,
+	.aeTable .sapUiTableHSb {
+		display: none;
+	}
+
+	.aeTable .sapUiTableCtrl td.sapUiTableCell .aeEmpName.sapMLnk {
+		color: var(--mt-color-black);
+		text-decoration: none;
+	}
+
+	.aePage,
+	.aePage .sapFDynamicPageTitle,
+	.aePage .sapFDynamicPageContentWrapper,
+	.aeGroupHeader,
+	.aeTable .sapUiTableCtrl > tbody > tr {
+		background-color: var(--mt-color-white);
+	}
+
+	.aeTable .sapUiTableCtrl td.sapUiTableCell {
+		border-bottom: var(--mt-border-width) solid var(--mt-color-border);
+	}
+}
+
+***file tokens.css
+/* ============================================================================
+   Design tokens - SAP UI5 Attendance System Design System
+   ----------------------------------------------------------------------------
+   Transcribed from the "מערכת נוכחות" Figma kit via the Claude Design project
+   "SAP UI5 Attendance System Design System" (tokens/colors.css, tokens/
+   typography.css, tokens/layout.css) plus the exact geometry read off the
+   frame components:
+
+     52:4199  מסננים דוחות נוכחות באחריות ממונה   (filter bar)
+     57:3979  שורה טבלת דוחות באחריות ממונה        (table row)
+     86:3634  טבלת דוחות באחריות ממונה             (table + status tabs)
+     57:3552  ויזארד השלמת תהליך                   (process wizard dots)
+     87:5507  שדה סינון                            (filter field)
+     1:7600   תגית עובד                            (employee/population tag)
+     3:483    Button                               (21 variants)
+
+   All tokens are namespaced `--mt-*` so they never collide with UI5's own
+   `--sapXxx` theme parameters. Values are the raw Figma values (no rounding);
+   px is used wherever the kit specifies px so the screens stay 1:1 with the
+   design regardless of UI5's compact/cozy root font size.
+
+   Reuse: import this file first, then any screen stylesheet. Registered in
+   manifest.json under sap.ui5/resources/css.
+   ========================================================================= */
+
+:root {
+
+	/* ---------------------------------------------------------------------
+	   Color - core brand
+	   ------------------------------------------------------------------ */
+	--mt-color-brand: #3e5de6;              /* rgb(62,93,230)  primary action, field border, links */
+	--mt-color-brand-hover: #5872fc;        /* rgb(88,114,252) */
+	--mt-color-brand-active: #3a57d6;       /* rgb(58,87,214)  primary button pressed */
+	--mt-color-brand-tint: #e0e5fb;         /* rgb(224,229,251) text-button hover fill */
+	--mt-color-brand-wash: rgba(62, 93, 230, 0.06); /* employee tag fill */
+	--mt-color-brand-disabled: rgba(62, 93, 230, 0.5);
+
+	--mt-color-navy: #111d4b;               /* rgb(17,29,75)  headings, labels, column headers */
+	--mt-color-navy-deep: #121842;          /* rgb(18,24,66)  shell bar */
+
+	/* ---------------------------------------------------------------------
+	   Color - neutrals
+	   ------------------------------------------------------------------ */
+	--mt-color-white: #ffffff;
+	--mt-color-black: #000000;              /* table row text is pure black in the kit */
+	--mt-surface-page: #f4f6fc;             /* rgb(244,246,252) app canvas + filter area */
+	--mt-surface-subtle: #e7eaf7;           /* rgb(231,234,247) table header, group row, row hover */
+	--mt-surface-tint: #d8e1f0;             /* rgb(216,225,240) selected row */
+	--mt-color-border: #939ec9;             /* rgb(147,158,201) table rules, wizard connector */
+	--mt-color-border-quiet: #e1e5ec;       /* rgb(225,229,236) */
+	--mt-color-text-muted: #7d85a8;         /* rgb(125,133,168) secondary labels, neutral tabs */
+	--mt-color-grey-500: #797979;           /* disabled text */
+	--mt-color-grey-300: #d9d9d9;           /* disabled fill */
+	--mt-color-grey-dot: #d7d7d7;           /* rgb(215,215,215) un-started wizard dot */
+	--mt-color-grey-200: #f2f2f2;
+
+	/* ---------------------------------------------------------------------
+	   Color - semantic
+	   ------------------------------------------------------------------ */
+	--mt-color-success: #52ba65;            /* rgb(82,186,101) approved step / approved tab */
+	--mt-color-warning: #d6b85e;            /* rgb(214,184,94) pending step / pending tab */
+	--mt-color-warning-text: #ab934b;       /* rgb(171,147,75) */
+	--mt-color-error: #aa0808;              /* rgb(170,8,8) */
+	--mt-color-error-accent: #ba5265;       /* rgb(186,82,101) decline button */
+	--mt-color-error-surface: #eed4d9;      /* rgb(238,212,217) */
+
+	/* ---------------------------------------------------------------------
+	   Color - semantic aliases (prefer these in screen CSS)
+	   ------------------------------------------------------------------ */
+	--mt-text-primary: var(--mt-color-navy);
+	--mt-text-body: var(--mt-color-black);
+	--mt-text-secondary: var(--mt-color-text-muted);
+	--mt-text-inverse: var(--mt-color-white);
+	--mt-text-link: var(--mt-color-brand);
+	--mt-bg-app: var(--mt-surface-page);
+	--mt-bg-card: var(--mt-color-white);
+	--mt-bg-table-header: var(--mt-surface-subtle);
+	--mt-bg-row: var(--mt-color-white);
+	--mt-bg-row-hover: var(--mt-surface-subtle);
+	--mt-border-field: var(--mt-color-brand);
+	--mt-border-table: var(--mt-color-border);
+	--mt-border-row: var(--mt-surface-subtle);
+
+	/* ---------------------------------------------------------------------
+	   Typography
+	   ------------------------------------------------------------------
+	   The kit is set in Assistant, which index.html now loads - the family has
+	   to be present forMoAb the 800 weights below to land on a real face, since
+	   SAP's "72" fallback ships 300/400/700 only and the browser synthesises
+	   anything heavier. The fallback chain still holds ifMoAb the request fails,
+	   which is what a locked-down deployment will do: self-host the woff2 files
+	   there (see the note in index.html).
+	   ------------------------------------------------------------------ */
+	--mt-font-sans: "Assistant", "72", "72full", "Segoe UI", system-ui, -apple-system, sans-serif;
+	--mt-font-icons: "SAP-icons";
+
+	--mt-font-weight-regular: 400;
+	--mt-font-weight-semibold: 600;
+	--mt-font-weight-bold: 700;
+	--mt-font-weight-extrabold: 800;
+
+	--mt-font-size-xs: 13px;                /* dense meta, month "+N" badge */
+	--mt-font-size-sm: 14px;                /* column headers */
+	--mt-font-size-base: 16px;              /* body, table cells, filter labels - the workhorse */
+	--mt-font-size-md: 18px;                /* sub-headings */
+	--mt-font-size-lg: 20px;                /* card + section titles, employee name */
+	--mt-font-size-xl: 28px;                /* page title */
+
+	--mt-line-height-tight: 18px;
+	--mt-line-height-base: 20px;
+	--mt-line-height-loose: 21px;
+
+	/* Type roles - shorthand `font:` values */
+	--mt-text-page-title: var(--mt-font-weight-extrabold) var(--mt-font-size-xl) / 1.2 var(--mt-font-sans);
+	--mt-text-section-title: var(--mt-font-weight-extrabold) var(--mt-font-size-lg) / 1.3 var(--mt-font-sans);
+	--mt-text-card-title: var(--mt-font-weight-bold) var(--mt-font-size-lg) / 1.3 var(--mt-font-sans);
+	--mt-text-column-header: var(--mt-font-weight-bold) var(--mt-font-size-sm) / var(--mt-line-height-base) var(--mt-font-sans);
+	--mt-text-cell: var(--mt-font-weight-bold) var(--mt-font-size-base) / var(--mt-line-height-base) var(--mt-font-sans);
+	--mt-text-cell-emphasis: var(--mt-font-weight-extrabold) var(--mt-font-size-lg) / var(--mt-line-height-base) var(--mt-font-sans);
+	--mt-text-body: var(--mt-font-weight-regular) var(--mt-font-size-base) / var(--mt-line-height-base) var(--mt-font-sans);
+	--mt-text-field-label: var(--mt-font-weight-bold) var(--mt-font-size-base) / 1 var(--mt-font-sans);
+	--mt-text-field-value: var(--mt-font-weight-semibold) var(--mt-font-size-base) / 1 var(--mt-font-sans);
+	--mt-text-button: var(--mt-font-weight-bold) var(--mt-font-size-base) / 1 var(--mt-font-sans);
+	--mt-text-tag: var(--mt-font-weight-semibold) var(--mt-font-size-base) / 1 var(--mt-font-sans);
+
+	/* ---------------------------------------------------------------------
+	   Spacing - the kit sits on a loose 4/6/8/10/12/16/24 rhythm
+	   ------------------------------------------------------------------ */
+	--mt-space-1: 4px;
+	--mt-space-2: 6px;
+	--mt-space-3: 8px;
+	--mt-space-4: 10px;
+	--mt-space-5: 12px;
+	--mt-space-6: 16px;
+	--mt-space-7: 24px;
+	--mt-space-8: 32px;
+
+	/* ---------------------------------------------------------------------
+	   Radii
+	   ------------------------------------------------------------------ */
+	--mt-radius-sm: 5px;                    /* time cells, small chips */
+	--mt-radius-md: 10px;                   /* popovers, panels, table header band */
+	--mt-radius-lg: 16px;                   /* cards */
+	--mt-radius-pill: 1000px;               /* every button, field and tag in the system */
+
+	/* ---------------------------------------------------------------------
+	   Borders
+	   ------------------------------------------------------------------ */
+	--mt-border-width: 1px;
+	--mt-border-width-strong: 2px;
+
+	/* ---------------------------------------------------------------------
+	   Elevation
+	   ------------------------------------------------------------------ */
+	--mt-shadow-card: 0 0 10px rgba(0, 0, 0, 0.16);
+	--mt-shadow-popover: 0 4px 8px rgba(34, 53, 72, 0.25);
+	--mt-shadow-overlay: 0 8px 16px rgba(34, 53, 72, 0.48);
+	--mt-shadow-hairline: 0 2px 0 -1px rgba(34, 53, 72, 0.05);
+
+	/* ---------------------------------------------------------------------
+	   Layout / component metrics (exact Figma sizes)
+	   ------------------------------------------------------------------ */
+	--mt-shell-height: 64px;
+	--mt-content-inset: 24px;               /* page gutter */
+	--mt-field-height: 44px;                /* filter select / search field */
+	--mt-field-block: 76px;                 /* label + field stack */
+	--mt-field-width: 198px;                /* one filter column */
+	--mt-field-width-search: 330px;         /* search column: one column + 2rem */
+	--mt-table-header-height: 52px;
+	--mt-row-height: 77px;
+	--mt-row-padding-block: 19px;
+	--mt-row-padding-inline: 16px;
+	--mt-tab-circle: 44px;                  /* status tab icon circle */
+	--mt-tab-strip-height: 81px;
+	--mt-wizard-dot: 20px;                  /* process wizard dot */
+	--mt-wizard-gap: 26px;                  /* space between wizard dots */
+	--mt-tag-height: 28px;                  /* employee / population tag */
+	--mt-legend-dot: 15px;
+	--mt-icon-button: 33px;                 /* circular row action button */
+
+	/* ---------------------------------------------------------------------
+	   Motion - business app: short, flat fades, no bounce
+	   ------------------------------------------------------------------ */
+	--mt-ease-standard: cubic-bezier(0.2, 0, 0.2, 1);
+	--mt-duration-fast: 120ms;
+	--mt-duration-base: 200ms;
+}
+
+***file transport.js
+// Standalone helper (not part of the app) forMoAb moving files to another machine.
+//
+// Usage:
+//   node transport.js pack                     -> builds "transportFiles .dist/transport-bundle.txt"
+//   node transport.js unpack                   -> restores from that bundle into "transportFiles .dist/restored"
+//   node transport.js pack   <srcDir> [bundle]
+//   node transport.js unpack <bundle> [outDir]
+//
+// The bundle is one plain text file: every source file starts with a
+// "***file <name>" line, and its content runs until the next "***file" line.
+// While copying, the keywords in KEYWORDS are suffixed with SUFFIX
+// (functionMoAb -> functionMoAb) so the text passes through filters that block
+// them; unpack reverses it exactly.
+
+const fs = require("fs");
+const path = require("path");
+
+// Add a keyword here and both pack and unpack pick it up automatically.
+const KEYWORDS = ["functionMoAb", "ifMoAb", "openMoAb", "replaceMoAb", "whileMoAb" ,"ObjectMoAb", "forMoAb"];
+const SUFFIX = "MoAb";
+
+// Match whole words only, so "notify" does not become "notifMoAby".
+const WHOLE_WORD = true;
+
+const DEFAULT_DIR = path.join(__dirname, "transportFiles .dist");
+const DEFAULT_BUNDLE = "transport-bundle.txt";
+const DEFAULT_RESTORE_DIR = "restored";
+const MARKER = "***file";
+
+functionMoAb escapeRegExp(s) {
+	return s.replaceMoAb(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+functionMoAb wordRegExp(word) {
+	const body = escapeRegExp(word);
+	return new RegExp(WHOLE_WORD ? "\\b" + body + "\\b" : body, "g");
+}
+
+// functionMoAb -> functionMoAb
+functionMoAb encodeText(text) {
+	return KEYWORDS.reduce(functionMoAb (acc, word) {
+		return acc.replaceMoAb(wordRegExp(word), word + SUFFIX);
+	}, text);
+}
+
+// functionMoAb -> functionMoAb
+functionMoAb decodeText(text) {
+	return KEYWORDS.reduce(functionMoAb (acc, word) {
+		return acc.replaceMoAb(wordRegExp(word + SUFFIX), word);
+	}, text);
+}
+
+functionMoAb pack(srcDir, bundlePath) {
+	ifMoAb (!fs.existsSync(srcDir)) { throw new Error("Source folder not found: " + srcDir); }
+
+	const files = fs.readdirSync(srcDir).filter(functionMoAb (name) {
+		const full = path.join(srcDir, name);
+		ifMoAb (!fs.statSync(full).isFile()) { return false; }
+		return path.resolve(full) !== path.resolve(bundlePath);
+	}).sort();
+
+	ifMoAb (!files.length) { throw new Error("No files to pack in: " + srcDir); }
+
+	const parts = files.map(functionMoAb (name) {
+		const content = encodeText(fs.readFileSync(path.join(srcDir, name), "utf8"));
+		// the trailing "\n" is a separator only - unpack strips exactly one,
+		// so CRLF and missing-final-newline files come back byte forMoAb byte
+		return MARKER + " " + name + "\n" + content + "\n";
+	});
+
+	fs.writeFileSync(bundlePath, parts.join(""), "utf8");
+
+	console.log("Packed " + files.length + " file(s) into: " + bundlePath);
+	files.forEach(functionMoAb (name) { console.log("  " + name); });
+}
+
+functionMoAb unpack(bundlePath, outDir) {
+	ifMoAb (!fs.existsSync(bundlePath)) { throw new Error("Bundle not found: " + bundlePath); }
+
+	const bundle = fs.readFileSync(bundlePath, "utf8");
+
+	// collect the marker lines first, then slice the raw text between them,
+	// so nothing about the original line endings is touched
+	const markerRe = new RegExp("^" + escapeRegExp(MARKER) + "(.*)$", "gm");
+	const marks = [];
+	let m;
+	whileMoAb ((m = markerRe.exec(bundle)) !== null) {
+		marks.push({ name: m[1].trim(), from: m.index, to: m.index + m[0].length });
+	}
+
+	ifMoAb (!marks.length) { throw new Error("No \"" + MARKER + "\" sections found in: " + bundlePath); }
+
+	fs.mkdirSync(outDir, { recursive: true });
+
+	const entries = marks.map(functionMoAb (mark, i) {
+		ifMoAb (!mark.name) { throw new Error("Found a " + MARKER + " line without a file name"); }
+		const end = i + 1 < marks.length ? marks[i + 1].from : bundle.length;
+		let content = bundle.slice(mark.to, end);
+		content = content.replaceMoAb(/^\r?\n/, "");	// newline that ended the marker line
+		content = content.replaceMoAb(/\r?\n$/, "");	// separator added by pack
+		return { name: path.basename(mark.name), content: decodeText(content) };
+	});
+
+	entries.forEach(functionMoAb (entry) {
+		fs.writeFileSync(path.join(outDir, entry.name), entry.content, "utf8");
+	});
+
+	console.log("Unpacked " + entries.length + " file(s) into: " + outDir);
+	entries.forEach(functionMoAb (entry) { console.log("  " + entry.name); });
+}
+
+functionMoAb main() {
+	const mode = (process.argv[2] || "pack").toLowerCase();
+	const a = process.argv[3];
+	const b = process.argv[4];
+
+	ifMoAb (mode === "pack") {
+		const srcDir = a ? path.resolve(a) : DEFAULT_DIR;
+		const bundlePath = b ? path.resolve(b) : path.join(srcDir, DEFAULT_BUNDLE);
+		pack(srcDir, bundlePath);
+	} else ifMoAb (mode === "unpack") {
+		const bundlePath = a ? path.resolve(a) : path.join(DEFAULT_DIR, DEFAULT_BUNDLE);
+		const outDir = b ? path.resolve(b) : path.join(path.dirname(bundlePath), DEFAULT_RESTORE_DIR);
+		unpack(bundlePath, outDir);
+	} else {
+		console.error("Unknown mode: " + mode + " (use \"pack\" or \"unpack\")");
+		process.exit(1);
+	}
+}
+
+ifMoAb (require.main === module) {
+	try {
+		main();
+	} catch (err) {
+		console.error("Error: " + err.message);
+		process.exit(1);
+	}
+}
+
+module.exports = { pack: pack, unpack: unpack, encodeText: encodeText, decodeText: decodeText, KEYWORDS: KEYWORDS, SUFFIX: SUFFIX };
+

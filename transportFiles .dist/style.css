@@ -1,0 +1,1656 @@
+/* ============================================================================
+   דוחות נוכחות באחריות ממונה - Manager attendance reports
+   ----------------------------------------------------------------------------
+   Visual layer only. Every value resolves to a token from css/tokens.css,
+   which transcribes the "מערכת נוכחות" Figma kit (frame 57:2941 and its
+   member components). Nothing here changes control behaviour - only
+   properties/CSS of the standard sap.m controls already in the view.
+
+   Layout is RTL-first: directional values use logical properties
+   (inline-start / inline-end) so the screen also holds up if rendered LTR.
+   The single exception is annotated where it occurs (.mtFilterToggle).
+   ========================================================================= */
+
+/* ============================================================================
+   1. Page canvas
+   ========================================================================= */
+.mtPage,
+.mtPage .sapMPageEnableScrolling {
+	background-color: var(--mt-bg-app);
+}
+
+.mtPage {
+	font-family: var(--mt-font-sans);
+	color: var(--mt-text-primary);
+}
+
+/* Only the table scrolls.
+   ------------------------------------------------------------------------
+   sap.m.Page renders its content into an absolutely positioned <section> that
+   fills the page and scrolls as one block, so a long list used to carry the
+   title, the filters and the status tabs off the top of the screen with it.
+   Laying that section out as a flex column instead lets the header block keep
+   its natural height while the table takes whatever is left and scrolls inside
+   itself - which is also what makes its sticky column headers stick to the top
+   of the table rather than to the top of the page.
+
+   min-height on the table is the escape hatch: if the fixed part ever grows
+   taller than the window (expanded filters on a short screen) the table stops
+   shrinking and the section's own scrolling - still enabled - takes over, so
+   nothing becomes unreachable. */
+.mtPage > section {
+	display: flex;
+	flex-direction: column;
+}
+
+.mtPage > section > .mtHeader,
+.mtPage > section > .mtFilterBar,
+.mtPage > section > .mtTabsBar,
+.mtPage > section > .mtTableHeader {
+	flex: 0 0 auto;
+}
+
+.mtPage > section > .mtTable {
+	flex: 1 1 auto;
+	min-height: 160px;
+	overflow: auto;
+}
+
+/* Let the kit's type stack win over the theme's "72" default inside the screen. */
+.mtPage .sapMText,
+.mtPage .sapMLabel,
+.mtPage .sapMTitle,
+.mtPage .sapMBtnContent,
+.mtPage .sapMSltLabel,
+.mtPage .sapMInputBaseInner,
+.mtPage .sapMITBText,
+.mtPage .sapMITBCount {
+	font-family: var(--mt-font-sans);
+}
+
+/* ============================================================================
+   2. Page header
+   ------------------------------------------------------------------------
+   Figma: 800 / 28px / navy, sitting on the page canvas at the 24px gutter.
+   ========================================================================= */
+.mtHeader {
+	padding: var(--mt-content-inset) var(--mt-content-inset) var(--mt-space-4) var(--mt-content-inset);
+	text-align: start;
+}
+
+.mtHeaderTitle,
+.mtHeaderTitle .sapMTitleInner {
+	font: var(--mt-text-page-title);
+	color: var(--mt-text-primary);
+}
+
+/* ============================================================================
+   3. Filter bar
+   ------------------------------------------------------------------------
+   Figma: the filter block sits directly on the page canvas (#F4F6FC) - it is
+   not a tinted card. Fields are 198x44 pills with a 2px brand-blue border and
+   a 700/16 navy label 1px above them.
+   ========================================================================= */
+.mtFilterBar {
+	background-color: transparent;
+	padding: 0 var(--mt-content-inset);
+	margin: 0;
+}
+
+.mtFilterRow {
+	gap: var(--mt-space-5);
+}
+
+/* One filter column = 198px. Fields do not grow, so a short row keeps the
+   same field size as a full row. */
+.mtFilterField {
+	flex: 0 1 var(--mt-field-width);
+	min-width: 168px;
+	padding: var(--mt-space-1) 0;
+}
+
+/* The search column runs 2rem wider than the rest - it carries the longest
+   label. Declared after .mtFilterField so it overrides that flex shorthand. */
+.mtFilterFieldSearch {
+	flex-basis: var(--mt-field-width-search);
+}
+
+.mtFilterRowAdvanced {
+	margin-top: var(--mt-space-4);
+}
+
+/* Label: 700 / 16px / navy, 1px above the field (Figma gap: 1).
+   A fixed height keeps every column's field starting at the same y - the row is
+   bottom-aligned, so a label that wrapped or clipped differently would push its
+   own field out of line with the others. */
+.mtFilterLabel {
+	font: var(--mt-text-field-label);
+	color: var(--mt-text-primary);
+	padding-bottom: 1px;
+	height: 21px;
+	min-height: 21px;
+	box-sizing: content-box;
+}
+
+/* ---------------------------------------------------------------------------
+   3a. Filter controls - Select / MultiComboBox / SearchField
+   Figma: height 44, radius pill, 2px brand-blue border, white fill,
+   inner padding 4px 8px, value text 600/16.
+   ------------------------------------------------------------------------ */
+.mtFilterField {
+	/* The pill's border width lives in one custom property so a screen can
+	   restyle it (section 8b runs this 2px down to 1px) without restating the
+	   border, which the rule below has to pin with !important. */
+	--mt-field-border-width: var(--mt-border-width-strong);
+}
+
+.mtFilterField .sapMSlt,
+.mtFilterField .sapMSF,
+.mtFilterField .sapMInputBaseContentWrapper {
+	height: var(--mt-field-height);
+	min-height: var(--mt-field-height);
+	border-radius: var(--mt-radius-pill);
+	box-sizing: border-box;
+
+	/* Border and fill are constants - a field looks the same idle, hovered,
+	   focused or open. !important rather than a rule per state, because Horizon
+	   changes both from selectors that nest deeper than anything scoped to
+	   .mtFilterField can: it brightens the wrapper's border on hover, drops the
+	   border outright on a focused Select (`.sapMSlt.sapMSltFocused … {border:
+	   none}`), recolours it while a picker is open (.sapMInputBaseIconPressed)
+	   and tints the fill on focus (.sapMFocus). One !important declaration holds
+	   in every one of those states at once. */
+	border: var(--mt-field-border-width) solid var(--mt-border-field) !important;
+	background-color: var(--mt-color-white) !important;
+}
+
+/* MultiComboBox / Input: the wrapper carries the border, so the root must not
+   double it up. */
+.mtFilterField .sapMMultiComboBox,
+.mtFilterField .sapMInputBase {
+	height: var(--mt-field-height);
+	border: none;
+	background-color: transparent;
+}
+
+/* Vertical centring inside the 44px pill.
+   ------------------------------------------------------------------------
+   The compact theme centres a control's content with a line-height tuned to
+   its own 1.625rem height. Forcing the box to 44px leaves that line-height
+   behind, so the value and the chevron sit at the top of the pill. Laying the
+   inner parts out with flex - and resetting the pieces UI5 positions or
+   line-heights itself - re-centres them at any height. `position: static`
+   neutralises UI5's absolute placement of the arrow / icon container so they
+   become ordinary flex items. */
+.mtFilterField .sapMSlt,
+.mtFilterField .sapMInputBaseContentWrapper,
+.mtFilterField .sapMSFF {
+	display: flex;
+	align-items: center;
+	gap: var(--mt-space-1);
+	height: 100%;
+	line-height: normal;
+}
+
+/* .sapUiSizeCompact .sapMSlt ships height: 1.625rem plus a 0.1875rem vertical
+   margin. The height is overridden above, but the margin also has to go: the
+   filter row is bottom-aligned, so it pushes this one column off the shared
+   line and makes the field 6px taller than its 44px box. */
+.mtFilterField .sapMSlt {
+	height: var(--mt-field-height);
+	margin: 0;
+}
+
+.mtFilterField .sapMSltLabel {
+	position: static;
+	flex: 1 1 auto;
+	display: flex;
+	align-items: center;
+	min-width: 0;
+	height: auto;
+	line-height: normal;
+}
+
+/* Height is deliberately absent - the chevron section further down owns it. */
+.mtFilterField .sapMSltArrow,
+.mtFilterField .sapMInputBaseIconContainer {
+	position: static;
+	inset: auto;
+	flex: 0 0 auto;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	margin: 0;
+	line-height: normal;
+}
+
+/* The tokenizer must not stretch the pill taller than 44px. */
+.mtFilterField .sapMTokenizer {
+	height: auto;
+	align-items: center;
+}
+
+/* SearchField draws a second frame of its own - the <form> wrapper and the
+   <input> each carry a border/fill in Horizon - which reads as a box inside
+   the brand pill. Strip both so only the pill's own 2px border shows. */
+.mtFilterField .sapMSFF,
+.mtFilterField .sapMSFI,
+.mtFilterField .sapMSF .sapMSFI:focus {
+	border: none;
+	border-radius: 0;
+	background-color: transparent;
+	background-image: none;
+	box-shadow: none;
+	outline: none;
+}
+
+.mtFilterField .sapMSF::before,
+.mtFilterField .sapMSF::after,
+.mtFilterField .sapMSFF::before,
+.mtFilterField .sapMSFF::after,
+.mtFilterField .sapMSFI::before,
+.mtFilterField .sapMSFI::after {
+	display: none;
+}
+
+/* SearchField and MultiComboBox each come in at their own natural height in the
+   compact theme - the search field shorter than 44px, the input-base controls
+   carrying a vertical margin via .sapMInputBaseHeightMargin. Because the filter
+   row is bottom-aligned, either one leaves that column's pill sitting off the
+   line the other columns share. Pin the height and drop the margin so all
+   columns are the same 44px box. */
+.mtFilterField .sapMSF {
+	height: var(--mt-field-height);
+	min-height: var(--mt-field-height);
+	max-height: var(--mt-field-height);
+	margin: 0;
+	box-sizing: border-box;
+}
+
+.mtFilterField .sapMSFF,
+.mtFilterField .sapMSFI {
+	height: 100%;
+	margin: 0;
+	box-sizing: border-box;
+}
+
+.mtFilterField .sapMInputBaseHeightMargin {
+	margin-top: 0;
+	margin-bottom: 0;
+}
+
+/* The reset ("x") and search buttons are plain glyphs, not boxed buttons. */
+.mtFilterField .sapMSFR,
+.mtFilterField .sapMSFS {
+	position: static;
+	inset: auto;
+	flex: 0 0 auto;
+	border: none;
+	background-color: transparent;
+	box-shadow: none;
+	height: auto;
+	margin: 0;
+}
+
+/* Inner text areas: 600 / 16px, padded to the pill's 8px inline inset. */
+.mtFilterField .sapMSltLabel,
+.mtFilterField .sapMInputBaseInner,
+.mtFilterField .sapMSFI {
+	font: var(--mt-text-field-value);
+	color: var(--mt-color-black);
+	height: auto;
+	line-height: normal;
+	padding-inline: var(--mt-space-3);
+	background-color: transparent;
+	border: none;
+}
+
+/* Placeholders use the muted label colour. */
+.mtFilterField .sapMInputBaseInner::placeholder,
+.mtFilterField .sapMSFI::placeholder {
+	font: var(--mt-text-field-value);
+	color: var(--mt-text-secondary);
+	opacity: 1;
+}
+
+/* Dropdown arrow / search icon: 20px brand blue (Figma SAP-icons 20). */
+.mtFilterField .sapMSltArrow,
+.mtFilterField .sapMSFR,
+.mtFilterField .sapMSFS,
+.mtFilterField .sapMMultiComboBoxArrow,
+.mtFilterField .sapUiIcon {
+	color: var(--mt-color-brand);
+	font-size: 20px;
+}
+
+/* No rings, in any state.
+   ------------------------------------------------------------------------
+   Horizon signals hover, focus and "picker open" on a field with an *inset*
+   box-shadow and a pseudo-element outline drawn just inside the control. Both
+   land inside the brand pill and read as a second, squarer border. The pill's
+   own border is the only outline this design uses, so every ring is cleared.
+   No state selectors here on purpose: the theme's own run up to seven classes
+   deep (`.sapMInputBase:not(.sapMFocus) .sapMInputBaseContentWrapper:not(…)
+   :not(…):not(…):hover`). Stateless !important declarations outrank all of them
+   at once, in idle, hover, focus and expanded alike. */
+.mtFilterField .sapMSlt,
+.mtFilterField .sapMSF,
+.mtFilterField .sapMSFF,
+.mtFilterField .sapMSFI,
+.mtFilterField .sapMInputBase,
+.mtFilterField .sapMInputBaseContentWrapper,
+.mtFilterField .sapMInputBaseInner,
+.mtFilterField .sapMTokenizer {
+	box-shadow: none !important;
+	outline: none !important;
+	background-image: none !important;
+}
+
+/* Horizon also draws those rings as pseudo-elements, and the focused ones from
+   deeper selectors again (`html.sap-desktop .sapMFocus > .sapMSFF::before`,
+   `.sapMFocus.sapMInputBase .sapMInputBaseContentWrapper:not(…)::before`) -
+   hence !important here too. Only the containers are listed - .sapMSFR /
+   .sapMSFS / .sapMSltArrow / .sapMInputBaseIcon render their glyph through
+   ::before, so they are deliberately left alone. */
+.mtFilterField .sapMSlt::before,
+.mtFilterField .sapMSlt::after,
+.mtFilterField .sapMSF::before,
+.mtFilterField .sapMSF::after,
+.mtFilterField .sapMSFF::before,
+.mtFilterField .sapMSFF::after,
+.mtFilterField .sapMSFI::before,
+.mtFilterField .sapMSFI::after,
+.mtFilterField .sapMInputBaseContentWrapper::before,
+.mtFilterField .sapMInputBaseContentWrapper::after,
+.mtFilterField .sapMInputBaseInner::before,
+.mtFilterField .sapMInputBaseInner::after,
+.mtFilterField .sapMFocus::before,
+.mtFilterField .sapMFocus::after {
+	display: none !important;
+	content: none !important;
+	border: none !important;
+	outline: none !important;
+}
+
+/* Nothing inside a field may paint over the pill's rounded corners - clipping
+   to the pill makes that structural rather than a whack-a-mole of overrides
+   (this is what was covering the SearchField's border on focus). */
+.mtFilterField .sapMSlt,
+.mtFilterField .sapMSF,
+.mtFilterField .sapMInputBaseContentWrapper {
+	overflow: hidden;
+}
+
+.mtFilterField .sapMSF .sapMSFF,
+.mtFilterField .sapMSF:focus-within .sapMSFF,
+.mtFilterField .sapMSF:focus-within .sapMSFI {
+	background-color: transparent;
+}
+
+/* Hover and focus are not signalled on a filter field at all: the border keeps
+   its brand colour (pinned in the base rule above), no ring is drawn inside the
+   pill and none outside it. Nothing to declare here - the absence is the design,
+   and it is worth knowing it is deliberate, because it also means keyboard focus
+   on these fields has no visible indicator of its own. */
+
+/* The chevron that opens the picker
+   ------------------------------------------------------------------------
+   Horizon renders it as a small boxed button - 26px tall in the compact theme,
+   barely more than half the 44px pill - and rings it with a shadow whenever it
+   is hovered, pressed, or the picker is open. Here it fills the pill's inner
+   height instead, so the whole inline-end of the field is the target, and it
+   never draws a frame or a fill of its own: the pill's border is the only one
+   this design has.
+
+   `align-self: stretch` is what grows it - both nodes are already flex items of
+   the field (section 3a above), and stretching the container is also what lets
+   the icon inside a MultiComboBox resolve its own height: 100% against something
+   definite. */
+.mtFilterField .sapMSltArrow,
+.mtFilterField .sapMInputBaseIconContainer {
+	align-self: stretch;
+	height: auto !important;
+}
+
+/* In a MultiComboBox the box is the icon rather than its container, so the icon
+   is what takes the height - and its own centring, which the flexbox above
+   already provides for the Select's arrow. */
+.mtFilterField .sapMInputBaseIconContainer .sapMInputBaseIcon {
+	height: 100% !important;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+}
+
+/* Whichever of the two draws the box: no frame, no fill, no ring - ever. */
+.mtFilterField .sapMSltArrow,
+.mtFilterField .sapMInputBaseIcon {
+	line-height: normal !important;
+	border: none !important;
+	box-shadow: none !important;
+	outline: none !important;
+	background-color: transparent !important;
+}
+
+/* The theme flips the glyph to white while the picker is open, for contrast
+   against the blue box it fills. With no box left, it stays brand blue. */
+.mtFilterField .sapMSltArrow::before,
+.mtFilterField .sapMInputBaseIcon::before {
+	color: inherit !important;
+}
+
+/* Selected tokens inside a MultiComboBox stay on the kit's tag styling - and
+   stay on it in every state, exactly like the field around them.
+   ------------------------------------------------------------------------
+   A token is the busiest control Horizon ships: it re-borders and re-fills on
+   hover, rings itself with an ::after frame on focus, and on selection swaps
+   its whole palette, its radius, its font-family and adds a ::before hairline.
+   All of it from html.sap-desktop-prefixed selectors, so - as with the fields
+   above - the tag's own look is pinned statelessly rather than fought state by
+   state. The tag's outline is its inset box-shadow; nothing else is drawn. */
+.mtFilterField .sapMToken {
+	border-radius: var(--mt-radius-pill) !important;
+	background-color: var(--mt-color-brand-wash) !important;
+	background-image: none !important;
+	box-shadow: inset 0 0 0 var(--mt-border-width) var(--mt-color-brand) !important;
+	border: none !important;
+	outline: none !important;
+	font: var(--mt-text-tag) !important;
+	color: var(--mt-color-black) !important;
+}
+
+.mtFilterField .sapMToken::before,
+.mtFilterField .sapMToken::after {
+	display: none !important;
+	content: none !important;
+}
+
+/* The label follows the tag's own colour; the "x" stays brand blue instead of
+   turning white for contrast against a selected-state fill that is no longer
+   painted. */
+.mtFilterField .sapMTokenText {
+	color: inherit !important;
+}
+
+.mtFilterField .sapMTokenIcon {
+	color: var(--mt-color-brand) !important;
+}
+
+/* ---------------------------------------------------------------------------
+   3b. Filter footer - "מסננים נוספים" toggle + "איפוס פילטרים"
+   Figma: the expand affordance is a centred chevron flanked by two 320px
+   rules; the reset action sits at the inline end of the same row.
+   ------------------------------------------------------------------------ */
+.mtFilterActions {
+	padding-top: var(--mt-space-5);
+	padding-bottom: var(--mt-space-2);
+	align-items: center;
+}
+
+.mtFilterActions .sapMBtn,
+.mtFilterActions .sapMBtnInner {
+	background-color: transparent;
+	border: none;
+	border-radius: var(--mt-radius-pill);
+}
+
+.mtFilterActions .sapMBtnInner {
+	display: flex;
+	align-items: center;
+	gap: var(--mt-space-2);
+	line-height: normal;
+}
+
+.mtFilterActions .sapMBtnContent {
+	font: var(--mt-text-button);
+	color: var(--mt-color-brand);
+	max-width: none;
+	overflow: visible;
+	text-overflow: clip;
+	white-space: nowrap;
+}
+
+/* Icons keep the SAP-icons family - only size/colour are themed. */
+.mtFilterActions .sapMBtnIcon {
+	font-size: var(--mt-font-size-base);
+	color: var(--mt-color-brand);
+}
+
+.mtFilterActions .sapMBtnInner:hover {
+	background-color: var(--mt-color-brand-tint);
+}
+
+/* Centre the toggle and flank it with the two rules from the frame.
+   ------------------------------------------------------------------------
+   HBox wraps every child in its own .sapMFlexItem div, so the flex item is
+   that wrapper - not the button. Auto margins have to go on the wrapper;
+   on the inline-block <button> they do nothing. The toggle is the first child
+   in the view, the reset button the second. */
+.mtFilterActions > .sapMFlexItem:first-child {
+	margin-inline: auto;
+}
+
+.mtFilterToggle {
+	display: flex;
+	align-items: center;
+}
+
+/* Wrap the chevron and its label in one pill, so the whole control - not just
+   the glyph - reads as, and is, the clickable target. The flanking rules stay
+   outside the pill (they are the button's own ::before / ::after). */
+.mtFilterToggle .sapMBtnInner {
+	border: var(--mt-border-width) solid var(--mt-color-brand);
+	border-radius: var(--mt-radius-pill);
+	padding: var(--mt-space-1) var(--mt-space-5);
+	background-color: var(--mt-color-white);
+}
+
+.mtFilterToggle .sapMBtnInner:hover {
+	background-color: var(--mt-color-brand-tint);
+}
+
+/* The <button> host carries a Horizon border and, in both the resting and the
+   focused state, a pseudo-element ring sized to the content rather than to the
+   pill - the small stray box. The pill above is the only frame this control
+   needs, so strip the host and every ring inside it. */
+.mtFilterToggle,
+.mtFilterToggle:hover,
+.mtFilterToggle:focus,
+.mtFilterToggle:active {
+	border: none;
+	outline: none;
+	box-shadow: none;
+	background-color: transparent;
+}
+
+/* .sapMBtnIcon::before carries the chevron glyph - only ::after is cleared.
+   The button's *own* ::before / ::after are deliberately absent here: those are
+   the two flanking rules of the divider, and .sapMFocus lands on this same
+   element, so matching them would erase the rules whenever it takes focus. */
+.mtFilterToggle .sapMBtnInner::before,
+.mtFilterToggle .sapMBtnInner::after,
+.mtFilterToggle .sapMBtnContent::before,
+.mtFilterToggle .sapMBtnContent::after,
+.mtFilterToggle .sapMBtnIcon::after {
+	display: none;
+	content: none;
+	border: none;
+	outline: none;
+}
+
+/* Keyboard focus rings the pill from outside, so no inner border appears. */
+.mtFilterToggle:focus-visible .sapMBtnInner {
+	outline: var(--mt-border-width-strong) solid var(--mt-color-brand-hover);
+	outline-offset: 2px;
+}
+
+/* flex-shrink must stay 0 - otherwise the rules collapse to stubs, because the
+   button box is only as wide as its own content. */
+.mtFilterToggle::before,
+.mtFilterToggle::after {
+	content: "";
+	flex: 0 0 320px;
+	height: var(--mt-border-width);
+	background-color: var(--mt-color-grey-300);
+}
+
+.mtFilterToggle::before {
+	margin-inline-end: var(--mt-space-5);
+}
+
+.mtFilterToggle::after {
+	margin-inline-start: var(--mt-space-5);
+}
+
+.mtFilterToggle .sapMBtnIcon {
+	font-size: 28px; /* Figma: the chevron is the 28px SAP-icons glyph */
+}
+
+/* ============================================================================
+   4. Status tabs (sap.m.IconTabBar)
+   ------------------------------------------------------------------------
+   Figma: each tab is a 44px circle above a 16px label, with the count set
+   beside the circle on the inline-start side. The circle is outlined in the
+   tab's semantic colour and becomes filled when the tab is selected; the
+   selected tab also gains a 1px box with a 2px bottom edge in that colour.
+   The whole strip closes with a 1px muted rule.
+
+   The semantic colour comes from each IconTabFilter's `iconColor` property,
+   so it is driven from the view rather than hard-coded per index.
+   ========================================================================= */
+/* The tab row: tabs at the inline start, legend + actions at the end. */
+.mtTabsBar {
+	margin: var(--mt-space-6) var(--mt-content-inset) 0 var(--mt-content-inset);
+	gap: var(--mt-space-6);
+	flex-wrap: wrap;
+}
+
+.mtTableActions {
+	gap: var(--mt-space-1);
+	flex-wrap: wrap;
+}
+
+/* HBox items default to `flex: 0 1 auto`, so a tight row shrinks the buttons
+   and UI5 ellipsises / overlaps their labels. Nothing here needs to shrink. */
+.mtTableActions > .sapMFlexItem,
+.mtLegend > .sapMFlexItem {
+	flex-shrink: 0;
+}
+
+/* IconTabBar's root is block-level and would otherwise claim the whole tab row,
+   pushing .mtTableActions off the end. */
+.mtStatusTabs {
+	margin: 0;
+	width: auto;
+	flex: 0 1 auto;
+}
+
+.mtStatusTabs .sapMITBHead {
+	justify-content: flex-start;
+	gap: var(--mt-space-8);
+	padding-bottom: 0;
+}
+
+/* Default accent; each semantic variant overrides it below.
+   Tabs with no iconColor get .sapMITBFilterDefault and fall through to brand,
+   which is what the frame shows for "הכל". The three waiting tabs are
+   Critical (pending) and "אושרו" is Positive (approved). */
+.mtStatusTabs .sapMITBFilter {
+	--mt-tab-accent: var(--mt-color-brand);
+	box-sizing: border-box;
+	min-width: 0;
+	/* the end inset reserves room for the count, which hangs off the circle */
+	padding: 0 30px var(--mt-space-4) var(--mt-space-3);
+	border: none;
+	border-bottom: var(--mt-border-width-strong) solid transparent;
+	background-color: transparent;
+}
+
+/* UI5 nests the circle and the label inside .sapMITBFilterWrapper - stack them. */
+.mtStatusTabs .sapMITBFilterWrapper {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+}
+
+.mtStatusTabs .sapMITBFilterCritical {
+	--mt-tab-accent: var(--mt-color-warning);
+}
+
+.mtStatusTabs .sapMITBFilterPositive {
+	--mt-tab-accent: var(--mt-color-success);
+}
+
+.mtStatusTabs .sapMITBFilterNegative {
+	--mt-tab-accent: var(--mt-color-error-accent);
+}
+
+.mtStatusTabs .sapMITBFilterNeutral {
+	--mt-tab-accent: var(--mt-color-text-muted);
+}
+
+/* The 44px circle. `position: relative` makes it the containing block for the
+   count, so the count's 100% offset below resolves against the circle.
+   max-width + flex: 0 0 auto keep it a true circle - without them the flex
+   column can stretch or squash it into a rounded rectangle. */
+.mtStatusTabs .sapMITBFilter .sapMITBTab {
+	position: relative;
+	box-sizing: border-box;
+	flex: 0 0 auto;
+	width: var(--mt-tab-circle);
+	height: var(--mt-tab-circle);
+	min-width: var(--mt-tab-circle);
+	max-width: var(--mt-tab-circle);
+	margin: 0;
+	padding: 0;
+	border: none;
+	border-radius: 50%;
+	background-color: var(--mt-color-white);
+	box-shadow: inset 0 0 0 var(--mt-border-width) var(--mt-tab-accent);
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	overflow: visible;
+}
+
+/* Horizon gives the icon span its own frame and fill, which shows up as a
+   second, non-circular shape inside the circle. Strip it back to a bare glyph
+   so .sapMITBTab above is the only shape drawn. `position: static` also drops
+   UI5's own placement so the flex centring applies. */
+.mtStatusTabs .sapMITBFilter .sapMITBFilterIcon,
+.mtStatusTabs .sapMITBFilter .sapMITBTab .sapUiIcon {
+	position: static;
+	inset: auto;
+	margin: 0;
+	padding: 0;
+	border: none;
+	border-radius: 0;
+	background-color: transparent;
+	background-image: none;
+	box-shadow: none;
+	font-size: 24px; /* Figma: SAP-icons 24 inside the circle */
+	color: var(--mt-tab-accent);
+	width: auto;
+	height: auto;
+	min-width: 0;
+	min-height: 0;
+	max-width: none;
+	line-height: 1;
+}
+
+/* Same for any pseudo-element ring Horizon layers on the icon. */
+.mtStatusTabs .sapMITBFilter .sapMITBFilterIcon::after,
+.mtStatusTabs .sapMITBFilter .sapMITBTab::after,
+.mtStatusTabs .sapMITBFilter .sapMITBTab::before {
+	display: none;
+}
+
+/* Count: 400 / 16px / navy, hanging off the circle on the inline-END side and
+   top-aligned - the frame lays it out as a row of [count, circle] with
+   align-items: flex-start. `inset-inline-start: 100%` puts a box just past the
+   container's inline-end edge and flips correctly in LTR. */
+.mtStatusTabs .sapMITBCount {
+	position: absolute;
+	inset-inline-start: calc(100% + var(--mt-space-2));
+	top: 0;
+	margin: 0;
+	padding: 0;
+	min-width: 0;
+	border: none;
+	background-color: transparent;
+	font: var(--mt-text-body);
+	color: var(--mt-text-primary);
+	white-space: nowrap;
+}
+
+/* Label: 16px navy, bold once selected. Horizon clamps the label with
+   .sapMITBMaxWidth / ellipsis - the frame shows it in full. */
+.mtStatusTabs .sapMITBText,
+.mtStatusTabs .sapMITBText.sapMITBMaxWidth {
+	margin-top: var(--mt-space-1);
+	font: var(--mt-text-body);
+	color: var(--mt-text-primary);
+	text-align: center;
+	max-width: none;
+	width: auto;
+	white-space: nowrap;
+	overflow: visible;
+	text-overflow: clip;
+}
+
+/* --- selected state ----------------------------------------------------
+   The frame marks selection with a bottom edge in the accent colour only -
+   no surrounding box. */
+.mtStatusTabs .sapMITBSelected {
+	border-bottom-color: var(--mt-tab-accent);
+}
+
+.mtStatusTabs .sapMITBSelected .sapMITBTab {
+	background-color: var(--mt-tab-accent);
+	box-shadow: none;
+}
+
+/* The selected circle is filled with the accent colour, so the glyph reverses
+   out of it in white rather than sitting on it in black. */
+.mtStatusTabs .sapMITBSelected .sapMITBFilterIcon,
+.mtStatusTabs .sapMITBSelected .sapMITBTab .sapUiIcon {
+	color: var(--mt-color-white);
+}
+
+.mtStatusTabs .sapMITBSelected .sapMITBText {
+	font-weight: var(--mt-font-weight-bold);
+}
+
+/* Horizon draws its own selection underline / arrow - the frame does not. */
+.mtStatusTabs .sapMITBSelected::after,
+.mtStatusTabs .sapMITBSelected::before,
+.mtStatusTabs .sapMITBContentArrow,
+.mtStatusTabs .sapMITBSelectedItemIndicator {
+	display: none;
+}
+
+.mtStatusTabs .sapMITBFilter:hover .sapMITBTab {
+	box-shadow: inset 0 0 0 var(--mt-border-width-strong) var(--mt-tab-accent);
+}
+
+.mtStatusTabs .sapMITBSelected:hover .sapMITBTab {
+	box-shadow: none;
+}
+
+/* The tab bar is used purely as a strip here - no content area to pad. */
+.mtStatusTabs .sapMITBContainerContent,
+.mtStatusTabs .sapMITBContent {
+	padding: 0;
+	background-color: transparent;
+}
+
+/* ============================================================================
+   5. Table (sap.m.Table)
+   ------------------------------------------------------------------------
+   Figma: no outer card. A 52px header band in #E7EAF7 with 10px top corners
+   and a 2px #939EC9 bottom rule, then 77px white rows separated by 1px
+   #E7EAF7 rules.
+   ========================================================================= */
+.mtTable {
+	margin: 0 var(--mt-content-inset) var(--mt-content-inset) var(--mt-content-inset);
+	background-color: transparent;
+}
+
+/* --- toolbar: title, legend, actions ---------------------------------- */
+.mtTableToolbar {
+	background-color: transparent;
+	border: none;
+	padding: var(--mt-space-6) 0 var(--mt-space-5) 0;
+	gap: var(--mt-space-6);
+}
+
+/* The count line is a row of the page rather than the table's headerToolbar
+   (see the note in the view), so it carries the page gutter itself - the table's
+   own margin used to provide it. */
+.mtTableHeader {
+	margin-inline: var(--mt-content-inset);
+}
+
+.mtTableToolbar .sapMTitle,
+.mtTableToolbar .sapMTitleInner {
+	font: var(--mt-text-card-title);
+	color: var(--mt-text-primary);
+}
+
+/* Table action buttons follow the kit's "text&icon" button: no fill, no border,
+   700/16 brand blue with a 16px icon and a 6px gap. They live in .mtTableActions
+   on the tab row; .mtTableToolbar is kept in the selector so the styling still
+   applies if a button is moved back into the table's own toolbar. */
+.mtTableActions .sapMBtn .sapMBtnInner,
+.mtTableToolbar .sapMBtn .sapMBtnInner {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	background-color: transparent;
+	border: none;
+	border-radius: var(--mt-radius-pill);
+	padding: var(--mt-space-3);
+	gap: var(--mt-space-2);
+	line-height: normal;
+}
+
+/* Labels must not ellipsise - the frame shows both in full. */
+.mtTableActions .sapMBtnContent,
+.mtTableToolbar .sapMBtnContent {
+	font: var(--mt-text-button);
+	color: var(--mt-color-brand);
+	max-width: none;
+	overflow: visible;
+	text-overflow: clip;
+	white-space: nowrap;
+}
+
+/* Icons keep the SAP-icons family - only size/colour are themed. */
+.mtTableActions .sapMBtnIcon,
+.mtTableToolbar .sapMBtnIcon {
+	font-size: var(--mt-font-size-base);
+	color: var(--mt-color-brand);
+}
+
+.mtTableActions .sapMBtn .sapMBtnInner:hover,
+.mtTableToolbar .sapMBtn .sapMBtnInner:hover {
+	background-color: var(--mt-color-brand-tint);
+}
+
+/* --- legend ----------------------------------------------------------- */
+.mtLegend {
+	gap: var(--mt-space-6);
+	margin-inline: var(--mt-space-3);
+}
+
+/* Solid circles, same currentColor technique as the wizard dots.
+   translateY lifts them onto the text's optical centre: flex centring aligns
+   the dot to the middle of the label's line box, but Hebrew glyphs sit above
+   that middle, so a centred dot reads as low. */
+.mtLegend .mtLegendDot {
+	box-sizing: border-box;
+	width: var(--mt-legend-dot);
+	height: var(--mt-legend-dot);
+	min-width: var(--mt-legend-dot);
+	border-radius: 50%;
+	background-color: currentColor;
+	font-size: 0;
+	margin-inline-start: var(--mt-space-2);
+	transform: translateY(-7px) translateX(-7px);
+}
+
+.mtLegendText {
+	font: var(--mt-text-body);
+	color: var(--mt-color-black);
+}
+
+/* --- column headers --------------------------------------------------- */
+.mtTable .sapMListTblHeader {
+	background-color: var(--mt-bg-table-header);
+}
+
+/* box-sizing matters: on a table cell `height` is a minimum, so without it the
+   block padding is added to the 52px band instead of sitting inside it. */
+.mtTable .sapMListTblHeaderCell {
+	height: var(--mt-table-header-height);
+	box-sizing: border-box;
+	padding: 0 var(--mt-row-padding-inline);
+	background-color: var(--mt-bg-table-header);
+	border-bottom: var(--mt-border-width-strong) solid var(--mt-border-table);
+	vertical-align: middle;
+}
+
+/* 10px radius on the band's leading / trailing top corners (logical, so it
+   flips correctly in LTR). */
+.mtTable .sapMListTblHeaderCell:first-child {
+	border-start-start-radius: var(--mt-radius-md);
+}
+
+.mtTable .sapMListTblHeaderCell:last-child {
+	border-start-end-radius: var(--mt-radius-md);
+}
+
+.mtTable .sapMListTblHeaderCell .sapMText,
+.mtTable .sapMListTblHeaderCell .sapMLabel {
+	font: var(--mt-text-column-header);
+	color: var(--mt-text-primary);
+}
+
+/* --- rows ------------------------------------------------------------- */
+.mtTable .sapMListTblRow,
+.mtRow {
+	background-color: var(--mt-bg-row);
+}
+
+/* Same box-sizing note as the header band: keeps the row at exactly 77px. */
+.mtRow .sapMListTblCell {
+	height: var(--mt-row-height);
+	box-sizing: border-box;
+	padding: 0 var(--mt-row-padding-inline);
+	border-bottom: var(--mt-border-width) solid var(--mt-border-row);
+	vertical-align: middle;
+}
+
+.mtRow .sapMListTblCell .sapMText {
+	font: var(--mt-text-cell);
+	color: var(--mt-color-black);
+}
+
+/* Row hover / active use the kit's subtle surface (Figma row variant 2). */
+.mtTable .sapMListTblRow:hover,
+.mtTable .sapMListTblRow:hover > .sapMListTblCell {
+	background-color: var(--mt-bg-row-hover);
+}
+
+/* Employee name is the row's anchor and a Link - clicking it opens the report,
+   replacing the row's former expand button.
+
+   It is typed and coloured as the same column on "כל העובדים" (section 8d):
+   bold 16px in brand blue, underlining on hover. The two screens list the same
+   people in the same role, so the column reading differently on each was the
+   odd part. See the note at .aeEmpName for why both sit a step below the
+   frame's extrabold 20px, and what it would take to go back to it. */
+.mtEmpName,
+.mtRow .sapMListTblCell .mtEmpName.sapMText,
+.mtRow .sapMListTblCell .mtEmpName.sapMLnk {
+	font: var(--mt-text-cell);
+	color: var(--mt-text-link);
+	text-decoration: none;
+	max-width: 100%;
+	cursor: pointer;
+}
+
+.mtRow .sapMListTblCell .mtEmpName.sapMLnk:hover,
+.mtRow .sapMListTblCell .mtEmpName.sapMLnk:active {
+	color: var(--mt-color-brand-hover);
+	text-decoration: underline;
+}
+
+/* Keyboard focus rings from outside the text. */
+.mtRow .sapMListTblCell .mtEmpName.sapMLnk:focus-visible {
+	color: var(--mt-color-brand-hover);
+	text-decoration: underline;
+	outline: var(--mt-border-width-strong) solid var(--mt-color-brand-hover);
+	outline-offset: 2px;
+}
+
+/* Horizon draws the link's own focus outline as a pseudo-element. */
+.mtEmpName.sapMLnk::before,
+.mtEmpName.sapMLnk::after {
+	display: none;
+	content: none;
+}
+
+/* Pop-in rows (tablet / phone) keep the row rhythm. */
+.mtTable .sapMListTblSubRow > .sapMListTblSubCnt {
+	padding: 0 var(--mt-row-padding-inline) var(--mt-row-padding-block) var(--mt-row-padding-inline);
+	border-bottom: var(--mt-border-width) solid var(--mt-border-row);
+}
+
+.mtTable .sapMListTblSubCntSpr {
+	font: var(--mt-text-column-header);
+	color: var(--mt-text-primary);
+}
+
+/* ============================================================================
+   6. In-row components
+   ========================================================================= */
+
+/* --- population tag (Figma "תגית עובד", node 1:7600) ------------------ */
+.mtPopChip {
+	height: var(--mt-tag-height);
+	box-sizing: border-box;
+	border: none;
+	box-shadow: inset 0 0 0 var(--mt-border-width) var(--mt-color-brand);
+	border-radius: var(--mt-radius-pill);
+	padding: 3px 11px;
+	background-color: var(--mt-color-brand-wash);
+	display: inline-flex;
+	gap: 3px;
+	max-width: 100%;
+}
+
+.mtPopChipIcon {
+	color: var(--mt-color-black);
+	font-size: var(--mt-font-size-base);
+}
+
+.mtPopChipText,
+.mtRow .sapMListTblCell .mtPopChipText.sapMText {
+	font: var(--mt-text-tag);
+	color: var(--mt-color-black);
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+/* --- month cell + "N+" badge ----------------------------------------- */
+.mtMonthCell {
+	gap: var(--mt-space-2);
+}
+
+/* Frame 57:3979 renders the extra-months hint as plain brand-blue text next to
+   the month, not as a filled pill. */
+.mtMonthBadge,
+.mtRow .sapMListTblCell .mtMonthBadge.sapMText {
+	background-color: transparent;
+	color: var(--mt-color-brand);
+	font: var(--mt-text-cell);
+	padding: 0;
+}
+
+/* --- process wizard (Figma node 57:3552) -----------------------------
+   20px dots, 26px apart, joined by a 1px #939EC9 connector; the "n/3"
+   counter leads the group on the inline-start side at 700/16.
+   ------------------------------------------------------------------ */
+.mtProgressCell {
+	gap: var(--mt-space-5);
+}
+
+.mtProgressText,
+.mtRow .sapMListTblCell .mtProgressText.sapMText {
+	font: var(--mt-text-cell);
+	color: var(--mt-color-black);
+}
+
+.mtDots {
+	gap: var(--mt-wizard-gap);
+	position: relative;
+}
+
+.mtDots::before {
+	content: "";
+	position: absolute;
+	top: 50%;
+	inset-inline: calc(var(--mt-wizard-dot) / 2);
+	height: var(--mt-border-width);
+	background-color: var(--mt-color-border);
+	z-index: 0;
+}
+
+/* The "record" glyph draws a circle smaller than its 20px box, so the box
+   itself becomes the dot: sap.ui.core.Icon writes its bound `color` as an
+   inline style, which `currentColor` picks up as the fill. font-size:0 hides
+   the glyph while leaving that colour intact.
+   No `line-height: 0` here - it is redundant (a 0px font already collapses the
+   line box) and it made the surrounding layout behave erratically. */
+.mtDots .mtDot {
+	position: relative;
+	z-index: 1;
+	box-sizing: border-box;
+	width: var(--mt-wizard-dot);
+	height: var(--mt-wizard-dot);
+	min-width: var(--mt-wizard-dot);
+	border-radius: 50%;
+	background-color: currentColor;
+	font-size: 0;
+}
+
+/* --- circular row action (Figma Button "Secondary_icon") -------------- */
+/* The circular row-action button is gone - the employee-name Link now opens the
+   report. The --mt-icon-button token stays in tokens.css for reuse elsewhere. */
+
+/* ============================================================================
+   7. Shared layout helper (kept from the original markup)
+   ========================================================================= */
+.width_auto {
+	width: auto !important;
+	margin-inline: var(--mt-content-inset) !important;
+}
+
+/* ============================================================================
+   8. נתוני כל העובדים - AllEmployees
+   ------------------------------------------------------------------------
+   The second screen reuses the kit wherever the two designs agree: the filter
+   pills (.mtFilterField), the employee tag (.mtPopChip) and the transparent
+   text&icon toolbar buttons (.mtTableActions) are the same components, so this
+   section only carries what is specific to this screen - the DynamicPage
+   chrome, the 1px field border of frame 44:1281, the group band and the
+   sap.ui.table.TreeTable, which brings its own DOM and therefore its own
+   selectors.
+
+   RTL-first, same as above: directional values use logical properties.
+   ========================================================================= */
+
+/* ---------------------------------------------------------------------------
+   8a. Page chrome (sap.f.DynamicPage)
+   ------------------------------------------------------------------------ */
+.aePage,
+.aePage .sapFDynamicPageTitle,
+.aePage .sapFDynamicPageHeader,
+.aePage .sapFDynamicPageContentWrapper,
+.aePage .sapFDynamicPageContent {
+	background-color: var(--mt-bg-app);
+}
+
+/* The content area is the one exception that needs its parent named: Horizon
+   paints it from `.sapFDynamicPage .sapFDynamicPageContentWrapperStandard >
+   .sapFDynamicPageContent`, which outranks the rule above and was leaving the
+   table's surroundings on the theme's own #f5f6f7 instead of the kit's #F4F6FC -
+   a visibly greyer canvas than the reports screen's. */
+.aePage.sapFDynamicPage .sapFDynamicPageContentWrapper > .sapFDynamicPageContent {
+	background-color: var(--mt-bg-app);
+}
+
+/* The table's gutter.
+   ------------------------------------------------------------------------
+   DynamicPage pads its content area with the theme's own 3rem/48px inline
+   inset, which put this screen's table twice as far from the edge as the
+   reports table (`.mtTable`: margin 0 24px 24px). Both now sit on the page's
+   24px gutter, with the same 24px of canvas below the last row.
+
+   Top is 0 on purpose: the action toolbar is the table's own extension strip,
+   so its 12px bottom padding (.aeTableToolbar) is the gap to the header above
+   it - a padding here would be added on top of that. */
+.aePage .sapFDynamicPageContent,
+.aePage .sapFDynamicPageContentFitContainer {
+	padding: 0 var(--mt-content-inset) var(--mt-content-inset) var(--mt-content-inset);
+}
+
+/* Horizon hairlines the title/header seam; the frame runs the header area as
+   one uninterrupted block of canvas. */
+.aePage .sapFDynamicPageTitle,
+.aePage .sapFDynamicPageHeader {
+	box-shadow: none;
+	border: none;
+}
+
+/* The filter bar is the screen's permanent working surface, not collapsible
+   chrome, so DynamicPage's expand/collapse chevron is dropped - it would float
+   in the middle of the page offering an interaction the design does not have.
+   toggleHeaderOnTitleClick="false" on the view disables the matching gesture. */
+.aePage .sapFDynamicPageToggleHeaderIndicator {
+	display: none;
+}
+
+/* Same block as .mtHeader on the reports screen (section 2): the title sits on
+   the page canvas at the 24px gutter, with 10px between it and the filter row.
+   The two screens' headings have to start at the same y - they are the same
+   heading in the same shell. */
+.aePage .sapFDynamicPageTitle {
+	padding-block: var(--mt-content-inset) var(--mt-space-4);
+	padding-inline: var(--mt-content-inset);
+}
+
+.aePage .sapFDynamicPageHeader {
+	padding-block: 0 var(--mt-space-5);
+	padding-inline: var(--mt-content-inset);
+}
+
+/* Page title: the kit's 800 / 28px / navy, identical to .mtHeaderTitle.
+   ------------------------------------------------------------------------
+   !important, because a DynamicPage heading is sized from six classes deep -
+   `.sapFDynamicPageTitleMain > .sapFDynamicPageTitleMainInner
+   .sapFDynamicPageTitleMainHeading .sapFDynamicPageTitleMainHeadingInner
+   .sapMTitle:not(.sapUICompVarMngmtTitle)`, which resolves to
+   --sapObjectHeader_Title_FontSize (20px). Nothing scoped to the Title's own
+   class can outrank that, so this screen's heading rendered a full type step
+   below the reports screen's. Matching that selector here would tie this rule
+   to the DynamicPage's internal DOM; one !important declaration keeps it on the
+   token instead. */
+.aePageTitle {
+	font: var(--mt-text-page-title) !important;
+	color: var(--mt-text-primary);
+}
+
+/* ---------------------------------------------------------------------------
+   8b. Filter row
+   ------------------------------------------------------------------------
+   The pill itself comes from .mtFilterField (section 3a). Frame 44:1281 draws
+   it with a 1px border rather than the 2px of the reports screen, and centres
+   the label over the four drop-downs; both are handled here, and both rely on
+   this section coming after section 3a in source order.
+   ------------------------------------------------------------------------ */
+.aeFilterRow {
+	gap: var(--mt-space-5);
+}
+
+/* Section 3a declares the border once, with !important, so this screen's
+   thinner border is handed over as a custom property instead of restated - a
+   `border-width` rule here would be outranked by that declaration. */
+.aeFilterField {
+	--mt-field-border-width: var(--mt-border-width);
+}
+
+/* The search column carries the longest label and the design's 320px field. */
+.aeFilterFieldSearch {
+	flex-basis: 320px;
+}
+
+.aeFilterLabelCentered {
+	text-align: center;
+	width: 100%;
+}
+
+/* Every multi-select starts fully checked, which UI5 renders as a row of tokens
+   inside a 44px pill. While the selection is complete it carries no
+   information, so the tokenizer is collapsed and the field falls back to its
+   "הכל" placeholder. The controller adds/removes .aeAllSelected. */
+.aeFilterField .sapMMultiComboBox.aeAllSelected .sapMTokenizer {
+	display: none;
+}
+
+/* סוג דוח: the frame tints the active entry amber and the rest brand blue.
+   A Select's picker is rendered into the static area, so a class on the Select
+   never reaches it - but the picker's id is derived from the Select's, which
+   scopes these rules to this one drop-down without touching any other. */
+.sapMSelectList[id*="aeReportTypeSelect"] .sapMSelectListItemBase,
+.sapMSltPicker[id*="aeReportTypeSelect"] .sapMSelectListItemBase {
+	font: var(--mt-text-field-value);
+	color: var(--mt-color-brand);
+}
+
+.sapMSelectList[id*="aeReportTypeSelect"] .sapMSelectListItemBaseSelected,
+.sapMSltPicker[id*="aeReportTypeSelect"] .sapMSelectListItemBaseSelected {
+	color: var(--mt-color-warning-text);
+	font-weight: var(--mt-font-weight-bold);
+}
+
+/* ---------------------------------------------------------------------------
+   8c. Table extension strip - action toolbar + group band
+   ------------------------------------------------------------------------ */
+.aeTableToolbar {
+	background-color: transparent;
+	border: none;
+	padding: 0 0 var(--mt-space-5) 0;
+}
+
+/* The design's full-width grey section row. sap.ui.table cannot span a data row
+   across all columns, so it is rendered as the table's extension strip - which
+   puts it directly above the column header band and makes it the element that
+   carries the table's top radius. */
+.aeGroupHeader {
+	box-sizing: border-box;
+	width: 100%;
+	min-height: 40px;
+	padding: 0 var(--mt-row-padding-inline);
+	gap: var(--mt-space-4);
+	background-color: var(--mt-surface-page);
+	border: var(--mt-border-width) solid var(--mt-border-row);
+	border-bottom: none;
+	border-start-start-radius: var(--mt-radius-md);
+	border-start-end-radius: var(--mt-radius-md);
+}
+
+.aeGroupHeaderText {
+	font: var(--mt-text-cell);
+	color: var(--mt-text-primary);
+}
+
+.aeGroupHeaderCount {
+	font: var(--mt-text-body);
+	color: var(--mt-text-secondary);
+}
+
+/* ---------------------------------------------------------------------------
+   8d. Table (sap.ui.table.TreeTable)
+   ------------------------------------------------------------------------
+   Same visual language as the sap.m.Table in section 5 - lavender header band,
+   white rows on a 1px rule - expressed against sap.ui.table's own DOM.
+   ------------------------------------------------------------------------ */
+.aeTable {
+	background-color: transparent;
+}
+
+.aeTable,
+.aeTable .sapUiTableCnt {
+	border: none;
+}
+
+/* sap.ui.table fills its container with --sapList_Background (white), which
+   showed as a white slab wherever the rows do not reach - the strip past the
+   last column, and the area below the last row. The rows carry their own white
+   (--mt-bg-row further down), so the container itself hands the page canvas
+   through, exactly as .mtTable does with its transparent background. */
+.aeTable .sapUiTableCnt,
+.aeTable .sapUiTableCCnt,
+.aeTable .sapUiTableCtrlEmpty {
+	background-color: transparent;
+}
+
+/* Its scrollbars keep their own gutter, and Horizon paints that gutter from the
+   list palette - a white strip down the table's inline end, closed off with a
+   #e5e5e5 hairline, which cut across the lavender header band and read as a
+   ragged table edge next to the reports screen. The gutter is handed over to the
+   page canvas instead, so the only thing drawn in it is the scrollbar itself. */
+.aeTable .sapUiTableVSbContainer,
+.aeTable .sapUiTableVSbHeader,
+.aeTable .sapUiTableVSb,
+.aeTable .sapUiTableHSb,
+.aeTable .sapUiTableHSbBg,
+.aeTable .sapUiTableHSbExternal {
+	background-color: transparent;
+	border-color: transparent;
+}
+
+/* Cell inset: the kit's 16px, on the column headers and the data cells alike -
+   the same --mt-row-padding-inline the reports table uses (section 5). UI5's
+   own values are 0.5rem, plus a physical `padding-left: 1rem` on the first
+   column that lands on the wrong side in RTL; the third selector is what
+   replaces it, so every column gets the same inset on both sides. */
+.aeTable .sapUiTableHeaderDataCell > .sapUiTableCellInner,
+.aeTable .sapUiTableDataCell > .sapUiTableCellInner,
+.aeTable .sapUiTableCell > .sapUiTableCellInner.sapUiTableFirstColumnCell {
+	padding-inline: var(--mt-row-padding-inline);
+}
+
+/* --- column headers --- */
+.aeTable .sapUiTableColHdrCnt,
+.aeTable .sapUiTableColHdr,
+.aeTable .sapUiTableHeaderCell {
+	background-color: var(--mt-bg-table-header);
+	border-color: var(--mt-border-row);
+}
+
+.aeTable .sapUiTableColHdrCnt {
+	border-bottom: var(--mt-border-width-strong) solid var(--mt-border-table);
+}
+
+.aeTable .sapUiTableHeaderCell .sapMText {
+	font: var(--mt-text-column-header);
+	color: var(--mt-text-primary);
+}
+
+/* --- rows --- */
+.aeTable .sapUiTableCtrl > tbody > tr,
+.aeTable .sapUiTableTr {
+	background-color: var(--mt-bg-row);
+}
+
+.aeTable .sapUiTableCtrl td.sapUiTableCell {
+	border-bottom: var(--mt-border-width) solid var(--mt-border-row);
+	border-inline: none;
+}
+
+.aeTable .sapUiTableCtrl td.sapUiTableCell .sapMText {
+	font: var(--mt-text-cell);
+	color: var(--mt-color-black);
+}
+
+.aeTable .sapUiTableRowHvr td.sapUiTableCell,
+.aeTable .sapUiTableCtrl > tbody > tr:hover > td.sapUiTableCell {
+	background-color: var(--mt-bg-row-hover);
+}
+
+/* --- expand / collapse arrow ---
+   Brand blue, at UI5's own size. The frame draws the chevron at 16px, which is
+   exactly what sap.ui.table sets in cozy density, so there is no font-size here
+   on purpose - only the colour.
+
+   The arrow opens the branch while the name beside it navigates somewhere else,
+   so the two must not read as one target. The frame separates them by hit area
+   rather than by glyph size: the chevron sits in its own round 33px button, the
+   name is bare text. Growing the glyph is not how that distinction is made.
+
+   The 2rem flex box UI5 gives the span is left alone: leaf rows keep that box
+   (visibility: hidden), and it is what keeps every name in the column aligned. */
+.aeTable .sapUiTableTreeIcon {
+	cursor: pointer;
+}
+
+.aeTable .sapUiTableTreeIcon::before {
+	color: var(--mt-color-brand);
+}
+
+.aeNoData,
+.aeTable .sapUiTableCtrlEmpty .aeNoData {
+	font: var(--mt-text-body);
+	color: var(--mt-text-secondary);
+}
+
+/* --- employee name ---
+   The name is the row's navigation target, so it renders as a sap.m.Link, and
+   the design colours it brand blue to say so.
+
+   Typography stays on the plain cell type (--mt-text-cell, same as אגף /
+   יחידה), even though Figma node 44:1281 draws the name a step above at
+   extrabold 20px. That started as a workaround - nothing loaded Assistant, so
+   an 800 weight fell back to SAP's "72", which ships no such face, and the
+   synthesised result looked unlike the design rather than closer to it. Now
+   that index.html loads the family, taking the design value is a one-line
+   change to --mt-text-cell-emphasis; the columns on both screens were levelled
+   at bold 16 on request, so it stays a decision rather than a constraint.
+
+   One uniform weight for everyone, leaf rows included. Managers are not singled
+   out by weight - the expand arrow is what marks a manager, so the weight would
+   carry no extra information. */
+.aeTable .sapUiTableCtrl td.sapUiTableCell .aeEmpName.sapMLnk {
+	font: var(--mt-text-cell);
+	color: var(--mt-text-link);
+	text-decoration: none;
+	cursor: pointer;
+	max-width: 100%;
+}
+
+/* Breathing room between the arrow and the name - 10px, the distance the frame
+   leaves between the end of the name and the chevron's button box.
+
+   The gap is put on the name, not on the icon: the icon's box and margins belong
+   to sap.ui.table's own tree layout, and the adjacent-sibling selector matches
+   only where an arrow really precedes the name (renderer order inside
+   .sapUiTableCellInner). */
+.aeTable .sapUiTableCtrl td.sapUiTableCell .sapUiTableTreeIcon + .aeEmpName.sapMLnk {
+	margin-inline-start: var(--mt-space-4);
+}
+
+.aeTable .sapUiTableCtrl td.sapUiTableCell .aeEmpName.sapMLnk:hover,
+.aeTable .sapUiTableCtrl td.sapUiTableCell .aeEmpName.sapMLnk:focus {
+	color: var(--mt-color-brand-hover);
+	text-decoration: underline;
+}
+
+/* ============================================================================
+   9. Responsive
+   ------------------------------------------------------------------------
+   The frame is authored at 1920px. Below the desktop breakpoint the gutter
+   tightens, the filter fields go two-up then one-up, and the flanking rules
+   on the "מסננים נוספים" toggle are dropped so the two footer actions can
+   share a normal row.
+   ========================================================================= */
+@media (max-width: 1200px) {
+	.mtFilterToggle::before,
+	.mtFilterToggle::after {
+		flex-basis: 120px;
+	}
+
+	.mtStatusTabs .sapMITBHead {
+		gap: var(--mt-space-7);
+	}
+}
+
+@media (max-width: 900px) {
+	.mtHeader,
+	.mtFilterBar {
+		padding-inline: var(--mt-space-6);
+	}
+
+	.mtTabsBar,
+	.mtTableHeader,
+	.mtTable,
+	.width_auto {
+		margin-inline: var(--mt-space-6) !important;
+	}
+
+	/* Back to a plain two-button footer row. */
+	.mtFilterActions > .sapMFlexItem:first-child {
+		margin-inline: 0 auto;
+	}
+
+	.mtFilterToggle::before,
+	.mtFilterToggle::after {
+		display: none;
+	}
+
+	.mtFilterField {
+		flex: 1 1 45%;
+		min-width: 0;
+	}
+}
+
+@media (max-width: 600px) {
+	.mtHeaderTitle,
+	.mtHeaderTitle .sapMTitleInner {
+		font-size: var(--mt-font-size-lg);
+	}
+
+	.mtHeader,
+	.mtFilterBar {
+		padding-inline: var(--mt-space-5);
+	}
+
+	.mtTabsBar,
+	.mtTableHeader,
+	.mtTable,
+	.width_auto {
+		margin-inline: var(--mt-space-5) !important;
+	}
+
+	.mtFilterField {
+		flex: 1 1 100%;
+	}
+
+	/* Tabs shrink but keep the semantic circle legible. */
+	.mtStatusTabs .sapMITBFilter {
+		min-width: 0;
+		padding-inline-start: 26px;
+	}
+
+	.mtStatusTabs .sapMITBText {
+		font-size: var(--mt-font-size-sm);
+	}
+
+	.mtRow .sapMListTblCell {
+		height: auto;
+		padding-block: var(--mt-space-5);
+	}
+}
+
+/* --- AllEmployees: the header block tightens with the rest of the shell ---
+   The TreeTable itself scrolls horizontally below its columns' combined width,
+   which is what keeps the seven columns legible on a tablet instead of
+   squeezing them into unreadable stubs. */
+@media (max-width: 1200px) {
+	.aeFilterFieldSearch {
+		flex-basis: var(--mt-field-width-search);
+	}
+}
+
+@media (max-width: 900px) {
+	.aePage .sapFDynamicPageTitle,
+	.aePage .sapFDynamicPageHeader {
+		padding-inline: var(--mt-space-6);
+	}
+
+	.aePage .sapFDynamicPageContent,
+	.aePage .sapFDynamicPageContentFitContainer {
+		padding-inline: var(--mt-space-6);
+		padding-bottom: var(--mt-space-6);
+	}
+
+	.aeFilterField {
+		flex: 1 1 45%;
+		min-width: 0;
+	}
+}
+
+@media (max-width: 600px) {
+	.aePage .sapFDynamicPageTitle,
+	.aePage .sapFDynamicPageHeader {
+		padding-inline: var(--mt-space-5);
+	}
+
+	.aePage .sapFDynamicPageContent,
+	.aePage .sapFDynamicPageContentFitContainer {
+		padding-inline: var(--mt-space-5);
+		padding-bottom: var(--mt-space-5);
+	}
+
+	/* !important for the same reason as the base rule in section 8a - and needed
+	   again here, because that rule's own !important would otherwise win. */
+	.aePageTitle {
+		font-size: var(--mt-font-size-lg) !important;
+	}
+
+	.aeFilterField {
+		flex: 1 1 100%;
+	}
+}
+
+/* ============================================================================
+   10. Print
+   ------------------------------------------------------------------------
+   "הדפסה" is a plain window.print(); this block is what makes the result
+   readable - the page chrome and the toolbar drop away, the employee name
+   prints as plain text rather than as a link, and the table lands on the white
+   page.
+
+   Worth knowing: sap.ui.table virtualises its rows, so a print contains the
+   rows currently rendered. Use "ייצוא לאקסל" for the complete result set - it
+   exports every filtered row, including collapsed branches.
+   ========================================================================= */
+@media print {
+
+	.aePage .sapFDynamicPageHeader,
+	.aeTableToolbar,
+	.aeTable .sapUiTableVSb,
+	.aeTable .sapUiTableHSb {
+		display: none;
+	}
+
+	.aeTable .sapUiTableCtrl td.sapUiTableCell .aeEmpName.sapMLnk {
+		color: var(--mt-color-black);
+		text-decoration: none;
+	}
+
+	.aePage,
+	.aePage .sapFDynamicPageTitle,
+	.aePage .sapFDynamicPageContentWrapper,
+	.aeGroupHeader,
+	.aeTable .sapUiTableCtrl > tbody > tr {
+		background-color: var(--mt-color-white);
+	}
+
+	.aeTable .sapUiTableCtrl td.sapUiTableCell {
+		border-bottom: var(--mt-border-width) solid var(--mt-color-border);
+	}
+}

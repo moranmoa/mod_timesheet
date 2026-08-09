@@ -1,0 +1,39 @@
+<core:FragmentDefinition
+	xmlns="sap.m"
+	xmlns:core="sap.ui.core">
+
+	<!--
+		הגדרות תצוגה - column visibility for the נתוני כל העובדים table.
+
+		Toggles apply straight away (there is nothing to validate and nothing to
+		roll back), so the dialog carries a single close action rather than an
+		OK/Cancel pair. `selected` is two-way bound, so the model is the single
+		source of truth and onColumnVisibilityChange only mirrors it onto the
+		table's columns.
+	-->
+	<Dialog
+		id="viewSettingsDialog"
+		title="{i18n>aeViewSettingsTitle}"
+		contentWidth="22rem"
+		draggable="true"
+		class="aeViewSettingsDialog">
+
+		<List
+			id="viewSettingsColumnList"
+			mode="MultiSelect"
+			includeItemInSelection="true"
+			headerText="{i18n>aeViewSettingsColumns}"
+			selectionChange=".onColumnVisibilityChange"
+			items="{
+				path: 'view>/viewSettings/columns',
+				templateShareable: false
+			}">
+			<StandardListItem title="{view>label}" selected="{view>visible}" />
+		</List>
+
+		<endButton>
+			<Button text="{i18n>aeClose}" press=".onCloseViewSettings" />
+		</endButton>
+
+	</Dialog>
+</core:FragmentDefinition>

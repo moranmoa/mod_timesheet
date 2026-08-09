@@ -1,0 +1,424 @@
+<mvc:View
+	controllerName="modtimesheet.controller.ManagerReports"
+	xmlns:mvc="sap.ui.core.mvc"
+	xmlns="sap.m"
+	xmlns:core="sap.ui.core"
+	xmlns:l="sap.ui.layout"
+	height="100%">
+
+	<Page id="page" showHeader="false" backgroundDesign="Solid" class="mtPage">
+		<content>
+
+			<!-- ================= Title ================= -->
+			<VBox class="mtHeader">
+				<Title text="דוחות נוכחות באחריות ממונה" level="H1" class="mtHeaderTitle" />
+			</VBox>
+
+			<!-- ================= Filter bar ================= -->
+			<VBox class="mtFilterBar">
+				<FlexBox wrap="Wrap" alignItems="End" class="mtFilterRow">
+
+					<!-- Search (right-most in RTL). Wider than the other columns:
+					     it carries the longest label. -->
+					<VBox class="mtFilterField mtFilterFieldSearch">
+						<Label text="חיפוש דוח לפי שם, מס. עובד או מחלקה" class="mtFilterLabel" />
+						<SearchField
+							id="searchField"
+							placeholder="חיפוש לפי שם, מס. עובד, מחלקה"
+							search=".onSearch"
+							liveChange=".onSearch"
+							width="100%" />
+					</VBox>
+
+					<!-- Report type (single select) -->
+					<VBox class="mtFilterField">
+						<Label text="סוג דוח" class="mtFilterLabel" />
+						<Select
+							id="reportTypeSelect"
+							width="100%"
+							selectedKey="ATTENDANCE"
+							change=".onFilterChange"
+							items="{
+								path: 'options>/reportTypes',
+								templateShareable: false
+							}">
+							<core:Item key="{options>key}" text="{options>text}" />
+						</Select>
+					</VBox>
+
+					<!-- Year (multi) -->
+					<VBox class="mtFilterField">
+						<Label text="שנה" class="mtFilterLabel" />
+						<MultiComboBox
+							id="yearFilter"
+							width="100%"
+							placeholder="הכל"
+							selectionFinish=".onFilterChange"
+							items="{
+								path: 'options>/years',
+								templateShareable: false
+							}">
+							<core:Item key="{options>key}" text="{options>text}" />
+						</MultiComboBox>
+					</VBox>
+
+					<!-- Month (multi) -->
+					<VBox class="mtFilterField">
+						<Label text="חודש" class="mtFilterLabel" />
+						<MultiComboBox
+							id="monthFilter"
+							width="100%"
+							placeholder="הכל"
+							selectionFinish=".onFilterChange"
+							items="{
+								path: 'options>/months',
+								templateShareable: false
+							}">
+							<core:Item key="{options>key}" text="{options>text}" />
+						</MultiComboBox>
+					</VBox>
+
+					<!-- Population (multi) -->
+					<VBox class="mtFilterField">
+						<Label text="אוכלוסייה" class="mtFilterLabel" />
+						<MultiComboBox
+							id="populationFilter"
+							width="100%"
+							placeholder="אוכלוסייה"
+							selectionFinish=".onFilterChange"
+							items="{
+								path: 'options>/populations',
+								templateShareable: false
+							}">
+							<core:Item key="{options>key}" text="{options>text}" />
+						</MultiComboBox>
+					</VBox>
+
+					<!-- Branch (multi) -->
+					<VBox class="mtFilterField">
+						<Label text="אנף" class="mtFilterLabel" />
+						<MultiComboBox
+							id="branchFilter"
+							width="100%"
+							placeholder="הכל"
+							selectionFinish=".onFilterChange"
+							items="{
+								path: 'options>/branches',
+								templateShareable: false
+							}">
+							<core:Item key="{options>key}" text="{options>text}" />
+						</MultiComboBox>
+					</VBox>
+
+					<!-- Unit (multi) -->
+					<VBox class="mtFilterField">
+						<Label text="יחידה" class="mtFilterLabel" />
+						<MultiComboBox
+							id="unitFilter"
+							width="100%"
+							placeholder="הכל"
+							selectionFinish=".onFilterChange"
+							items="{
+								path: 'options>/units',
+								templateShareable: false
+							}">
+							<core:Item key="{options>key}" text="{options>text}" />
+						</MultiComboBox>
+					</VBox>
+
+				</FlexBox>
+
+				<!-- Advanced filters - hidden until the arrow is clicked -->
+				<FlexBox
+					wrap="Wrap"
+					alignItems="End"
+					class="mtFilterRow mtFilterRowAdvanced"
+					visible="{view>/filtersExpanded}">
+
+					<!-- Manager name (default: current user) -->
+					<VBox class="mtFilterField">
+						<Label text="שם ממונה" class="mtFilterLabel" />
+						<MultiComboBox
+							id="managerFilter"
+							width="100%"
+							placeholder="הכל"
+							selectionFinish=".onFilterChange"
+							items="{
+								path: 'options>/managers',
+								templateShareable: false
+							}">
+							<core:Item key="{options>key}" text="{options>text}" />
+						</MultiComboBox>
+					</VBox>
+
+					<!-- Handling party (default: by role / selected tab) -->
+					<VBox class="mtFilterField">
+						<Label text="נמצא בטיפול" class="mtFilterLabel" />
+						<MultiComboBox
+							id="handledByFilter"
+							width="100%"
+							placeholder="כל הגורמים המאשרים"
+							selectionChange=".onHandledByChange"
+							selectionFinish=".onFilterChange"
+							items="{
+								path: 'options>/handlingParties',
+								templateShareable: false
+							}">
+							<core:Item key="{options>key}" text="{options>text}" />
+						</MultiComboBox>
+					</VBox>
+
+					<!-- Subordinates (default: direct only) -->
+					<VBox class="mtFilterField">
+						<Label text="כפיפים" class="mtFilterLabel" />
+						<Select
+							id="subordinatesFilter"
+							width="100%"
+							selectedKey="DIRECT"
+							change=".onFilterChange"
+							items="{
+								path: 'options>/subordinateScopes',
+								templateShareable: false
+							}">
+							<core:Item key="{options>key}" text="{options>text}" />
+						</Select>
+					</VBox>
+
+				</FlexBox>
+
+				<!-- Footer: expand toggle (start / right) + reset (end / left, always shown) -->
+				<HBox justifyContent="SpaceBetween" alignItems="Center" class="mtFilterActions">
+					<Button
+						class="mtFilterToggle"
+						type="Transparent"
+						icon="{= ${view>/filtersExpanded} ? 'sap-icon://slim-arrow-up' : 'sap-icon://slim-arrow-down' }"
+						text="{= ${view>/filtersExpanded} ? 'הסתר מסננים נוספים' : 'מסננים נוספים' }"
+						press=".onToggleFilters" />
+					<Button
+						text="איפוס פילטרים"
+						icon="sap-icon://clear-filter"
+						type="Transparent"
+						press=".onResetFilters" />
+				</HBox>
+			</VBox>
+
+			<!-- ============ Status tabs + table actions ============
+			     Frame 57:2941 puts both on one row: the status tabs at the
+			     inline start, the legend and the table actions at the end. -->
+			<HBox alignItems="Center" justifyContent="SpaceBetween" class="mtTabsBar">
+
+			<IconTabBar
+				id="statusTabBar"
+				class="mtStatusTabs"
+				expandable="false"
+				selectedKey="PENDING_MY_APPROVAL"
+				select=".onStatusSelect"
+				backgroundDesign="Transparent"
+				headerBackgroundDesign="Transparent">
+				<items>
+					<!-- iconColor drives the semantic accent of each tab circle
+					     (see .mtStatusTabs rules in css/style.css).
+					     Per the designer: "הכל" is brand blue (no iconColor),
+					     all three waiting stages share the pending accent
+					     (Critical) because they are the same waiting status,
+					     and "אושרו" stays green (Positive). -->
+					<IconTabFilter
+						key="ALL"
+						text="הכל"
+						icon="sap-icon://list"
+						count="{view>/statusCounts/ALL}" />
+					<IconTabFilter
+						key="PENDING_EMPLOYEE"
+						text="ממתין לעובד"
+						icon="sap-icon://employee"
+						iconColor="Critical"
+						count="{view>/statusCounts/PENDING_EMPLOYEE}" />
+					<IconTabFilter
+						key="PENDING_MY_APPROVAL"
+						text="ממתין לאישורי"
+						icon="sap-icon://manager"
+						iconColor="Critical"
+						count="{view>/statusCounts/PENDING_MY_APPROVAL}" />
+					<IconTabFilter
+						key="PENDING_HR"
+						text='ממתין למשא"ן'
+						icon="sap-icon://group"
+						iconColor="Critical"
+						count="{view>/statusCounts/PENDING_HR}" />
+					<IconTabFilter
+						key="APPROVED"
+						text="אושרו"
+						icon="sap-icon://complete"
+						iconColor="Positive"
+						count="{view>/statusCounts/APPROVED}" />
+				</items>
+			</IconTabBar>
+
+				<!-- legend + table actions, at the inline end of the tab row -->
+				<HBox alignItems="Center" class="mtTableActions">
+					<HBox alignItems="Center" class="mtLegend">
+						<core:Icon src="sap-icon://record" color="#d6b85e" class="mtLegendDot" />
+						<Text text="שלב ממתין" class="mtLegendText" />
+						<core:Icon src="sap-icon://record" color="#52ba65" class="mtLegendDot" />
+						<Text text="שלב אושר" class="mtLegendText" />
+					</HBox>
+					<Button
+						icon="sap-icon://action-settings"
+						type="Transparent"
+						text="הגדרות תצוגה"
+						tooltip="הגדרות תצוגה"
+						press=".onOpenViewSettings" />
+					<Button
+						icon="sap-icon://excel-attachment"
+						type="Transparent"
+						text="ייצוא לאקסל"
+						tooltip="ייצוא לאקסל"
+						press=".onExport" />
+				</HBox>
+
+			</HBox>
+
+			<!-- ================= Table ================= -->
+			<!-- The count line sits here rather than in the table's own
+			     headerToolbar: everything above the table is the screen's fixed
+			     part and only the table scrolls (section 5 in css/style.css), so
+			     a title inside the table would scroll away with the rows. It also
+			     keeps the sticky column headers on the theme's top: 0 offset. -->
+			<HBox alignItems="Center" class="mtTableToolbar mtTableHeader">
+				<Title id="tableTitle" text="{view>/tableTitle}" level="H3" />
+			</HBox>
+
+			<Table
+				id="reportsTable"
+				class="width_auto mtTable"
+				inset="false"
+				growing="true"
+				growingThreshold="8"
+				growingScrollToLoad="false"
+				sticky="ColumnHeaders"
+				mode="None"
+				items="{
+					path: 'reports>/items',
+					sorter: []
+				}">
+
+				<columns>
+					<!-- Widths follow the frame: employee name 230px, wizard 147px,
+					     row action 33px - each plus the 16px cell inset. -->
+					<Column width="15rem" hAlign="Begin">
+						<Text text="שם עובד" />
+					</Column>
+					<Column width="7rem" hAlign="Begin" minScreenWidth="Tablet" demandPopin="true">
+						<Text text="מספר עובד" />
+					</Column>
+					<Column hAlign="Begin" minScreenWidth="Tablet" demandPopin="true">
+						<Text text="אוכלוסייה" />
+					</Column>
+					<Column hAlign="Begin" minScreenWidth="Desktop" demandPopin="true">
+						<Text text="אנף" />
+					</Column>
+					<Column hAlign="Begin" minScreenWidth="Desktop" demandPopin="true">
+						<Text text="יחידה" />
+					</Column>
+					<Column hAlign="Begin" minScreenWidth="Desktop" demandPopin="true">
+						<Text text="שם ממונה" />
+					</Column>
+					<Column width="8rem" hAlign="Begin" minScreenWidth="Tablet" demandPopin="true">
+						<Text text="חודש לאישור" />
+					</Column>
+					<Column width="11.25rem" hAlign="Center">
+						<Text text="השלמת תהליך" />
+					</Column>
+
+					<!-- היעדרויות / השתלמויות. Action columns, not data: each holds a
+					     bare SAP-icon button that leaves for that employee's absences /
+					     training screen, exactly as on "כל העובדים" (colAbsences /
+					     colTraining there) - same icons, same widths, same order, so the
+					     two screens read alike.
+
+					     They carry no value, so they stay out of "ייצוא לאקסל" - there is
+					     nothing to export, only a way in.
+
+					     Last in the XML, which in RTL puts them at the end of the row
+					     (leftmost); השתלמויות is the wider of the two only so its own
+					     header fits on one line. -->
+					<Column width="6rem" hAlign="Center">
+						<Text text="היעדרויות" />
+					</Column>
+					<Column width="7.5rem" hAlign="Center">
+						<Text text="השתלמויות" />
+					</Column>
+				</columns>
+
+				<items>
+					<ColumnListItem vAlign="Middle" class="mtRow">
+						<cells>
+							<!-- שם עובד - opens the report (replaces the row's
+							     former expand button) -->
+							<Link
+								text="{reports>employeeName}"
+								class="mtEmpName"
+								press=".onOpenReport" />
+
+							<!-- מספר עובד -->
+							<Text text="{reports>employeeNumber}" />
+
+							<!-- אוכלוסייה chip -->
+							<HBox class="mtPopChip" alignItems="Center" justifyContent="Center">
+								<core:Icon src="sap-icon://employee" class="mtPopChipIcon" size="16px" />
+								<Text text="{reports>population}" class="mtPopChipText" />
+							</HBox>
+
+							<!-- אנף -->
+							<Text text="{reports>branch}" maxLines="1" />
+
+							<!-- יחידה -->
+							<Text text="{reports>unit}" maxLines="1" />
+
+							<!-- שם ממונה -->
+							<Text text="{reports>managerName}" />
+
+							<!-- חודש לאישור -->
+							<HBox alignItems="Center" class="mtMonthCell">
+								<Text text="{reports>approvalMonth}" />
+								<Text
+									text="{path: 'reports>extraMonths', formatter: '.formatter.extraMonthsText'}"
+									visible="{path: 'reports>extraMonths', formatter: '.formatter.extraMonthsVisible'}"
+									class="mtMonthBadge" />
+							</HBox>
+
+							<!-- השלמת תהליך -->
+							<HBox alignItems="Center" justifyContent="Center" class="mtProgressCell">
+								<Text
+									text="{parts: ['reports>processStep','reports>processTotal'], formatter: '.formatter.stepText'}"
+									class="mtProgressText" />
+								<HBox alignItems="Center" class="mtDots" items="{path: 'reports>stepStates', templateShareable: false}">
+									<core:Icon
+										src="sap-icon://record"
+										class="mtDot"
+										color="{path: 'reports>state', formatter: '.formatter.stepColor'}" />
+								</HBox>
+							</HBox>
+
+							<!-- היעדרויות -->
+							<Button
+								icon="sap-icon://date-time"
+								type="Transparent"
+								tooltip="פתיחת היעדרויות העובד"
+								press=".onOpenAbsences" />
+
+							<!-- השתלמויות -->
+							<Button
+								icon="sap-icon://education"
+								type="Transparent"
+								tooltip="פתיחת השתלמויות העובד"
+								press=".onOpenTraining" />
+
+						</cells>
+					</ColumnListItem>
+				</items>
+			</Table>
+
+		</content>
+	</Page>
+</mvc:View>
