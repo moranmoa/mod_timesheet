@@ -29,10 +29,23 @@
 		Standalone bootstrap using the public SAPUI5 CDN so the app runs as-is.
 		In your real application you already have a bootstrap - just copy the
 		view / controller / model / css folders into your project.
+
+		Pinned to the 1.71 maintenance line, which is what the Fiori launchpad this
+		app is deployed into runs (1.71.47, SAP_UI on the NetWeaver stack). The
+		unversioned CDN URL serves the newest release instead, so local development
+		used to run some 40 releases ahead of production - which is exactly how an app
+		comes to depend on an API that is not there once it is deployed.
+
+		The line rather than the exact patch on purpose: SAP's CDN only keeps the
+		latest patch of 1.71 (today 1.71.84), so /1.71.47/ is a 404. Within one LTS
+		minor the API surface is the same and patches are fixes, so this is as close
+		as the CDN gets. Keep it in step with the launchpad -
+		sap.ui.getVersionInfo({library: "sap.ushell"}) in the FLP console, or its
+		About dialog.
 	-->
 	<script
 		id="sap-ui-bootstrap"
-		src="https://ui5.sap.com/resources/sap-ui-core.js"
+		src="https://ui5.sap.com/1.71/resources/sap-ui-core.js"
 		data-sap-ui-theme="sap_horizon"
 		data-sap-ui-rtl="true"
 		data-sap-ui-language="he"

@@ -36,12 +36,50 @@
 
 		<!-- ================= Filter area =================
 		     RTL: the first child sits at the right, so the XML order is the
-		     right-to-left order of the design - search, סוג דוח, אוכלוסיה,
-		     אגף, יחידה. -->
+		     right-to-left order of the design - הצגת עובדים לא פעילים, search,
+		     סוג דוח, אוכלוסיה, אגף, יחידה. -->
 		<f:header>
 			<f:DynamicPageHeader pinnable="false">
 				<FlexBox wrap="Wrap" alignItems="End" class="aeFilterRow">
 
+					<!-- הצגת עובדים לא פעילים.
+
+					     Deliberately the FIRST field - in RTL that is the one to the
+					     RIGHT of the search - and it must not move: it decides what the
+					     search is even able to find. An employee who has left is absent
+					     from the search's suggestion list while this is off, so the
+					     order of the two fields is the order of the decisions: first say
+					     whether leavers count, then look one up.
+
+					     Behind the search it would produce a ping-pong instead - type a
+					     name, get nothing, remember the switch, type the name again.
+
+					     Off by default: the active workforce is the common case.
+
+					     alignItems here rather than in CSS: the switch is narrower than
+					     its column, and sap.m.FlexBox carries its own alignment class
+					     that a stylesheet rule of equal specificity would only race. -->
+					<VBox class="mtFilterField aeFilterField aeFilterFieldSwitch" alignItems="Center">
+						<Label
+							text="{i18n>aeFilterInactive}"
+							labelFor="aeInactiveSwitch"
+							class="mtFilterLabel aeFilterLabelCentered" />
+						<Switch
+							id="aeInactiveSwitch"
+							class="aeInactiveSwitch"
+							state="{view>/viewState/showInactive}"
+							customTextOn="{i18n>aeSwitchOn}"
+							customTextOff="{i18n>aeSwitchOff}"
+							tooltip="{i18n>aeFilterInactiveTooltip}"
+							change=".onToggleInactive" />
+					</VBox>
+
+					<!-- The suggestion list is the reason the switch above exists in
+					     this position: it is built in .onSuggest from the same rows the
+					     table is allowed to show, so an inactive employee surfaces here
+					     only once the switch is on - and then carries the grey
+					     "עובד/ת לא פעיל/ה" note, so it is never mistaken for a current
+					     employee. -->
 					<VBox class="mtFilterField aeFilterField aeFilterFieldSearch">
 						<Label text="{i18n>aeSearchLabel}" class="mtFilterLabel" />
 						<SearchField
@@ -49,7 +87,20 @@
 							placeholder="{i18n>aeSearchPlaceholder}"
 							search=".onSearch"
 							liveChange=".onSearch"
-							width="100%" />
+							enableSuggestions="true"
+							suggest=".onSuggest"
+							suggestionItems="{
+								path: 'view>/suggestions',
+								templateShareable: false
+							}"
+							width="100%">
+							<suggestionItems>
+								<SuggestionItem
+									key="{view>key}"
+									text="{view>text}"
+									description="{view>description}" />
+							</suggestionItems>
+						</SearchField>
 					</VBox>
 
 					<!-- סוג דוח: single select. Changing it means "fetch a different
@@ -146,43 +197,6 @@
 						<core:InvisibleText id="employeesTableLabel" text="{i18n>aeTableAriaLabel}" />
 						<ToolbarSpacer />
 
-						<!-- פתיחת / צמצום כל השורות. One control in two states: exactly
-						     one of them is on screen at a time, driven by allExpanded.
-						     The tree opens collapsed, so פתיחת כל השורות is the one that
-						     greets you; pressing it swaps in צמצום כל השורות.
-
-						     Both only exist in hierarchy mode - in flat mode every row is
-						     a leaf and there is nothing to open.
-
-						     Position is deliberate and must not move. The spacer packs
-						     the actions against the (RTL) left edge, so the toolbar lays
-						     them out from that edge in REVERSE order - the last child
-						     ends up leftmost. Anything inserted later in the list
-						     therefore shifts every earlier button sideways. These two
-						     appear and disappear with the mode, so they sit FIRST: that
-						     puts them at the far right of the group, growing into the
-						     spacer's empty space, and leaves הדפסה / ייצוא / הגדרות /
-						     תצוגת היררכיה / מיון exactly where they were.
-
-						     Put them next to the hierarchy toggle instead and toggling
-						     the mode slides the toggle ~375px out from under the cursor,
-						     with צמצום כל השורות landing on the pixels it just left. -->
-						<Button
-							id="expandAllButton"
-							text="{i18n>aeExpandAll}"
-							tooltip="{i18n>aeExpandAllTooltip}"
-							icon="sap-icon://expand"
-							type="Transparent"
-							visible="{= ${view>/viewState/isHierarchy} &amp;&amp; !${view>/viewState/allExpanded} }"
-							press=".onExpandAll" />
-						<Button
-							id="collapseAllButton"
-							text="{i18n>aeCollapseAll}"
-							tooltip="{i18n>aeCollapseAllTooltip}"
-							icon="sap-icon://collapse"
-							type="Transparent"
-							visible="{= ${view>/viewState/isHierarchy} &amp;&amp; ${view>/viewState/allExpanded} }"
-							press=".onCollapseAll" />
 						<Button
 							text="{i18n>aePrint}"
 							tooltip="{i18n>aePrint}"
@@ -201,6 +215,41 @@
 							icon="sap-icon://action-settings"
 							type="Transparent"
 							press=".onOpenViewSettings" />
+
+						<!-- פתיחת / צמצום כל הרשומות. A pair, both always on screen and
+						     both changing state together - the design greys them out
+						     rather than removing them, so the toolbar never reflows and
+						     the buttons stay where the user last saw them.
+
+						     They are DISABLED whenever there is nothing to open: the flat
+						     table (every row a leaf), and מיון לפי שם - an alphabetical
+						     list answers the "who reports to whom" question the tree
+						     asks, so the depth controls have no meaning there.
+
+						     Pressing either one twice is harmless - onExpandAll /
+						     onCollapseAll both restate a depth rather than toggle it -
+						     which is why this can be a plain pair and not a swap.
+
+						     Position: the spacer packs the actions against the (RTL) left
+						     edge and the toolbar lays them out from there in REVERSE
+						     order, so the last child ends up leftmost. This puts them
+						     between מיון and הגדרות תצוגה, as in the design. -->
+						<Button
+							id="expandAllButton"
+							text="{i18n>aeExpandAll}"
+							tooltip="{i18n>aeExpandAllTooltip}"
+							icon="sap-icon://expand"
+							type="Transparent"
+							enabled="{= ${view>/viewState/isHierarchy} &amp;&amp; ${view>/viewState/sortMode} === 'hierarchy' }"
+							press=".onExpandAll" />
+						<Button
+							id="collapseAllButton"
+							text="{i18n>aeCollapseAll}"
+							tooltip="{i18n>aeCollapseAllTooltip}"
+							icon="sap-icon://collapse"
+							type="Transparent"
+							enabled="{= ${view>/viewState/isHierarchy} &amp;&amp; ${view>/viewState/sortMode} === 'hierarchy' }"
+							press=".onCollapseAll" />
 
 						<!-- flat <-> tree. Label and icon always advertise the mode
 						     the button will switch *to*. -->

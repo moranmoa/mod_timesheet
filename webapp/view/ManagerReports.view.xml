@@ -37,7 +37,7 @@
 							id="reportTypeSelect"
 							width="100%"
 							selectedKey="ATTENDANCE"
-							change=".onFilterChange"
+							change=".onRequestFilterChange"
 							items="{
 								path: 'options>/reportTypes',
 								templateShareable: false
@@ -53,7 +53,7 @@
 							id="yearFilter"
 							width="100%"
 							placeholder="הכל"
-							selectionFinish=".onFilterChange"
+							selectionFinish=".onRequestFilterChange"
 							items="{
 								path: 'options>/years',
 								templateShareable: false
@@ -69,7 +69,7 @@
 							id="monthFilter"
 							width="100%"
 							placeholder="הכל"
-							selectionFinish=".onFilterChange"
+							selectionFinish=".onRequestFilterChange"
 							items="{
 								path: 'options>/months',
 								templateShareable: false

@@ -30,16 +30,44 @@ sap.ui.define([
 			group: { text: "", count: 0 },
 			employees: aFlat || [],
 			flatEmployees: [],
-			treeEmployees: []
+			treeEmployees: [],
+			suggestions: []
 		});
+
+		// mirrors onInit: the switch starts off, so the default here is also the
+		// screen's default - inactive employees are gated out
+		oModel.setProperty("/viewState/showInactive", false);
 
 		oController.getView = function () {
 			return { getModel: function () { return oModel; } };
 		};
 		oController.byId = function () { return null; };
+		// there is no component behind the controller, so the resource bundle is
+		// stubbed with the key itself - enough to assert *that* a text was used
+		oController._getText = function (sKey) { return "{" + sKey + "}"; };
 		oController._invalidateTreeCache();
 
 		return oController;
+	}
+
+	/**
+	 * The mock list minus its leavers - what the screen shows while the
+	 * הצגת עובדים לא פעילים switch is off, and therefore the baseline most
+	 * assertions below are measured against.
+	 */
+	function activeOnly(aFlat) {
+		return aFlat.filter(function (oRow) {
+			return oRow.isActive !== false;
+		});
+	}
+
+	/** A stand-in for the SearchField's suggest event. */
+	function suggestEvent(sValue) {
+		return {
+			getParameter: function (sName) {
+				return sName === "suggestValue" ? sValue : undefined;
+			}
+		};
 	}
 
 	/** [number, name, isManager, managerId] -> a minimal flat row. */
@@ -367,7 +395,7 @@ sap.ui.define([
 		assert.strictEqual(iCalls, 0, "_buildTree is not invoked in flat mode");
 		assert.strictEqual(
 			oController.getView().getModel("view").getProperty("/flatEmployees").length,
-			aFlat.length, "every row is bound instead");
+			activeOnly(aFlat).length, "every listed row is bound instead");
 
 		oController.getView().getModel("view").setProperty("/viewState/isHierarchy", true);
 		oController._applyFiltersAndSort();
@@ -397,13 +425,153 @@ sap.ui.define([
 		var oModel = oController.getView().getModel("view");
 
 		oController._applyFiltersAndSort();
-		assert.strictEqual(oModel.getProperty("/group/count"), 19,
-			"flat mode counts every listed row");
+		assert.strictEqual(oModel.getProperty("/group/count"), 16,
+			"flat mode counts every listed row - the three leavers are gated out");
 
 		oModel.setProperty("/viewState/isHierarchy", true);
 		oController._applyFiltersAndSort();
+		assert.strictEqual(oModel.getProperty("/group/count"), 8,
+			"tree mode counts the direct reports below the band - one of the nine has left");
+
+		oModel.setProperty("/viewState/showInactive", true);
+		oController._invalidateTreeCache();
+		oController._applyFiltersAndSort();
 		assert.strictEqual(oModel.getProperty("/group/count"), 9,
-			"tree mode counts the direct reports below the band");
+			"the switch adds דנה מזרחי back as a ninth direct report");
+
+		oModel.setProperty("/viewState/isHierarchy", false);
+		oController._applyFiltersAndSort();
+		assert.strictEqual(oModel.getProperty("/group/count"), 19,
+			"and the flat list is the whole dataset again");
+	});
+
+	/* ========================================================================
+	   הצגת עובדים לא פעילים - the gate, and the suggestion list it governs
+	   ===================================================================== */
+
+	QUnit.module("AllEmployees - inactive employees");
+
+	QUnit.test("_filterByActive hides leavers unless the switch is on", function (assert) {
+		var oController = makeController();
+		var aFlat = mockEmployees.getFlat();
+
+		assert.strictEqual(oController._filterByActive(aFlat, false).length, 16,
+			"three of the nineteen have left");
+		assert.ok(oController._filterByActive(aFlat, false).every(function (oRow) {
+			return oRow.isActive !== false;
+		}), "and none of them survives the gate");
+		assert.strictEqual(oController._filterByActive(aFlat, true).length, aFlat.length,
+			"switched on, the gate is open");
+	});
+
+	QUnit.test("a row with no isActive flag counts as active", function (assert) {
+		var oController = makeController();
+		var oRow = row("1", "אבי", false, ROOT);
+
+		assert.strictEqual(oController._filterByActive([oRow], false).length, 1,
+			"a service that stops sending the field must not empty the screen");
+	});
+
+	QUnit.test("an inactive employee cannot come back as an ancestor", function (assert) {
+		// The gate runs before the tree is built. Were it just another criterion,
+		// _collectWithAncestors would keep this manager to reach its active report.
+		var oManager = row("1", "מנהל שסיים", true, ROOT);
+		oManager.isActive = false;
+		var oReport = row("2", "עובד פעיל", false, "E1");
+
+		var oController = makeController([oManager, oReport]);
+		var oModel = oController.getView().getModel("view");
+		oModel.setProperty("/viewState/isHierarchy", true);
+		oController._applyFiltersAndSort();
+
+		var aTree = oModel.getProperty("/treeEmployees");
+		assert.strictEqual(aTree.length, 1, "one row on screen");
+		assert.strictEqual(aTree[0].employeeId, "E2",
+			"the active report, promoted to level 0 in place of its gated manager");
+	});
+
+	QUnit.test("onSuggest matches name and number, and caps the list", function (assert) {
+		var oController = makeController(mockEmployees.getFlat());
+		var oModel = oController.getView().getModel("view");
+
+		oController.onSuggest(suggestEvent("שחר"));
+		assert.deepEqual(
+			oModel.getProperty("/suggestions").map(function (oItem) { return oItem.text; }),
+			["שחר גולן 2251613"],
+			"the name matches, and the entry carries name + number");
+
+		oController.onSuggest(suggestEvent("2251613"));
+		assert.strictEqual(oModel.getProperty("/suggestions").length, 1, "so does the number");
+
+		oController.onSuggest(suggestEvent("225"));
+		assert.strictEqual(oModel.getProperty("/suggestions").length, 8,
+			"a term that matches everyone is capped at MAX_SUGGESTIONS");
+
+		oController.onSuggest(suggestEvent("   "));
+		assert.deepEqual(oModel.getProperty("/suggestions"), [],
+			"an empty term offers nothing, rather than the whole list");
+	});
+
+	QUnit.test("a leaver is suggested only once the switch is on, and marked", function (assert) {
+		var oController = makeController(mockEmployees.getFlat());
+		var oModel = oController.getView().getModel("view");
+
+		// דנה מזרחי is one of the three leavers in the mock
+		oController.onSuggest(suggestEvent("דנה"));
+		assert.deepEqual(oModel.getProperty("/suggestions"), [],
+			"switch off: the search cannot even offer her - the point of the field order");
+
+		oModel.setProperty("/viewState/showInactive", true);
+		oController.onSuggest(suggestEvent("דנה"));
+
+		var aItems = oModel.getProperty("/suggestions");
+		assert.strictEqual(aItems.length, 1, "switch on: she is offered");
+		assert.strictEqual(aItems[0].description, "{aeInactiveSuggestion}",
+			"with the grey note that says so");
+		assert.strictEqual(aItems[0].text.indexOf("{aeInactiveSuggestion}"), -1,
+			"and the note stays out of the text that lands in the search field");
+	});
+
+	QUnit.test("an active employee is suggested without a note", function (assert) {
+		var oController = makeController(mockEmployees.getFlat());
+
+		oController.onSuggest(suggestEvent("שחר"));
+		assert.strictEqual(
+			oController.getView().getModel("view").getProperty("/suggestions")[0].description,
+			"", "nothing to say about a current employee");
+	});
+
+	QUnit.test("a suggestion's text narrows the table to that one employee", function (assert) {
+		var oController = makeController(mockEmployees.getFlat());
+		var oModel = oController.getView().getModel("view");
+
+		oController.onSuggest(suggestEvent("שחר"));
+		var sPicked = oModel.getProperty("/suggestions")[0].text;
+
+		// picking an entry writes its text straight into the search field, which is
+		// what _readFilterCriteria then reads
+		assert.strictEqual(
+			oController._filterFlat(mockEmployees.getFlat(), {
+				search: sPicked.toLowerCase()
+			}).length,
+			1, "\"" + sPicked + "\" resolves to a single row");
+	});
+
+	QUnit.test("onToggleInactive drops the stale suggestion list", function (assert) {
+		var oController = makeController(mockEmployees.getFlat());
+		var oModel = oController.getView().getModel("view");
+
+		oController.onSuggest(suggestEvent("שחר"));
+		assert.strictEqual(oModel.getProperty("/suggestions").length, 1, "a list is up");
+
+		// the switch's own binding writes the state; the handler only recomputes
+		oModel.setProperty("/viewState/showInactive", true);
+		oController.onToggleInactive();
+
+		assert.deepEqual(oModel.getProperty("/suggestions"), [],
+			"it was built for the previous state of the switch, so it goes");
+		assert.strictEqual(oModel.getProperty("/flatEmployees").length, 19,
+			"and the table is recomputed with the leavers in");
 	});
 
 	/* ========================================================================

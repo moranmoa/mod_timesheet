@@ -1,0 +1,243 @@
+<mvc:View
+	controllerName="modtimesheet.controller.Home"
+	xmlns:mvc="sap.ui.core.mvc"
+	xmlns="sap.m"
+	xmlns:core="sap.ui.core"
+	height="100%">
+
+	<!-- ============================================================================
+	     דף הבית : Home (Figma frame 87:4991)
+	     ============================================================================
+	     Two blocks, one screen:
+
+	       "נתוני הנוכחות שלי"        - every user sees it
+	       "נתוני נוכחות כפיפים עבור" - only a user who approves for others
+	                                    (ממונה / משא"ן / שלישות)
+
+	     The second block is one `visible` binding on home>/showSubordinates, and the
+	     cards inside it come from home>/subordinateCards - the authorisation result
+	     the backend returns for this user. Adding or removing a card is therefore a
+	     backend decision, not a view change: no role is named anywhere in this file.
+
+	     The dark shell bar in the frame is the launchpad's own chrome, not the app's,
+	     so nothing here draws it - same as the other two screens.
+	     ========================================================================= -->
+
+	<Page id="homePage" showHeader="false" backgroundDesign="Solid" class="hmPage">
+		<content>
+
+			<!-- ================= Greeting ================= -->
+			<HBox alignItems="Center" justifyContent="SpaceBetween" class="hmGreetingBar">
+				<Title text="{home>/user/greeting}" level="H1" class="hmGreeting" />
+				<Button
+					icon="sap-icon://print"
+					type="Transparent"
+					tooltip="{i18n>hmPrint}"
+					press=".onPrint"
+					class="hmPrintButton" />
+			</HBox>
+
+			<!-- ================= נתוני הנוכחות שלי ================= -->
+			<Title
+				text="{i18n>hmMySectionTitle}"
+				level="H2"
+				class="hmSectionTitle hmSectionTitleBlock" />
+
+			<!-- alignItems="Stretch": the frame draws all three cards at the same
+			     283px, so the shortest one grows to the tallest rather than leaving a
+			     ragged bottom edge. -->
+			<FlexBox wrap="Wrap" alignItems="Stretch" renderType="Bare" class="hmCardRow hmMyCardRow">
+
+				<!-- הזנת נוכחות - a launcher card.
+				     Rendered as a Button, not a styled div: the whole card is the
+				     click target in the frame (cursor-pointer), and a Button is the
+				     one control that comes with the keyboard, focus and ARIA
+				     behaviour that implies.
+
+				     No iconFirst here: sap.m.Button always renders the icon before
+				     the content in the DOM and only re-places it with a class, so
+				     the property would change nothing in the column layout that
+				     css/style.css §11 puts on the inner span. That layout is
+				     ordered explicitly by `order`, which is what lifts the title to
+				     the top of the card and drops the 64px glyph to the bottom.
+
+				     On the glyph: see the note above HOME_REPORT_STATUS in
+				     model/DataService.js for why the frame's code points cannot be
+				     taken at face value. This one is the case where 1.71 draws
+				     nothing resembling the frame's clock-with-a-plus, so it falls
+				     back on the two things that do agree - U+E084 in the export
+				     resolves to create-entry-time here, and "create a time entry" is
+				     what הזנת נוכחות means. -->
+				<Button
+					class="hmCard hmLauncherCard"
+					type="Transparent"
+					text="{i18n>hmEnterAttendance}"
+					icon="sap-icon://create-entry-time"
+					press=".onEnterAttendance" />
+
+				<!-- סטטוס הדו"ח -->
+				<VBox class="hmCard hmCardWide hmStatusCard">
+					<Title text="{i18n>hmReportStatus}" level="H3" class="hmCardTitle" />
+
+					<!-- Model order is inline-start first, i.e. right-to-left on
+					     screen: כל השגיאות, דיווחים חסרים, צרופות חסרות, חריגות.
+					     כל השגיאות carries tone "error", which is what draws both its
+					     red counter and the rule separating it from the other three. -->
+					<HBox renderType="Bare" class="hmKpiRow" items="{path: 'home>/reportStatus', templateShareable: false}">
+						<VBox class="hmKpi">
+							<customData>
+								<!-- writeToDom puts data-tone on the cell so the CSS can
+								     key off it; the Icon below takes the same tone as a
+								     literal colour, because sap.ui.core.Icon cannot read
+								     a CSS custom property. -->
+								<core:CustomData key="tone" value="{home>tone}" writeToDom="true" />
+							</customData>
+							<HBox alignItems="Center" renderType="Bare" class="hmKpiValueRow">
+								<core:Icon
+									src="{home>icon}"
+									class="hmKpiIcon"
+									color="{path: 'home>tone', formatter: '.formatter.toneColor'}" />
+								<Text text="{home>count}" class="hmKpiValue" />
+							</HBox>
+							<Text text="{home>label}" class="hmKpiLabel" />
+						</VBox>
+					</HBox>
+				</VBox>
+
+				<!-- הודעות אישיות - scrolls inside the card (frame: overflow-y auto) -->
+				<VBox class="hmCard hmCardWide hmMessagesCard">
+					<Title text="{i18n>hmMessages}" level="H3" class="hmCardTitle" />
+					<VBox renderType="Bare" class="hmMessageList" items="{path: 'home>/messages', templateShareable: false}">
+						<VBox class="hmMessage">
+							<HBox alignItems="Center" renderType="Bare" class="hmMessageStatus">
+								<core:Icon
+									src="sap-icon://record"
+									class="hmMessageDot"
+									color="{path: 'home>isNew', formatter: '.formatter.messageDotColor'}" />
+								<Text text="{home>statusText}" class="hmMessageStatusText" />
+							</HBox>
+							<Text text="{home>subject}" class="hmMessageSubject" />
+							<Text text="{home>body}" class="hmMessageBody" />
+						</VBox>
+					</VBox>
+				</VBox>
+
+			</FlexBox>
+
+			<!-- ================= נתוני נוכחות כפיפים עבור ================= -->
+			<VBox class="hmSubordinates" visible="{home>/showSubordinates}">
+
+				<!-- Block label + month stepper.
+				     The arrows read correctly in both directions without a special
+				     case, and it is worth knowing why, because the naming looks
+				     backwards: both glyphs carry sapUiIconMirrorInRTL, so the font
+				     flips them, and the flex row flips the buttons. In RTL, "back"
+				     is the first child (at the right) drawing a mirrored
+				     slim-arrow-left, which points right; in LTR the same child is at
+				     the left and the same glyph is not mirrored, so it points left.
+				     Both compositions land on "back". -->
+				<HBox alignItems="Center" wrap="Wrap" class="hmSubHeader">
+					<Title text="{i18n>hmSubordinatesTitle}" level="H2" class="hmSectionTitle" />
+					<HBox alignItems="Center" renderType="Bare" class="hmMonthStepper">
+						<Button
+							icon="sap-icon://slim-arrow-left"
+							type="Transparent"
+							class="hmMonthArrow"
+							tooltip="{i18n>hmPreviousMonth}"
+							press=".onPreviousMonth" />
+						<Button
+							id="hmMonthField"
+							class="hmMonthField"
+							type="Transparent"
+							icon="sap-icon://appointment-2"
+							iconFirst="false"
+							text="{home>/monthLabel}"
+							tooltip="{i18n>hmMonthPickerTitle}"
+							press=".onOpenMonthPicker" />
+						<Button
+							icon="sap-icon://slim-arrow-right"
+							type="Transparent"
+							class="hmMonthArrow"
+							tooltip="{i18n>hmNextMonth}"
+							press=".onNextMonth" />
+					</HBox>
+				</HBox>
+
+				<!-- אוכלוסיה. The pill itself is .mtFilterField from §3a - the same
+				     component as on the two report screens - so only the horizontal
+				     label placement and the frame's 195px width are new. -->
+				<HBox alignItems="Center" class="mtFilterField hmPopulationField">
+					<Label text="{i18n>hmPopulation}" class="hmPopulationLabel" />
+					<Select
+						id="hmPopulationSelect"
+						selectedKey="{home>/populationKey}"
+						change=".onPopulationChange"
+						items="{path: 'home>/populationOptions', templateShareable: false}">
+						<core:Item key="{home>key}" text="{home>text}" />
+					</Select>
+				</HBox>
+
+				<FlexBox wrap="Wrap" alignItems="Start" renderType="Bare" class="hmCardRow hmSubCardRow">
+
+					<!-- The bound cards and the static launcher have to share one row.
+					     .hmCardGroup is `display: contents` (css §11), which drops this
+					     binding container out of the box tree and hands its cards
+					     straight to .hmSubCardRow as flex items. -->
+					<FlexBox renderType="Bare" class="hmCardGroup" items="{path: 'home>/subordinateCards', templateShareable: false}">
+						<VBox class="hmCard hmMetricCard">
+
+							<!-- The title is a Link: it renders exactly as the frame's
+							     card title (navy 700/20, no underline at rest) and opens
+							     דוחות נוכחות באחריות ממונה, so the card is a way in and
+							     not only a number. -->
+							<Link
+								text="{home>title}"
+								class="hmCardTitle hmCardTitleLink"
+								tooltip="{path: 'home>title', formatter: '.formatOpenReportsTooltip'}"
+								press=".onOpenCardReports" />
+
+							<VBox renderType="Bare" class="hmMetricList" items="{path: 'home>metrics', templateShareable: false}">
+								<VBox class="hmMetric">
+									<HBox justifyContent="SpaceBetween" alignItems="Center" renderType="Bare" class="hmMetricHead">
+										<Text text="{home>label}" class="hmMetricLabel" />
+										<Text text="{home>count}" class="hmMetricCount" />
+									</HBox>
+									<!-- Track + fill. The fill's width is a percentage
+									     string on the control (an HBox takes `width`),
+									     and its colour comes from data-tone, because a
+									     div's background cannot be bound. -->
+									<HBox renderType="Bare" class="hmMetricTrack">
+										<HBox renderType="Bare" class="hmMetricFill" width="{home>percent}">
+											<customData>
+												<core:CustomData key="tone" value="{home>tone}" writeToDom="true" />
+											</customData>
+										</HBox>
+									</HBox>
+								</VBox>
+							</VBox>
+
+							<Button
+								type="Transparent"
+								class="hmCardFooter"
+								icon="sap-icon://refresh"
+								text="{home>updatedText}"
+								tooltip="{i18n>hmRefresh}"
+								press=".onRefresh" />
+						</VBox>
+					</FlexBox>
+
+					<!-- צפייה בכל העובדים - the second launcher card, last in the row
+					     and therefore leftmost in RTL, exactly as in the frame. -->
+					<Button
+						class="hmCard hmLauncherCard"
+						type="Transparent"
+						text="{i18n>hmAllEmployeesCard}"
+						icon="sap-icon://group"
+						press=".onOpenAllEmployees" />
+
+				</FlexBox>
+			</VBox>
+
+		</content>
+	</Page>
+</mvc:View>

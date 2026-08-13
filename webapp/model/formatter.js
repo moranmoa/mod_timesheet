@@ -1,6 +1,23 @@
 sap.ui.define([], function () {
 	"use strict";
 
+	/**
+	 * The semantic accents of דף הבית, keyed by the `tone` a card metric or a
+	 * "סטטוס הדו"ח" cell carries in the model.
+	 *
+	 * Same caveat as stepColor below: sap.ui.core.Icon takes a literal colour, so
+	 * these cannot be read from css/tokens.css. Keep the two in sync - the bar
+	 * fills of the very same tones are painted from the tokens, in css/style.css
+	 * §11, off a data-tone attribute.
+	 */
+	var TONE_COLORS = {
+		brand: "#3e5de6",   // --mt-color-brand
+		warning: "#d6b85e", // --mt-color-warning
+		muted: "#7d85a8",   // --mt-color-text-muted
+		error: "#ba5265",   // --mt-color-error-accent
+		success: "#52ba65"  // --mt-color-success
+	};
+
 	var formatter = {
 
 		/**
@@ -50,6 +67,24 @@ sap.ui.define([], function () {
 		 */
 		countInParentheses: function (iCount) {
 			return (iCount === undefined || iCount === null) ? "" : "(" + iCount + ")";
+		},
+
+		/* ========================================================================
+		   דף הבית (Home)
+		   ===================================================================== */
+
+		/** Semantic accent of a KPI cell / metric row. Unknown tones read as brand. */
+		toneColor: function (sTone) {
+			return TONE_COLORS[sTone] || TONE_COLORS.brand;
+		},
+
+		/**
+		 * The 9px marker in front of a personal message. An unread one is the
+		 * pending amber the whole system uses for "needs you"; a read one drops back
+		 * to the heading navy so it reads as a bullet rather than as a status.
+		 */
+		messageDotColor: function (bIsNew) {
+			return bIsNew ? TONE_COLORS.warning : "#121842"; // --mt-color-navy-deep
 		}
 
 		// שם מנהל ישיר needs no formatter: managerName is filled on every row,

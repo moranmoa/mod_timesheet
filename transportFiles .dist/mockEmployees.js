@@ -41,6 +41,23 @@ sap.ui.define([], function () {
 		NATIONAL_SERVICE: "שירות לאומי"
 	};
 
+	/* --- reference data: עובדים לא פעילים -----------------------------------
+	   Employees whose employment has ended. In the backend this is a date test
+	   (Endda < today), not a column; here it is a lookup so the ROWS table keeps
+	   its seven columns.
+
+	   All three are LEAVES on purpose. An inactive manager would be a data
+	   problem rather than a test case: hiding it strands its reports, which
+	   _buildTree then promotes to level 0, and the tree would silently gain
+	   root-level rows every time the switch is flipped. Real leavers have their
+	   reports reassigned first.
+
+	   They sit at three different depths so the הצגת עובדים לא פעילים switch is
+	   verifiable in both modes: דנה מזרחי is a direct report (level 0, and
+	   therefore also visible in flat mode), ליאור נחום sits one level down,
+	   תמר אוחיון two. */
+	var INACTIVE_NUMBERS = ["2251547", "2251702", "2251614"];
+
 	/**
 	 * The logged-in manager. Not itself a row - it is the anchor whose direct
 	 * reports form level 0 of the tree.
@@ -66,6 +83,7 @@ sap.ui.define([], function () {
 	     - names spread over א/ב/ג/ד/ז/ח/ט/ל/מ/נ/ע/ר/ש/ת so both sort modes are
 	       visibly verifiable
 	     - one long אגף name (D01) that has to truncate in its column
+	     - three inactive employees at three depths (see INACTIVE_NUMBERS)
 	   ------------------------------------------------------------------------- */
 	var ROWS = [
 		["2251424", "אבירם כהן", true, "M0000001", "MOD", "D01", "U01"],
@@ -129,6 +147,7 @@ sap.ui.define([], function () {
 					employeeName: aRow[1],
 					// backend flag; _deriveIsManager re-derives and reconciles it
 					isManager: aRow[2],
+					isActive: INACTIVE_NUMBERS.indexOf(sNumber) === -1,
 					managerId: sManagerId,
 					// the service sends MgrEname; derived here so the mock stays consistent
 					managerName: NAME_BY_ID[sManagerId] || "",

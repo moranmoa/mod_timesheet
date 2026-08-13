@@ -122,6 +122,11 @@
 	--mt-text-field-value: var(--mt-font-weight-semibold) var(--mt-font-size-base) / 1 var(--mt-font-sans);
 	--mt-text-button: var(--mt-font-weight-bold) var(--mt-font-size-base) / 1 var(--mt-font-sans);
 	--mt-text-tag: var(--mt-font-weight-semibold) var(--mt-font-size-base) / 1 var(--mt-font-sans);
+	/* דף הבית: the block labels above each card row (800/18) and the 800/28
+	   counter inside a "סטטוס הדו"ח" cell, which sits on a 37px line rather than
+	   the page title's 1.2. */
+	--mt-text-section-label: var(--mt-font-weight-extrabold) var(--mt-font-size-md) / var(--mt-line-height-base) var(--mt-font-sans);
+	--mt-text-kpi: var(--mt-font-weight-extrabold) var(--mt-font-size-xl) / 37px var(--mt-font-sans);
 
 	/* ---------------------------------------------------------------------
 	   Spacing - the kit sits on a loose 4/6/8/10/12/16/24 rhythm
@@ -153,6 +158,7 @@
 	   Elevation
 	   ------------------------------------------------------------------ */
 	--mt-shadow-card: 0 0 10px rgba(0, 0, 0, 0.16);
+	--mt-shadow-card-raised: 0 0 12px rgba(0, 0, 0, 0.16); /* דף הבית cards */
 	--mt-shadow-popover: 0 4px 8px rgba(34, 53, 72, 0.25);
 	--mt-shadow-overlay: 0 8px 16px rgba(34, 53, 72, 0.48);
 	--mt-shadow-hairline: 0 2px 0 -1px rgba(34, 53, 72, 0.05);
@@ -177,6 +183,18 @@
 	--mt-tag-height: 28px;                  /* employee / population tag */
 	--mt-legend-dot: 15px;
 	--mt-icon-button: 33px;                 /* circular row action button */
+
+	/* דף הבית (frame 87:4991) - the card grid */
+	--mt-card-min-width: 342px;             /* every card's narrowest column */
+	--mt-card-width-wide: 463px;            /* סטטוס הדו"ח / הודעות אישיות */
+	--mt-card-gap: 34px;                    /* space between cards in a row */
+	--mt-card-height: 283px;                /* "נתוני הנוכחות שלי" row */
+	--mt-card-min-height: 224px;            /* subordinate card row */
+	--mt-launcher-icon: 64px;               /* the big glyph on a launcher card */
+	--mt-kpi-icon: 32px;                    /* glyph beside a KPI counter */
+	--mt-bar-height: 6px;                   /* metric progress bar */
+	--mt-message-dot: 9px;                  /* חדש / נקרא marker */
+	--mt-month-field-width: 140px;          /* the month pill */
 
 	/* ---------------------------------------------------------------------
 	   Motion - business app: short, flat fades, no bounce

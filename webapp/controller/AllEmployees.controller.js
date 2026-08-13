@@ -28,6 +28,13 @@ sap.ui.define([
 	var SORT_HIERARCHY = "hierarchy";
 
 	/**
+	 * How many entries the search field's suggestion list offers at once. The
+	 * list is a shortcut, not a second table - past a screenful it stops helping
+	 * and starts asking to be read.
+	 */
+	var MAX_SUGGESTIONS = 8;
+
+	/**
 	 * The three multi-select filters, in one place: which control they drive,
 	 * where their option list lives, and which pair of fields on an employee row
 	 * the options are distilled from. Everything that iterates the multi-selects -
@@ -100,6 +107,31 @@ sap.ui.define([
 
 	function getComparator(sMode) {
 		return sMode === SORT_HIERARCHY ? compareByHierarchy : compareByName;
+	}
+
+	/**
+	 * הצגת עובדים לא פעילים, applied as a gate on the dataset rather than as one
+	 * more search criterion - and applied BEFORE the tree is built.
+	 *
+	 * It cannot live in matchesCriteria: tree mode keeps every match's whole
+	 * manager chain (_collectWithAncestors), so an employee who has left would
+	 * come straight back in as somebody's ancestor. Gating the flat list first
+	 * means no code path downstream can see a hidden row at all.
+	 *
+	 * A row with no isActive flag counts as active - a screen that hides everyone
+	 * because the field was not delivered is worse than one that lists a leaver.
+	 *
+	 * @param {object[]} aFlat         flat employee rows
+	 * @param {boolean}  bShowInactive state of the switch
+	 * @returns {object[]} the rows the screen may show
+	 */
+	function filterByActive(aFlat, bShowInactive) {
+		if (bShowInactive) {
+			return aFlat || [];
+		}
+		return (aFlat || []).filter(function (oRow) {
+			return oRow.isActive !== false;
+		});
 	}
 
 	/** An empty (or missing) key list means "no restriction". */
@@ -178,9 +210,10 @@ sap.ui.define([
 					searchTerm: "",
 					reportType: "ATTENDANCE",
 					currentManagerId: this._getCurrentManagerId(),
-					// drives which of the two tree buttons is on screen: false ->
-					// פתיחת כל השורות, true -> צמצום כל השורות. Only ever one of them.
-					allExpanded: false
+					// הצגת עובדים לא פעילים. Off is the common case, and it is also the
+					// safe default: the screen opens on the current workforce and the
+					// user asks for the leavers, never the other way round.
+					showInactive: false
 				},
 				filters: {
 					reportTypes: [
@@ -211,7 +244,9 @@ sap.ui.define([
 				employees: [],
 				// derived, rebound views of it
 				flatEmployees: [],
-				treeEmployees: []
+				treeEmployees: [],
+				// the search field's drop-down, rebuilt per keystroke in onSuggest
+				suggestions: []
 			});
 
 			this.getView().setModel(oViewModel, "view");
@@ -256,6 +291,7 @@ sap.ui.define([
 			//   MgrPernr    -> managerId
 			//   MgrEname    -> managerName        <-- direct manager's name
 			//   IsManager   -> isManager          (re-derived, see _deriveIsManager)
+			//   IsActive    -> isActive           (Endda >= today, i.e. still employed)
 			//   Persg/Persk -> populationKey / populationText
 			//   OrgehDiv    -> divisionKey / divisionName
 			//   OrgehUnit   -> unitKey / unitName
@@ -323,6 +359,13 @@ sap.ui.define([
 					employeeNumber: oEntry.Pernr,
 					employeeName: oEntry.Ename,
 					isManager: oEntry.IsManager === true || oEntry.IsManager === "X",
+					// A missing flag reads as active, deliberately: the switch hides
+					// isActive === false and nothing else, so a service that stops
+					// sending the field degrades into "everyone is current" rather than
+					// into an empty screen. See filterByActive.
+					isActive: oEntry.IsActive === undefined || oEntry.IsActive === null
+						? true
+						: (oEntry.IsActive === true || oEntry.IsActive === "X"),
 					managerId: oEntry.MgrPernr ? "E" + oEntry.MgrPernr : null,
 					managerName: oEntry.MgrEname || "",
 					populationKey: oEntry.Persg,
@@ -339,6 +382,12 @@ sap.ui.define([
 		 * $filter for the read call. The report type and the multi-selects are
 		 * server-side restrictions once the backend is wired; search stays
 		 * client-side because it also has to match מנהל ישיר.
+		 *
+		 * Employment status is deliberately NOT here. The read must return leavers
+		 * too: הצגת עובדים לא פעילים is a client-side gate (filterByActive), and it
+		 * also decides what the search field is allowed to suggest - restrict the
+		 * service by status and the switch has nothing to reveal, or costs a round
+		 * trip and a rebuilt suggestion list every time it is flipped.
 		 *
 		 * @returns {string} an OData V2 $filter expression
 		 */
@@ -450,6 +499,69 @@ sap.ui.define([
 		},
 
 		/**
+		 * Builds the search field's suggestion list. sap.m.SearchField does no
+		 * filtering of its own - the list it shows is exactly what this puts in the
+		 * model.
+		 *
+		 * Fed through the same filterByActive gate as the table, which is the whole
+		 * reason הצגת עובדים לא פעילים sits BEFORE the search field: while the switch
+		 * is off, an employee who has left is not offered here either, so the list
+		 * can never suggest a name the table would then refuse to show.
+		 *
+		 * @param {sap.ui.base.Event} oEvent suggest event, carrying suggestValue
+		 */
+		onSuggest: function (oEvent) {
+			var oViewModel = this.getView().getModel("view");
+			var sTerm = (oEvent.getParameter("suggestValue") || "").trim().toLowerCase();
+
+			// no term, no list - an empty search field would otherwise drop the whole
+			// (capped) employee list open on entry
+			if (!sTerm) {
+				oViewModel.setProperty("/suggestions", []);
+				return;
+			}
+
+			var sInactiveNote = this._getText("aeInactiveSuggestion");
+			var aRows = filterByActive(
+				oViewModel.getProperty("/employees"),
+				oViewModel.getProperty("/viewState/showInactive")
+			);
+
+			oViewModel.setProperty("/suggestions", aRows.filter(function (oRow) {
+				// name and number in one haystack, so "כהן" and "2251424" both hit -
+				// the field's label promises exactly those two
+				return (oRow.employeeName + " " + oRow.employeeNumber)
+					.toLowerCase().indexOf(sTerm) !== -1;
+			}).sort(compareByName).slice(0, MAX_SUGGESTIONS).map(function (oRow) {
+				return {
+					key: oRow.employeeId,
+					// Picking an entry writes this text straight into the search field,
+					// and matchesCriteria's haystack opens with the same "name number"
+					// pair - so a pick narrows the table to that one employee.
+					text: oRow.employeeName + " " + oRow.employeeNumber,
+					// grey note, never part of `text`: it must not travel into the
+					// search field and stop matching anything
+					description: oRow.isActive === false ? sInactiveNote : ""
+				};
+			}));
+		},
+
+		/**
+		 * הצגת עובדים לא פעילים - the same recompute the other filters trigger.
+		 *
+		 * The switch's own two-way binding has already written /viewState/showInactive
+		 * by the time this runs; what is left is the derived data. The suggestion list
+		 * is dropped with it: it was built for the previous state of the switch, so
+		 * leaving it up would go on offering leavers the table has just hidden until
+		 * the next keystroke rebuilds it.
+		 */
+		onToggleInactive: function () {
+			this.getView().getModel("view").setProperty("/suggestions", []);
+			this._invalidateTreeCache();
+			this._applyFiltersAndSort();
+		},
+
+		/**
 		 * סוג דוח picks *which* report is being read, not which of the loaded rows
 		 * to show - so it re-enters the data-load path. Today that returns the same
 		 * mock; once the OData read in _onRouteMatched is live it re-reads
@@ -482,7 +594,12 @@ sap.ui.define([
 		 */
 		_applyFiltersAndSort: function () {
 			var oViewModel = this.getView().getModel("view");
-			var aAll = oViewModel.getProperty("/employees") || [];
+			// the gate first: from here down, "all employees" means the ones the
+			// הצגת עובדים לא פעילים switch currently allows on screen
+			var aAll = filterByActive(
+				oViewModel.getProperty("/employees") || [],
+				oViewModel.getProperty("/viewState/showInactive")
+			);
 			var oCriteria = this._readFilterCriteria();
 			var sSortMode = oViewModel.getProperty("/viewState/sortMode");
 			var bTree = oViewModel.getProperty("/viewState/isHierarchy");
@@ -505,14 +622,6 @@ sap.ui.define([
 				var bNarrowed = aNodes.length < aAll.length;
 
 				this._bindTable(true, bNarrowed ? maxLevel(aNodes) + 1 : 0);
-
-				// Keep the button pair honest about what is on screen. Rebinding
-				// resets sap.ui.table's expand state, so this is also the reset that
-				// puts פתיחת כל השורות back after a filter change. The length guard is
-				// for a search that matches nothing: an empty table is not "expanded",
-				// and offering to collapse it would be nonsense.
-				oViewModel.setProperty("/viewState/allExpanded",
-					bNarrowed && aNodes.length > 0);
 			} else {
 				var aFlat = this._sortFlat(this._filterFlat(aAll, oCriteria), sSortMode);
 
@@ -565,6 +674,18 @@ sap.ui.define([
 			return (aFlat || []).filter(function (oRow) {
 				return matchesCriteria(oRow, oCriteria);
 			});
+		},
+
+		/**
+		 * Thin method over the module-level filterByActive, so the gate is reachable
+		 * from the unit tests.
+		 *
+		 * @param {object[]} aFlat         flat employee rows
+		 * @param {boolean}  bShowInactive state of the הצגת עובדים לא פעילים switch
+		 * @returns {object[]} the rows the screen may show
+		 */
+		_filterByActive: function (aFlat, bShowInactive) {
+			return filterByActive(aFlat, bShowInactive);
 		},
 
 		/**
@@ -850,15 +971,15 @@ sap.ui.define([
 		/* ============================ toolbar actions ============================ */
 
 		/**
-		 * פתיחת כל השורות. expandToLevel wants an absolute depth, so the tree's own
+		 * פתיחת כל הרשומות. expandToLevel wants an absolute depth, so the tree's own
 		 * depth is measured rather than passing some arbitrarily large number.
 		 *
-		 * Flips /viewState/allExpanded, which swaps this button out for צמצום כל
-		 * השורות - the two are one control in two states, never both on screen.
+		 * Restates a depth rather than toggling one, so pressing it twice is a no-op
+		 * - which is what lets the view show both buttons at once instead of swapping
+		 * one for the other.
 		 *
-		 * Not persistent by design: a filter, a search or a sort rebuilds the tree
-		 * and sap.ui.table resets the expand state, so _applyFiltersAndSort resets
-		 * the flag with it.
+		 * Not persistent by design: a filter, a search or a sort rebuilds the tree and
+		 * sap.ui.table resets the expand state with it.
 		 */
 		onExpandAll: function () {
 			var oTable = this.byId("employeesTable");
@@ -870,20 +991,18 @@ sap.ui.define([
 
 			var aNodes = this._flattenTree(oViewModel.getProperty("/treeEmployees"));
 			oTable.expandToLevel(maxLevel(aNodes) + 1);
-			oViewModel.setProperty("/viewState/allExpanded", true);
 		},
 
-		/** צמצום כל השורות - back to the level-0 rows, and back to the other button. */
+		/** צמצום כל הרשומות - back to the level-0 rows. */
 		onCollapseAll: function () {
 			var oTable = this.byId("employeesTable");
-			var oViewModel = this.getView().getModel("view");
 
-			if (!oTable || !oViewModel.getProperty("/viewState/isHierarchy")) {
+			if (!oTable || !this.getView().getModel("view")
+					.getProperty("/viewState/isHierarchy")) {
 				return;
 			}
 
 			oTable.collapseAll();
-			oViewModel.setProperty("/viewState/allExpanded", false);
 		},
 
 		onOpenViewSettings: function () {

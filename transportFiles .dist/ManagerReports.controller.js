@@ -43,6 +43,49 @@ sap.ui.define([
 		return o;
 	}, {});
 
+	/**
+	 * The filters whose option lists describe the DATA and not a fixed domain.
+	 * On real rows these four are rebuilt from what the service returned
+	 * (DataService.deriveFilterOptions), so a selection left over from the mock
+	 * lists - "M1", "B1" - cannot silently empty the table.
+	 */
+	var DATA_DRIVEN_FILTERS = [
+		{ optionsKey: "populations", controlId: "populationFilter" },
+		{ optionsKey: "branches", controlId: "branchFilter" },
+		{ optionsKey: "units", controlId: "unitFilter" },
+		{ optionsKey: "managers", controlId: "managerFilter" }
+	];
+
+	/**
+	 * The period the service is asked for, derived from the שנה / חודש filters.
+	 *
+	 * Both are multi-selects and ImBeginDate / ImEndDate are a single span, so the
+	 * span is the outer bounds of the selection: earliest selected month to the
+	 * last day of the latest one. Nothing selected means the whole of the selected
+	 * year(s), which is what an empty "הכל" filter says on screen.
+	 *
+	 * Both bounds are UTC midnights, because the model formats an Edm.DateTime
+	 * filter value off a Date's UTC components - a local midnight would reach the
+	 * backend as the previous day. See _normaliseReportParams in DataService.
+	 *
+	 * @param {string[]} aYearKeys  selected years, e.g. ["2025"]
+	 * @param {string[]} aMonthKeys selected months, e.g. ["8"]
+	 * @returns {{begin: Date, end: Date}} the requested span
+	 */
+	function buildPeriod(aYearKeys, aMonthKeys) {
+		var oNow = new Date();
+		var aYears = (aYearKeys && aYearKeys.length ? aYearKeys : [String(oNow.getFullYear())])
+			.map(Number).sort(function (a, b) { return a - b; });
+		var aMonths = (aMonthKeys && aMonthKeys.length ? aMonthKeys : ["1", "12"])
+			.map(Number).sort(function (a, b) { return a - b; });
+
+		return {
+			begin: new Date(Date.UTC(aYears[0], aMonths[0] - 1, 1)),
+			// day 0 of the next month is the last day of this one
+			end: new Date(Date.UTC(aYears[aYears.length - 1], aMonths[aMonths.length - 1], 0))
+		};
+	}
+
 	return Controller.extend("modtimesheet.controller.ManagerReports", {
 
 		formatter: formatter,
@@ -53,6 +96,12 @@ sap.ui.define([
 			// logged-in user + the defaults their role implies
 			this._oCurrentUser = DataService.getCurrentUser();
 			this._oRoleDefaults = DataService.getRoleDefaults(this._oCurrentUser.role);
+
+			// ImManagerType, until the route says otherwise (see _onRouteMatched)
+			this._sManagerType = DataService.getManagerType("");
+			// mock until a load says otherwise - it decides whether the mock-only
+			// filter defaults (שם ממונה = M1) may be applied at all
+			this._bMockData = true;
 
 			// filter drop-down options
 			this.getView().setModel(new JSONModel(DataService.getFilterOptions()), "options");
@@ -77,6 +126,22 @@ sap.ui.define([
 			// initial default filters: current year + current month, everything else "all"
 			this._setDefaultFilters();
 
+			// The screen is opened from a דף הבית card, and the card decides which
+			// population the service is asked for - so the load waits for the route.
+			this.getOwnerComponent().getRouter()
+				.getRoute("managerReports")
+				.attachPatternMatched(this._onRouteMatched, this);
+		},
+
+		/**
+		 * …#/ManagerReports?card=DIVISION - the card the user came from, turned
+		 * into the service's ImManagerType. No card (a direct entry, a bookmark)
+		 * means מנהל ישיר / TMGR.
+		 */
+		_onRouteMatched: function (oEvent) {
+			var oQuery = (oEvent.getParameter("arguments") || {})["?query"] || {};
+
+			this._sManagerType = DataService.getManagerType(oQuery.card);
 			this._loadData();
 		},
 
@@ -98,17 +163,28 @@ sap.ui.define([
 			oView.byId("branchFilter").setSelectedKeys([]);
 			oView.byId("unitFilter").setSelectedKeys([]);
 
-			// role / user driven defaults
-			oView.byId("managerFilter").setSelectedKeys([this._oCurrentUser.managerKey]);
+			// role / user driven defaults.
+			// שם ממונה is preselected only against mock rows: its key there is the
+			// mock manager id (M1), while the service returns manager NAMES and no
+			// id at all, so preselecting M1 over real data would match nothing and
+			// empty the table. The service has already restricted the rows to this
+			// user's people anyway - ImManagerUser + ImManagerType do exactly that.
+			oView.byId("managerFilter").setSelectedKeys(
+				this._bMockData ? [this._oCurrentUser.managerKey] : []
+			);
 			oView.byId("handledByFilter").setSelectedKeys([this._oRoleDefaults.handledByKey]);
 			oView.byId("subordinatesFilter").setSelectedKey("DIRECT");
 			oView.byId("statusTabBar").setSelectedKey(this._oRoleDefaults.statusTab);
 		},
 
-		/** "איפוס פילטרים" - reset the filters back to their defaults. */
+		/**
+		 * "איפוס פילטרים" - reset the filters back to their defaults.
+		 * The period is part of the reset, so this re-asks the service rather than
+		 * re-filtering the rows of the period that was on screen a moment ago.
+		 */
 		onResetFilters: function () {
 			this._setDefaultFilters();
-			this._applyFilters();
+			this._loadData();
 		},
 
 		/** Expand / collapse the advanced filter area (the arrow toggle). */
@@ -168,17 +244,41 @@ sap.ui.define([
 
 		/**
 		 * Loads the rows from the DataService and refreshes the screen.
-		 * Called on init and whenever you want to re-fetch.
+		 *
+		 * Called on entry and again whenever the requested PERIOD changes: שנה and
+		 * חודש are request parameters (ImBeginDate / ImEndDate are mandatory on the
+		 * service), not client-side filters like the rest of the bar. They stay in
+		 * _buildBaseFilters as well, which costs nothing and keeps the counts right
+		 * when the backend answers with a wider span than it was asked for.
 		 */
 		_loadData: function () {
 			var oView = this.getView();
+			var oPeriod = buildPeriod(
+				oView.byId("yearFilter").getSelectedKeys(),
+				oView.byId("monthFilter").getSelectedKeys()
+			);
+
 			oView.setBusy(true);
 
-			DataService.getManagerReports(this.getOwnerComponent())
+			DataService.getManagerReports(this.getOwnerComponent(), {
+				managerType: this._sManagerType,
+				managerUser: this._oCurrentUser.userId,
+				beginDate: oPeriod.begin,
+				endDate: oPeriod.end,
+				reportType: oView.byId("reportTypeSelect").getSelectedKey()
+			})
 				.then(function (aItems) {
 					this._aAllItems = aItems || [];
+					this._bMockData = DataService.isLastLoadMock();
+
+					if (!this._bMockData) {
+						this._applyDataDrivenOptions(this._aAllItems);
+					}
+					this._alignStatusTab();
+
 					this._oReportsModel.setProperty("/items", this._aAllItems);
 					this._applyFilters();
+					this._noteMockData();
 					oView.setBusy(false);
 				}.bind(this))
 				.catch(function (oErr) {
@@ -189,6 +289,56 @@ sap.ui.define([
 				});
 		},
 
+		/**
+		 * Replaces the four data-driven option lists with what the service actually
+		 * returned, and drops any selection on them: those selections were made
+		 * against the previous list, and a key that no longer exists silently
+		 * filters everything away.
+		 *
+		 * @param {object[]} aItems the rows that just arrived
+		 */
+		_applyDataDrivenOptions: function (aItems) {
+			var oOptions = this.getView().getModel("options");
+			var oDerived = DataService.deriveFilterOptions(aItems);
+			var oView = this.getView();
+
+			DATA_DRIVEN_FILTERS.forEach(function (oFilter) {
+				oOptions.setProperty("/" + oFilter.optionsKey, oDerived[oFilter.optionsKey]);
+				oView.byId(oFilter.controlId).setSelectedKeys([]);
+			});
+		},
+
+		/**
+		 * The status tabs need a status on the row, and ManagerEmployees does not
+		 * carry one yet. Landing on "ממתין לאישורי" would then show an empty table
+		 * over rows that did arrive - so when nothing carries a status the screen
+		 * falls back to "הכל", which is the honest view of statusless data.
+		 *
+		 * Remove this once the service returns the approval columns.
+		 */
+		_alignStatusTab: function () {
+			var bHasStatus = (this._aAllItems || []).some(function (oItem) {
+				return !!oItem.status;
+			});
+
+			if (!bHasStatus && this._aAllItems.length) {
+				this.getView().byId("statusTabBar").setSelectedKey(ALL);
+				this._syncHandledByToTab();
+			}
+		},
+
+		/**
+		 * Says so, once per screen entry, when the rows on screen are demo data -
+		 * which on a development machine they always are, by design
+		 * (DataService.isMockEnvironment).
+		 */
+		_noteMockData: function () {
+			if (this._bMockData && !this._bMockNoticeShown) {
+				this._bMockNoticeShown = true;
+				MessageToast.show("סביבת פיתוח - מוצגים נתוני הדגמה");
+			}
+		},
+
 		/* =============================== filtering =============================== */
 
 		onSearch: function () {
@@ -197,6 +347,15 @@ sap.ui.define([
 
 		onFilterChange: function () {
 			this._applyFilters();
+		},
+
+		/**
+		 * שנה / חודש / סוג דוח - the parts of the filter bar that are part of the
+		 * REQUEST, so changing one re-asks the service instead of narrowing what is
+		 * already on screen. Everything else filters client-side, as before.
+		 */
+		onRequestFilterChange: function () {
+			this._loadData();
 		},
 
 		onStatusSelect: function () {
@@ -322,9 +481,15 @@ sap.ui.define([
 				APPROVED: 0
 			};
 			(this._aAllItems || []).forEach(function (oItem) {
-				if (this._matchesBase(oItem, oState) && oCounts.hasOwnProperty(oItem.status)) {
+				if (!this._matchesBase(oItem, oState)) {
+					return;
+				}
+				// "הכל" counts every row in the filter context, including one whose
+				// status the service did not send - it is still a report on screen,
+				// and a row the table shows but no tab counts reads as a bug.
+				oCounts.ALL++;
+				if (oItem.status && oCounts.hasOwnProperty(oItem.status)) {
 					oCounts[oItem.status]++;
-					oCounts.ALL++;
 				}
 			}.bind(this));
 			// IconTabFilter.count is a string property - coerce.

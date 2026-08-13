@@ -1,0 +1,31 @@
+<core:FragmentDefinition
+	xmlns="sap.m"
+	xmlns:core="sap.ui.core">
+
+	<!-- ============================================================================
+	     בחירת חודש : opened by the month pill on דף הבית.
+	     ============================================================================
+	     The frame draws the month as a small "Date picker" field. UI5 1.71 has no
+	     month-only picker control, so the pill opens this list instead: the last two
+	     years of months, newest first, which is the whole range the counters cover.
+	     The two chevrons beside the pill step the same value one month at a time.
+	     ========================================================================= -->
+
+	<Popover
+		id="hmMonthPopover"
+		class="hmMonthPopover"
+		placement="Bottom"
+		showHeader="false"
+		contentWidth="200px"
+		contentHeight="320px">
+		<List
+			id="hmMonthList"
+			mode="SingleSelectMaster"
+			includeItemInSelection="true"
+			selectionChange=".onSelectMonth"
+			items="{path: 'home>/monthOptions', templateShareable: false}">
+			<StandardListItem title="{home>text}" selected="{home>selected}" />
+		</List>
+	</Popover>
+
+</core:FragmentDefinition>

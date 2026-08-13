@@ -201,6 +201,24 @@
 	margin: 0;
 }
 
+/* A consequence of the `display: flex` above, and not a cosmetic one.
+   ------------------------------------------------------------------------
+   Until its picker is first opened, a Select renders the dropdown's own list
+   inside the field: `.sapMSlt > .sapMSelectList {visibility: hidden; position:
+   relative; min-width: 6rem}`. Under UI5's own block layout that box sits below
+   the 44px field, hidden and harmless. Made a flex item, it becomes a 96px
+   column *inside* the pill - invisible, but occupying the space the value needs
+   to fill - so the value and the chevron bunch up at the start of the field with
+   ~100px of dead space after them.
+
+   Absolute rather than `display: none`: the element stays measurable, so
+   whatever UI5 reads off it when it sizes the popover reads the same as before.
+   It keeps the theme's own visibility: hidden either way, and once the picker
+   opens the list moves into the popover, where this selector no longer applies. */
+.mtFilterField .sapMSlt > .sapMSelectList {
+	position: absolute;
+}
+
 .mtFilterField .sapMSltLabel {
 	position: static;
 	flex: 1 1 auto;
@@ -311,6 +329,49 @@
 	font: var(--mt-text-field-value);
 	color: var(--mt-text-secondary);
 	opacity: 1;
+}
+
+/* ...and a MultiComboBox drops its placeholder the moment it carries tokens.
+   ------------------------------------------------------------------------
+   UI5 does this itself - sap.m's own MultiComboBox.less sets the placeholder to
+   `transparent` under .sapMMultiComboBoxHasToken - but from a selector exactly
+   as specific as the rule above, and the app's stylesheet is loaded after the
+   theme's, so restating the placeholder colour there quietly switched it back
+   on. The field then read "הכל" *beside* the tokens it already carried, which
+   is what looks like the input half sitting over the tokenizer. Nothing is
+   stacked there: the tokenizer and the <input> are siblings in the pill's flex
+   row (§3a), so no z-index is involved - the placeholder simply should not have
+   been drawn.
+
+   :not(.aeAllSelected) keeps נתוני כל העובדים working the other way round:
+   there every option starts checked, §8b hides the tokenizer while the
+   selection is complete, and the placeholder is then the only thing left to say
+   "הכל" - the tokens still exist, they are just not drawn. */
+.mtFilterField .sapMMultiComboBoxHasToken:not(.aeAllSelected) .sapMInputBaseInner::placeholder {
+	color: transparent;
+}
+
+/* Tokens get the room before the typing area does.
+   ------------------------------------------------------------------------
+   The inner <input> is `width: 100%` in the theme, which as a flex item is a
+   claim on the whole pill; the tokenizer then has to give way, and with the
+   pill clipping to its own rounded corners (below) a long token was cut off
+   mid-word. Letting the input shrink to a small basis reverses the priority -
+   tokens keep their width, the input takes what is left.
+
+   The tokenizer's z-index costs nothing and settles the stacking question for
+   good: whatever the theme positions inside the pill, the tokens are on top. */
+.mtFilterField .sapMMultiComboBox .sapMTokenizer {
+	flex: 0 1 auto;
+	min-width: 0;
+	position: relative;
+	z-index: 1;
+}
+
+.mtFilterField .sapMMultiComboBox .sapMInputBaseInner {
+	flex: 1 1 3rem;
+	min-width: 0;
+	width: auto;
 }
 
 /* Dropdown arrow / search icon: 20px brand blue (Figma SAP-icons 20). */
@@ -1270,6 +1331,71 @@
 	display: none;
 }
 
+/* ---------------------------------------------------------------------------
+   הצגת עובדים לא פעילים - the switch
+   ------------------------------------------------------------------------
+   A 56x28 pill under the standard 700/16 filter label. The whole track carries
+   the state, not just the knob: brand blue + "כן" while leavers are listed, the
+   system's decline red + "לא" while they are hidden. Red for the default state
+   is deliberate in the design - it reads as "a restriction is in force", which
+   is exactly what an unexplained missing employee needs it to say.
+
+   It is the one control in the filter row that is not a 44px field. The row is
+   bottom-aligned on those fields, so the missing 16px is handed to the switch as
+   bottom margin, which lands it on their vertical middle instead of their
+   baseline; the horizontal centring is the box's own alignItems (see the view).
+
+   Horizon paints the track and its state colour from selectors that nest
+   deeper than one class, and adds its own animated overlay on top, so the fill,
+   the border and that overlay are all pinned here - same reasoning as §3a.
+   ------------------------------------------------------------------------ */
+.aeInactiveSwitch.sapMSwt {
+	width: 56px;
+	min-width: 56px;
+	height: 28px;
+	margin: 0 0 var(--mt-space-3) 0;
+	border: none;
+	border-radius: var(--mt-radius-pill);
+	overflow: hidden;
+}
+
+.aeInactiveSwitch .sapMSwtInner {
+	height: 100%;
+	border: none !important;
+	border-radius: var(--mt-radius-pill);
+	background: var(--mt-color-error-accent) !important;
+	transition: background-color 0.15s ease-in-out;
+}
+
+.aeInactiveSwitch.sapMSwtOn .sapMSwtInner {
+	background: var(--mt-color-brand) !important;
+}
+
+/* Horizon's second, sliding fill layer. The track above is already the state
+   colour, so this one would only smear a second colour across it. */
+.aeInactiveSwitch .sapMSwtInner::before,
+.aeInactiveSwitch .sapMSwtInner::after {
+	display: none;
+}
+
+/* "כן" / "לא" - white on the coloured track, in the field-value type of the row. */
+.aeInactiveSwitch .sapMSwtText,
+.aeInactiveSwitch .sapMSwtLabel {
+	font: var(--mt-text-field-value);
+	color: var(--mt-color-white) !important;
+	text-shadow: none;
+}
+
+.aeInactiveSwitch .sapMSwtHandle {
+	width: 20px;
+	height: 20px;
+	inset-block-start: 4px;
+	border: none !important;
+	border-radius: 50%;
+	background: var(--mt-color-white) !important;
+	box-shadow: none;
+}
+
 /* סוג דוח: the frame tints the active entry amber and the rest brand blue.
    A Select's picker is rendered into the static area, so a class on the Select
    never reaches it - but the picker's id is derived from the Select's, which
@@ -1642,15 +1768,1103 @@
 		text-decoration: none;
 	}
 
+	/* !important, and the <header> wrapper listed explicitly: inside the FLP that
+	   element is a contrast region (see §12) whose background comes from selectors
+	   that outrank a two-class rule. On paper this is print-only cosmetics, but a
+	   printer honouring the shell's colour would band the top of every page. */
 	.aePage,
+	.aePage .sapFDynamicPageTitleWrapper,
 	.aePage .sapFDynamicPageTitle,
 	.aePage .sapFDynamicPageContentWrapper,
 	.aeGroupHeader,
 	.aeTable .sapUiTableCtrl > tbody > tr {
-		background-color: var(--mt-color-white);
+		background-color: var(--mt-color-white) !important;
 	}
 
 	.aeTable .sapUiTableCtrl td.sapUiTableCell {
 		border-bottom: var(--mt-border-width) solid var(--mt-color-border);
 	}
 }
+
+/* ============================================================================
+   11. דף הבית - Home
+   ------------------------------------------------------------------------
+   Figma frame 87:4991 "לאונצפד מאשרים", authored at 1920px.
+
+   The screen is a grid of cards on the page canvas: a greeting, the
+   "נתוני הנוכחות שלי" row every user sees, and below it the
+   "נתוני נוכחות כפיפים עבור" block for a user who approves for others.
+
+   Card geometry is one shared rule (.hmCard) - white, 1px #7D85A8, 10px radius,
+   a 12px shadow and a 16px inset - and everything after it only fills that box.
+   The frame positions every card absolutely; here the rows are flex with the
+   frame's own 34px gap, so the screen holds up below 1920px and the vertical
+   rhythm is normalised onto the kit's 8px scale rather than to absolute y
+   values.
+
+   This section carries its own responsive and print rules at the end rather
+   than extending §9 / §10: those two are keyed to the table screens, and a
+   card grid reflows on entirely different terms.
+
+   RTL-first, same as the rest of the file: directional values are logical.
+   ========================================================================= */
+
+/* ---------------------------------------------------------------------------
+   11a. Page canvas
+   ------------------------------------------------------------------------ */
+.hmPage,
+.hmPage .sapMPageEnableScrolling {
+	background-color: var(--mt-bg-app);
+}
+
+.hmPage {
+	font-family: var(--mt-font-sans);
+	color: var(--mt-text-primary);
+}
+
+/* One gutter for the whole screen. Unlike the two table screens - where a
+   sticky header block and a scrolling table need their insets separately - every
+   block here scrolls together, so the page's scroll container owns the gutter
+   and the blocks below only declare vertical rhythm. */
+.hmPage > section {
+	box-sizing: border-box;
+	padding: 0 var(--mt-content-inset) var(--mt-content-inset) var(--mt-content-inset);
+}
+
+.hmPage .sapMText,
+.hmPage .sapMLabel,
+.hmPage .sapMTitle,
+.hmPage .sapMLnk,
+.hmPage .sapMBtnContent,
+.hmPage .sapMSltLabel {
+	font-family: var(--mt-font-sans);
+}
+
+/* ---------------------------------------------------------------------------
+   11b. Greeting + block labels
+   Figma: 800/28 navy greeting, with the print glyph opposite it; each block is
+   introduced by an 800/18 navy label.
+   ------------------------------------------------------------------------ */
+.hmGreetingBar {
+	padding-block: var(--mt-content-inset) 0;
+}
+
+.hmGreeting,
+.hmGreeting .sapMTitleInner {
+	font: var(--mt-text-page-title);
+	color: var(--mt-text-primary);
+}
+
+.hmPrintButton,
+.hmPrintButton .sapMBtnInner {
+	background-color: transparent;
+	border: none;
+	box-shadow: none;
+	border-radius: var(--mt-radius-pill);
+}
+
+.hmPrintButton .sapMBtnIcon {
+	color: var(--mt-color-brand);
+	font-size: 24px;
+}
+
+.hmPrintButton .sapMBtnInner:hover {
+	background-color: var(--mt-color-brand-tint);
+}
+
+.hmSectionTitle,
+.hmSectionTitle .sapMTitleInner {
+	font: var(--mt-text-section-label);
+	color: var(--mt-text-primary);
+}
+
+/* Only the standalone label carries the rhythm; the one inside .hmSubHeader
+   shares that row's margins with the month stepper instead. */
+.hmSectionTitleBlock {
+	margin-block: var(--mt-space-8) var(--mt-space-7);
+}
+
+/* ---------------------------------------------------------------------------
+   11c. The card shell
+   ------------------------------------------------------------------------ */
+.hmCardRow {
+	gap: var(--mt-card-gap);
+}
+
+.hmCard {
+	box-sizing: border-box;
+	flex: 0 1 auto;
+	min-width: var(--mt-card-min-width);
+	padding: var(--mt-space-6);
+	gap: var(--mt-space-6);
+	background-color: var(--mt-bg-card);
+	border: var(--mt-border-width) solid var(--mt-color-text-muted);
+	border-radius: var(--mt-radius-md);
+	box-shadow: var(--mt-shadow-card-raised);
+	overflow: hidden;
+}
+
+/* סטטוס הדו"ח and הודעות אישיות are the frame's two 463px cards. */
+.hmCardWide {
+	flex-basis: var(--mt-card-width-wide);
+	min-width: var(--mt-card-width-wide);
+}
+
+/* The frame draws all three of these at exactly 283px, and a fixed height is
+   what it takes to get that - min-height alone did not.
+   ------------------------------------------------------------------------
+   הודעות אישיות is the one card in the row whose content can outgrow the box: with
+   only a minimum it stretched to its message list (317px for the two seeded
+   messages), alignItems="Stretch" handed that height to סטטוס הדו"ח as well, and
+   הזנת נוכחות - a Button, whose height the theme sets explicitly, so it does not
+   stretch - stayed behind at its 283px minimum. The row came out 34px too tall
+   with one card's bottom edge above the other two.
+
+   The height also makes .hmMessagesCard's own overflow-y: auto do something.
+   Nothing else in the row comes close to 283px, so nothing else is clipped. */
+.hmMyCardRow .hmCard {
+	height: var(--mt-card-height);
+}
+
+.hmSubCardRow .hmCard {
+	min-height: var(--mt-card-min-height);
+}
+
+/* The bound card list and the static "צפייה בכל העובדים" launcher have to sit
+   on one line, so the binding container is taken out of the box tree and its
+   cards become flex items of .hmSubCardRow directly. Without this the whole
+   bound list would be a single flex item and the launcher would be pushed onto
+   a line of its own. */
+.hmCardGroup {
+	display: contents;
+}
+
+/* display: block on the title itself - sap.m.Title and sap.m.Link both render
+   inline-block, and an inline-block in a column flexbox is laid out on a line
+   box, which adds the font's descender space under a 26px title and pushed
+   everything below it ~5px down the card. */
+.hmCardTitle,
+.hmCardTitle .sapMTitleInner {
+	font: var(--mt-text-card-title);
+	color: var(--mt-color-navy-deep);
+}
+
+.hmCardTitle {
+	display: block;
+}
+
+/* ---------------------------------------------------------------------------
+   11d. Launcher card (הזנת נוכחות / צפייה בכל העובדים)
+   ------------------------------------------------------------------------
+   The frame makes the whole card the click target, so it is a real sap.m.Button
+   rather than a styled box - keyboard, focus and ARIA come with the control.
+   With iconFirst="false" the button's inner span holds [title, glyph], and the
+   column layout below turns that into the frame's "title at the top-start,
+   64px glyph at the bottom-start".
+   ------------------------------------------------------------------------ */
+
+/* .hmCard's inset moves to the inner span - that is the box which fills the
+   button - and the host keeps the frame. */
+.hmLauncherCard {
+	padding: 0;
+	margin: 0;
+	cursor: pointer;
+}
+
+/* Stateless, for the same reason as the filter pills in §3a: Horizon re-borders
+   and re-fills a button on hover, focus and active from selectors that nest
+   deeper than a single class. The card looks the same in all of them; hover is
+   signalled by the border colour alone (below). */
+.hmLauncherCard,
+.hmLauncherCard:hover,
+.hmLauncherCard:focus,
+.hmLauncherCard:active {
+	background-color: var(--mt-bg-card);
+	border: var(--mt-border-width) solid var(--mt-color-text-muted);
+	box-shadow: var(--mt-shadow-card-raised);
+	outline: none;
+}
+
+.hmLauncherCard:hover {
+	border-color: var(--mt-color-brand);
+}
+
+.hmLauncherCard:focus-visible {
+	outline: var(--mt-border-width-strong) solid var(--mt-color-brand-hover);
+	outline-offset: 2px;
+}
+
+/* The frame's stacking - title at the top, 64px glyph at the bottom - is set with
+   explicit `order` further down rather than by relying on the markup: which of
+   the icon and the content sap.m.Button renders first, and whether `iconFirst`
+   reorders the DOM or only adds a class, is internal to the control and differs
+   between themes. Ordering the two flex items by name is immune to all of it.
+   space-between then pins each to its own end of the card. */
+.hmLauncherCard .sapMBtnInner,
+.hmLauncherCard .sapMBtnInner:hover,
+.hmLauncherCard .sapMBtnInner:active {
+	box-sizing: border-box;
+	display: flex;
+	flex-direction: column;
+	justify-content: space-between;
+	align-items: stretch;
+	width: 100%;
+	height: 100%;
+
+	/* !important, and only here: an icon-and-text button is padded asymmetrically
+	   by the theme to leave room for the glyph it expects beside the label -
+	   `.sapUiSizeCompact .sapMBtnInner.sapMBtnText.sapMBtnIconFirst
+	   {padding-right: 1.875rem}` - which is four classes and outranks anything
+	   scoped to .hmLauncherCard. The card was coming out with a 30px inset on the
+	   start side and 7px on the end, so its title sat off the 16px grid every
+	   other card in the row is on. The glyph is not beside the label here (the
+	   column layout below puts it at the bottom of the card), so there is nothing
+	   for that reserved space to hold. */
+	padding: var(--mt-space-6) !important;
+	border: none;
+	border-radius: 0;
+	background-color: transparent;
+	background-image: none;
+	box-shadow: none;
+	line-height: normal;
+}
+
+/* Horizon rings a focused / pressed button with a pseudo-element sized to the
+   content rather than to the card - a stray box in the middle of it. */
+.hmLauncherCard .sapMBtnInner::before,
+.hmLauncherCard .sapMBtnInner::after,
+.hmLauncherCard .sapMBtnContent::before,
+.hmLauncherCard .sapMBtnContent::after {
+	display: none;
+	content: none;
+	border: none;
+	outline: none;
+}
+
+/* The title wraps - a card is 342px wide and the labels are Hebrew, so
+   Horizon's nowrap + ellipsis would clip them. */
+.hmLauncherCard .sapMBtnContent {
+	order: 1;
+	font: var(--mt-text-card-title);
+	color: var(--mt-color-navy-deep);
+	text-align: start;
+	max-width: none;
+	overflow: visible;
+	text-overflow: clip;
+	white-space: normal;
+	line-height: normal;
+}
+
+/* The glyph, at the bottom inline end of the card.
+   ------------------------------------------------------------------------
+   Two theme behaviours have to be undone first, and neither is obvious:
+
+   `position: static` - the theme positions a button's custom icon absolutely,
+   which takes it out of the flex flow entirely. While it was out, `order` and
+   `align-self` below did nothing and the glyph stayed pinned at the top inline
+   end of the card, half of it clipped by the card's own overflow. `inset: auto`
+   clears the offsets that came with it. This is the same undo as the filter
+   field's chevron in §3a.
+
+   The box, sized to the glyph - the glyph is 64px but the theme keeps the span it
+   is drawn in at the compact density's 24px, and `height` alone could not lift it
+   because the rule that holds it there is a *maximum*:
+   `.sapUiSizeCompact .sapMBtnIcon {max-height: 1.5rem}`. A max-height clamps a
+   larger height no matter how the two rules rank, so the 64px declaration below
+   was being honoured and then thrown away, and the glyph - still drawn at 64px -
+   overflowed a 24px box pinned to the bottom of the card until the card's own
+   overflow: hidden cut it off at the border. Releasing the maximum is what makes
+   the height mean anything; the flex centring then holds the glyph in the box
+   whatever height its own outline is drawn at, which is the same treatment §3a
+   gives a MultiComboBox's icon.
+
+   align-self on the cross axis of a column flexbox: flex-start is the inline
+   start - the right in RTL, directly under the card's title, which is where the
+   frame puts both launcher glyphs - and it flips correctly in LTR. */
+.hmPage .hmLauncherCard .sapMBtnIcon {
+	box-sizing: border-box;
+	position: static;
+	inset: auto;
+	order: 2;
+	align-self: flex-start;
+	flex: 0 0 auto;
+	display: flex;
+	align-items: center;
+
+	/* flex-end, and this is the line that keeps the glyph inside the card.
+	   ------------------------------------------------------------------------
+	   The glyph is not drawn inside the box the font claims for it. The ::before
+	   that carries it measures 16px wide at font-size 64 (an 0.25em advance) while
+	   its outline inks 53px, and RTL mirroring - `.sapUiIconMirrorInRTL::before
+	   {transform: scale(-1,1)}`, which is what puts the clock and the plus on the
+	   sides the frame draws them - sends all 53px of that off the *inline-start*
+	   side of the 16px box. Both launcher glyphs behave the same way.
+
+	   So it is the 16px box that has to be placed, and where it goes decides
+	   whether the ink lands on the card or over its edge: parked at the inline
+	   start the ink runs straight off the card, centred it overhangs by 15px - and
+	   since align-self above puts the span's inline start flush on the card's 16px
+	   inset, that overhang fell in the padding and was cut off by the border, which
+	   read as a broken glyph. Parked at the inline end, the ink sweeps back
+	   *across* the span rather than out of it, which leaves it on the card with its
+	   leading edge on the frame's inset - to within the few px the two glyphs'
+	   outlines differ by, which is as close as an icon font gets. */
+	justify-content: flex-end;
+	margin: 0;
+	padding: 0 !important;
+	/* Height is the 64px the frame draws; width is a *minimum* of it, because a
+	   SAP icon is not square. create-entry-time is drawn wider than its em box, so
+	   at font-size 64 its outline ran past a 64px span - and this span's inline
+	   start is flush against the card's 16px inset, so the overflow crossed the
+	   padding and was cut by the border, which read as a broken glyph. Sizing the
+	   box to the glyph instead of the glyph to the box holds any icon inside the
+	   card, whatever its aspect ratio; the anchor stays the inline start either
+	   way, which is the edge the frame lines the glyph up on. */
+	width: auto !important;
+	height: var(--mt-launcher-icon) !important;
+	min-width: var(--mt-launcher-icon);
+	max-width: none;
+	max-height: none !important;
+	font-size: var(--mt-launcher-icon);
+	line-height: 1 !important;
+	color: var(--mt-color-brand);
+}
+
+/* ---------------------------------------------------------------------------
+   11e. סטטוס הדו"ח
+   ------------------------------------------------------------------------
+   Four counters on one line, each an 800/28 number with its 32px glyph on the
+   inline-start side and a 400/16 label beneath. "כל השגיאות" is the total, so
+   the frame sets it in the decline red and rules it off from the three
+   breakdown counters beside it.
+   ------------------------------------------------------------------------ */
+
+/* Two children - title and counter row - pushed to the top and bottom of the
+   283px card, as the frame lays them out. */
+.hmStatusCard {
+	justify-content: space-between;
+}
+
+.hmKpiRow {
+	gap: var(--mt-space-6);
+	align-items: flex-start;
+	flex-wrap: wrap;
+}
+
+.hmKpi {
+	gap: var(--mt-space-3);
+	min-width: 0;
+}
+
+/* The rule belongs to the total, on the side facing the breakdown. */
+.hmKpi[data-tone="error"] {
+	padding-inline-end: var(--mt-space-6);
+	border-inline-end: var(--mt-border-width) solid rgba(170, 170, 170, 0.67);
+}
+
+.hmKpiValueRow {
+	gap: var(--mt-space-2);
+}
+
+/* Colour comes from the Icon's bound `color`, so only the size is set here. */
+.hmKpiIcon {
+	font-size: var(--mt-kpi-icon);
+}
+
+.hmKpiValue,
+.hmPage .hmKpiValue.sapMText {
+	font: var(--mt-text-kpi);
+	color: var(--mt-text-primary);
+}
+
+.hmKpi[data-tone="error"] .hmKpiValue,
+.hmPage .hmKpi[data-tone="error"] .hmKpiValue.sapMText {
+	color: var(--mt-color-error-accent);
+}
+
+.hmKpiLabel,
+.hmPage .hmKpiLabel.sapMText {
+	font: var(--mt-text-body);
+	color: var(--mt-color-navy-deep);
+}
+
+/* ---------------------------------------------------------------------------
+   11f. הודעות אישיות
+   ------------------------------------------------------------------------
+   A fixed-height card that scrolls its own list (frame: overflow-y auto), each
+   message closed off with a 1px #939EC9 rule.
+   ------------------------------------------------------------------------ */
+.hmMessagesCard {
+	overflow-x: hidden;
+	overflow-y: auto;
+}
+
+.hmMessageList {
+	gap: var(--mt-space-6);
+}
+
+.hmMessage {
+	gap: var(--mt-space-3);
+	padding-block: var(--mt-space-2);
+	border-bottom: var(--mt-border-width) solid var(--mt-color-border);
+}
+
+.hmMessageStatus {
+	gap: 3px;
+}
+
+/* Same technique as the wizard dots in §6: the "record" glyph draws a circle
+   smaller than its box, so the box becomes the dot and the bound `color` is
+   picked up through currentColor. font-size:0 hides the glyph itself. */
+.hmMessageDot {
+	box-sizing: border-box;
+	width: var(--mt-message-dot);
+	height: var(--mt-message-dot);
+	min-width: var(--mt-message-dot);
+	border-radius: 50%;
+	background-color: currentColor;
+	font-size: 0;
+}
+
+.hmMessageStatusText,
+.hmPage .hmMessageStatusText.sapMText,
+.hmMessageBody,
+.hmPage .hmMessageBody.sapMText {
+	font: var(--mt-text-body);
+	color: var(--mt-color-navy-deep);
+}
+
+.hmMessageSubject,
+.hmPage .hmMessageSubject.sapMText {
+	font: var(--mt-text-cell);
+	color: var(--mt-color-navy-deep);
+}
+
+/* ---------------------------------------------------------------------------
+   11g. נתוני נוכחות כפיפים - block header, month stepper, אוכלוסיה
+   ------------------------------------------------------------------------ */
+.hmSubHeader {
+	gap: var(--mt-space-6);
+	margin-block: var(--mt-space-8) var(--mt-space-7);
+}
+
+.hmMonthStepper {
+	gap: var(--mt-space-2);
+}
+
+.hmMonthArrow,
+.hmMonthArrow .sapMBtnInner {
+	background-color: transparent;
+	border: none;
+	box-shadow: none;
+	border-radius: var(--mt-radius-pill);
+}
+
+.hmMonthArrow .sapMBtnIcon {
+	color: var(--mt-color-brand);
+	font-size: var(--mt-font-size-md);
+}
+
+.hmMonthArrow .sapMBtnInner:hover {
+	background-color: var(--mt-color-brand-tint);
+}
+
+/* The frame's small "Date picker" field: a 140px white box with a 1px brand
+   border and a 10px radius, the month at 600/16 navy and the calendar glyph at
+   the inline end - which is what iconFirst="false" plus space-between gives. */
+.hmMonthField {
+	margin: 0;
+	background-color: transparent;
+	border: none;
+	box-shadow: none;
+}
+
+.hmMonthField .sapMBtnInner,
+.hmMonthField .sapMBtnInner:hover,
+.hmMonthField .sapMBtnInner:active {
+	box-sizing: border-box;
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: var(--mt-space-3);
+	min-width: var(--mt-month-field-width);
+	padding: var(--mt-space-1) var(--mt-space-3);
+	border: var(--mt-border-width) solid var(--mt-color-brand);
+	border-radius: var(--mt-radius-md);
+	background-color: var(--mt-color-white);
+	background-image: none;
+	box-shadow: none;
+	line-height: normal;
+}
+
+.hmMonthField .sapMBtnInner:hover {
+	background-color: var(--mt-color-brand-tint);
+}
+
+.hmMonthField .sapMBtnContent {
+	font: var(--mt-text-field-value);
+	color: var(--mt-text-primary);
+	max-width: none;
+	overflow: visible;
+	text-overflow: clip;
+	white-space: nowrap;
+}
+
+.hmMonthField .sapMBtnIcon {
+	margin: 0;
+	color: var(--mt-color-brand);
+	font-size: var(--mt-font-size-base);
+}
+
+.hmMonthPopover .sapMSLI {
+	font: var(--mt-text-field-value);
+}
+
+/* אוכלוסיה. The pill is .mtFilterField from §3a, unchanged - the same control
+   the two report screens filter with. All this does is lay the label beside the
+   field instead of above it, and undo that class's column sizing, which is
+   written for a filter row of equal 198px columns. */
+.hmPopulationField {
+	flex: 0 0 auto;
+	min-width: 0;
+	gap: var(--mt-space-5);
+	padding: 0;
+	margin-bottom: var(--mt-space-7);
+}
+
+.hmPopulationLabel {
+	font: var(--mt-text-field-label);
+	color: var(--mt-text-primary);
+}
+
+/* The frame's 195px, with !important because sap.m.Select writes `width: auto;
+   max-width: 100%` as an inline style and no stylesheet rule outranks that. The
+   two report screens never needed it - there the field is a 198px flex column and
+   the inline max-width: 100% resolves against it - but this one stands on its own
+   (.hmPopulationField is `flex: 0 0 auto`), so `auto` meant "as wide as the
+   contents", which came out at 206px. */
+.hmPopulationField .sapMSlt {
+	width: 195px !important;
+	max-width: 195px !important;
+}
+
+/* ---------------------------------------------------------------------------
+   11h. Metric card (נוכחות כפיפים / עובדי אגף / אמ"ש / חיילות)
+   ------------------------------------------------------------------------
+   Title, then one row per approval stage - label at the inline start, count at
+   the inline end, a 6px bar beneath - and the refresh line pinned to the bottom.
+   ------------------------------------------------------------------------ */
+.hmMetricCard {
+	flex-basis: var(--mt-card-min-width);
+}
+
+/* A Link stretched by the card's align-items would underline across the whole
+   card on hover; sized to its text, it underlines the title only. */
+.hmCardTitleLink {
+	display: block;
+	align-self: flex-start;
+}
+
+.hmCardTitleLink,
+.hmPage .hmCardTitleLink.sapMLnk {
+	font: var(--mt-text-card-title);
+	color: var(--mt-color-navy-deep);
+	text-decoration: none;
+	max-width: 100%;
+	cursor: pointer;
+}
+
+.hmPage .hmCardTitleLink.sapMLnk:hover,
+.hmPage .hmCardTitleLink.sapMLnk:active {
+	color: var(--mt-color-brand);
+	text-decoration: underline;
+}
+
+.hmPage .hmCardTitleLink.sapMLnk:focus-visible {
+	color: var(--mt-color-brand);
+	text-decoration: underline;
+	outline: var(--mt-border-width-strong) solid var(--mt-color-brand-hover);
+	outline-offset: 2px;
+}
+
+.hmCardTitleLink.sapMLnk::before,
+.hmCardTitleLink.sapMLnk::after {
+	display: none;
+	content: none;
+}
+
+.hmMetricList {
+	gap: var(--mt-space-6);
+}
+
+/* No gap between the numbers and their bar - the frame stacks them flush. */
+.hmMetricHead {
+	width: 100%;
+	gap: var(--mt-space-4);
+}
+
+.hmMetricLabel,
+.hmPage .hmMetricLabel.sapMText {
+	font: var(--mt-text-body);
+	color: var(--mt-color-navy-deep);
+	min-width: 0;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.hmMetricCount,
+.hmPage .hmMetricCount.sapMText {
+	font: var(--mt-text-cell);
+	color: var(--mt-color-navy-deep);
+	flex-shrink: 0;
+}
+
+/* Track and fill. The fill's width is a percentage set on the control (its
+   share of the card), so only the colour is CSS - and it keys off data-tone,
+   because a background colour cannot be bound the way an Icon's can. In RTL the
+   fill starts at the right, which is what the frame draws. */
+.hmMetricTrack {
+	width: 100%;
+	height: var(--mt-bar-height);
+	background-color: var(--mt-color-border-quiet);
+}
+
+.hmMetricFill {
+	height: var(--mt-bar-height);
+	min-width: 0;
+}
+
+.hmMetricFill[data-tone="brand"] {
+	background-color: var(--mt-color-brand);
+}
+
+.hmMetricFill[data-tone="warning"] {
+	background-color: var(--mt-color-warning);
+}
+
+.hmMetricFill[data-tone="muted"] {
+	background-color: var(--mt-color-text-muted);
+}
+
+.hmMetricFill[data-tone="error"] {
+	background-color: var(--mt-color-error-accent);
+}
+
+.hmMetricFill[data-tone="success"] {
+	background-color: var(--mt-color-success);
+}
+
+/* "עודכן מלפני 5 דקות" + the refresh glyph, at the card's bottom inline start.
+   margin-top: auto is what pins it there however many stages the card lists -
+   נוכחות חיילות has four, the rest three. */
+.hmCardFooter {
+	align-self: flex-start;
+	margin-top: auto;
+
+	/* The theme gives every button a 3px block margin. On a line pinned to the
+	   bottom of the card that reads as 3px of extra card, not as spacing. */
+	margin-block: 0;
+	background-color: transparent;
+	border: none;
+	box-shadow: none;
+}
+
+.hmCardFooter .sapMBtnInner,
+.hmCardFooter .sapMBtnInner:active {
+	display: flex;
+	align-items: center;
+	gap: var(--mt-space-2);
+
+	/* !important for the same reason as the launcher card's inner span: the
+	   theme reserves ~30px on the start side of an icon-and-text button, which
+	   held the refresh glyph 30px off the card's 16px content edge. */
+	padding: var(--mt-space-1) var(--mt-space-2) !important;
+	border: none;
+	border-radius: var(--mt-radius-pill);
+	background-color: transparent;
+	background-image: none;
+	box-shadow: none;
+	line-height: normal;
+}
+
+.hmCardFooter .sapMBtnInner:hover {
+	background-color: var(--mt-color-brand-tint);
+}
+
+.hmCardFooter .sapMBtnContent {
+	font: var(--mt-text-field-value);
+	color: var(--mt-color-brand);
+	max-width: none;
+	overflow: visible;
+	text-overflow: clip;
+	white-space: nowrap;
+}
+
+/* The same undo as the launcher glyph in §11d, and required by the padding above:
+   the theme positions a button's custom icon absolutely and reserves the ~30px of
+   inline-start padding it is placed in. With that padding pinned back to the 6px
+   this line actually wants, an absolutely-placed glyph is left sitting on top of
+   "עודכן מלפני..." - so it has to rejoin the flow, where the inner span's `gap`
+   spaces it off the label. */
+.hmCardFooter .sapMBtnIcon {
+	position: static;
+	inset: auto;
+	flex: 0 0 auto;
+	margin: 0;
+	color: var(--mt-color-brand);
+	font-size: var(--mt-font-size-base);
+}
+
+/* ---------------------------------------------------------------------------
+   11i. Responsive
+   ------------------------------------------------------------------------
+   The frame is authored at 1920px, where all five subordinate cards share one
+   line. Below that the rows wrap on the cards' own 342px / 463px minimums; the
+   only thing the breakpoints do is tighten the gutter and, once a 342px card no
+   longer fits beside anything, let the cards go full width.
+   ------------------------------------------------------------------------ */
+@media (max-width: 900px) {
+	.hmPage > section {
+		padding-inline: var(--mt-space-6);
+		padding-bottom: var(--mt-space-6);
+	}
+
+	.hmCardRow {
+		gap: var(--mt-space-7);
+	}
+}
+
+@media (max-width: 600px) {
+	.hmPage > section {
+		padding-inline: var(--mt-space-5);
+		padding-bottom: var(--mt-space-5);
+	}
+
+	.hmGreeting,
+	.hmGreeting .sapMTitleInner {
+		font-size: var(--mt-font-size-lg);
+	}
+
+	/* min-width has to go too, or a 342px card overflows a narrower viewport. */
+	.hmCard,
+	.hmCardWide,
+	.hmMetricCard {
+		flex-basis: 100%;
+		min-width: 0;
+		width: 100%;
+	}
+
+	/* Fixed heights are dropped: with one card per line there is no neighbour to
+	   match, and a 283px box around two stages is mostly empty space. הודעות
+	   אישיות keeps a maximum of its own below, so it still scrolls rather than
+	   running the page long. */
+	.hmMyCardRow .hmCard {
+		height: auto;
+		min-height: 0;
+	}
+
+	.hmMessagesCard {
+		max-height: var(--mt-card-height);
+	}
+
+	.hmSubHeader {
+		align-items: flex-start;
+	}
+}
+
+/* ---------------------------------------------------------------------------
+   11j. Print
+   ------------------------------------------------------------------------
+   The print glyph, the month stepper and the אוכלוסיה field are controls, not
+   content - a printed copy keeps the month it was taken in, in the label above
+   the cards. Shadows go so the cards print as ruled boxes.
+   ------------------------------------------------------------------------ */
+@media print {
+
+	.hmPrintButton,
+	.hmMonthArrow,
+	.hmCardFooter {
+		display: none;
+	}
+
+	.hmPage,
+	.hmPage .sapMPageEnableScrolling {
+		background-color: var(--mt-color-white);
+	}
+
+	.hmCard,
+	.hmLauncherCard {
+		box-shadow: none;
+		break-inside: avoid;
+		page-break-inside: avoid;
+	}
+
+	.hmMessagesCard {
+		overflow: visible;
+		max-height: none;
+	}
+
+	.hmPage .hmCardTitleLink.sapMLnk {
+		color: var(--mt-color-navy-deep);
+		text-decoration: none;
+	}
+}
+
+/* ============================================================================
+   12. Launchpad overrides
+   ----------------------------------------------------------------------------
+   Everything in this section is one screen looking different inside the Fiori
+   launchpad than it does standalone, and there are exactly two reasons for it.
+
+   (1) The launchpad's stylesheet is the later one. Standalone, the app's CSS is
+       loaded after the theme's, so a rule of ours at the *same* specificity as
+       the theme's wins on source order alone - and much of the file leans on
+       that: `.mtTableActions .sapMBtnIcon` is two classes, and so is sap.m's own
+       `.sapMBtn .sapMBtnIcon`. In the launchpad that order is reversed and every
+       one of those ties flips to the theme. This is what turned the toolbar
+       glyphs and the tab counts into the shell's own colours. The fix is not
+       more specificity - it is `!important`, which takes source order out of it.
+
+   (2) Two controls render a *contrast region* of their own, with the class
+       written by the renderer rather than by the app:
+
+     sap.f.DynamicPageRenderer      <header class="sapContrastPlus
+                                             sapFDynamicPageTitleWrapper">
+     sap.m.IconTabHeaderRenderer    <div class="sapMITH sapContrastPlus …">
+
+   A contrast region is meant to sit on the shell's own colour, so a theme
+   repaints everything inside it from its contrast palette - surfaces take the
+   shell background, and content (icons, labels) flips to white to stay legible
+   on it. Standalone under sap_horizon that palette is close enough to the
+   canvas that nothing showed. Inside the launchpad it is the FLP's shell
+   colour, and it arrived on both screens at once:
+
+     נתוני כל העובדים   the <header> wrapper - which §8a never names, because it
+                        paints the title and the header *inside* it - came up in
+                        the FLP's colour behind them.
+
+     דוחות באחריות ממונה  the status tabs' glyphs turned white, so an unselected
+                        tab was a white icon on the white circle of §4 and
+                        vanished; only the selected tab, whose circle is filled
+                        with its accent colour, still showed its icon. The
+                        design is the other way round: white circle, icon in the
+                        tab's own colour.
+
+   Both are fixed the same way - the design's own values are restated for the
+   region, with !important, since the theme's contrast rules nest deeper than
+   anything scoped to one of our classes. The regions themselves are left in
+   place: the class is hard-coded in the renderers, so stripping it in JS would
+   have to be redone on every re-render (the IconTabHeader re-renders on every
+   tab click) and would fight the framework instead of the palette.
+
+   `@media screen` on purpose: §10's print rules put this same chrome on white,
+   and an !important declaration here would outrank them.
+   ========================================================================= */
+@media screen {
+
+	/* ---------------------------------------------------------------------------
+	   12a. נתוני כל העובדים - the DynamicPage's <header> wrapper
+	   ------------------------------------------------------------------------
+	   The wrapper holds the title plus the sticky placeholder that the filter
+	   header moves into once it sticks, so the title and the header are restated
+	   here too - whichever of them is inside the region at the time, it stays on
+	   the page canvas. The tag is matched by class, not as `header`: the element's
+	   tag follows sap.f.DynamicPageAccessibleLandmarkInfo and is only `<header>`
+	   by default. */
+	.aePage.sapFDynamicPage > .sapFDynamicPageTitleWrapper,
+	.aePage.sapFDynamicPage > .sapFDynamicPageTitleWrapper .sapFDynamicPageTitle,
+	.aePage.sapFDynamicPage > .sapFDynamicPageTitleWrapper .sapFDynamicPageHeader {
+		background-color: var(--mt-bg-app) !important;
+		background-image: none !important;
+		box-shadow: none !important;
+	}
+
+	/* The same palette turns the text in that region white - which was invisible
+	   the moment the background above went back to the light canvas, so it belongs
+	   with the fix rather than after it. The heading is the region's only content
+	   until the filter header sticks into it; .sapMLabel covers the filter labels
+	   for when it does. */
+	.aePage.sapFDynamicPage > .sapFDynamicPageTitleWrapper .sapMTitle,
+	.aePage.sapFDynamicPage > .sapFDynamicPageTitleWrapper .sapMTitle .sapMTitleInner,
+	.aePage.sapFDynamicPage > .sapFDynamicPageTitleWrapper .sapMLabel {
+		color: var(--mt-text-primary) !important;
+	}
+
+	/* ---------------------------------------------------------------------------
+	   12b. דוחות באחריות ממונה - status tabs
+	   ------------------------------------------------------------------------
+	   §4's own values, restated for the region. --mt-tab-accent still comes from
+	   the IconTabFilter (§4 sets it there, per iconColor), so each tab keeps its
+	   own colour - nothing is hard-coded per tab here either.
+
+	   The selected block has to stay *after* the unselected one: .sapMITBSelected
+	   sits on the same element as .sapMITBFilter, so both match a selected tab at
+	   the same specificity and source order is what separates them. */
+	.mtStatusTabs .sapMITH .sapMITBFilter .sapMITBTab {
+		background-color: var(--mt-color-white) !important;
+	}
+
+	.mtStatusTabs .sapMITH .sapMITBFilter .sapMITBFilterIcon,
+	.mtStatusTabs .sapMITH .sapMITBFilter .sapMITBTab .sapUiIcon {
+		color: var(--mt-tab-accent) !important;
+	}
+
+	/* The glyph is drawn by ::before, and the contrast palette colours it there as
+	   well as on the span - the same undo as the filter field's chevron in §3a. */
+	.mtStatusTabs .sapMITH .sapMITBFilter .sapMITBFilterIcon::before,
+	.mtStatusTabs .sapMITH .sapMITBFilter .sapMITBTab .sapUiIcon::before {
+		color: inherit !important;
+	}
+
+	.mtStatusTabs .sapMITH .sapMITBSelected .sapMITBTab {
+		background-color: var(--mt-tab-accent) !important;
+	}
+
+	/* Here white *is* the design: the selected circle is filled with the accent
+	   colour, so its glyph reverses out of it. */
+	.mtStatusTabs .sapMITH .sapMITBSelected .sapMITBFilterIcon,
+	.mtStatusTabs .sapMITH .sapMITBSelected .sapMITBTab .sapUiIcon {
+		color: var(--mt-color-white) !important;
+	}
+
+	.mtStatusTabs .sapMITH .sapMITBSelected .sapMITBFilterIcon::before,
+	.mtStatusTabs .sapMITH .sapMITBSelected .sapMITBTab .sapUiIcon::before {
+		color: inherit !important;
+	}
+
+	/* Label and count sit on the page canvas, outside the circle - white there
+	   would erase them, for the same reason as the heading in 12a. */
+	.mtStatusTabs .sapMITH .sapMITBText,
+	.mtStatusTabs .sapMITH .sapMITBText.sapMITBMaxWidth,
+	.mtStatusTabs .sapMITH .sapMITBCount {
+		color: var(--mt-text-primary) !important;
+	}
+
+	/* The strip itself keeps the page canvas: the region's background would
+	   otherwise show as a band behind the tabs, the same way it did behind the
+	   title in 12a.
+
+	   Backgrounds only - deliberately no `box-shadow: none` on .sapMITBFilter:
+	   that is the element that takes keyboard focus, and some themes draw the
+	   focus ring on it as a shadow rather than an outline. */
+	.mtStatusTabs .sapMITH,
+	.mtStatusTabs .sapMITH .sapMITBHead,
+	.mtStatusTabs .sapMITH .sapMITBFilter {
+		background-color: transparent !important;
+		background-image: none !important;
+	}
+
+	/* The rule that closes the strip.
+	   ------------------------------------------------------------------------
+	   §4's design note ("the whole strip closes with a 1px muted rule") was never
+	   implemented here, because sap.m draws a line of its own: `.sapMITH` carries
+	   `box-shadow: @_sap_m_IconTabBar_HeaderShadow`, and under sap_horizon that
+	   parameter happened to land close enough to the design to pass. It is a theme
+	   parameter, so in the launchpad it resolves to that theme's value instead -
+	   the heavy dark bar under the tabs. Drawing the rule ourselves puts it on the
+	   kit's own colour and takes the theme out of it.
+
+	   An inset shadow rather than a border-bottom on purpose: it paints inside the
+	   existing box, so the tabs keep their exact height and the selected tab's 2px
+	   accent edge (§4) stays where it was instead of being pushed up a pixel.
+
+	   `border-bottom: none` beside it because a theme is free to draw the same line
+	   as a border rather than as a shadow, and .sapMITBContainerContent because
+	   with expandable="false" that empty content box sits directly below the
+	   header, where a border-top of its own would read as a second rule. */
+	.mtStatusTabs .sapMITH {
+		border-bottom: none !important;
+		box-shadow: inset 0 -1px 0 0 var(--mt-color-border) !important;
+	}
+
+	.mtStatusTabs .sapMITBContainerContent,
+	.mtStatusTabs .sapMITBContent {
+		border: none !important;
+		box-shadow: none !important;
+	}
+
+	/* ---------------------------------------------------------------------------
+	   12c. Transparent text&icon buttons
+	   ------------------------------------------------------------------------
+	   Every toolbar action in the kit is the same component - no fill, no border, a
+	   brand-blue glyph beside a brand-blue label - and §3b / §5 / §11 declare that
+	   colour from two classes (`.mtTableActions .sapMBtnIcon`). sap.m's own button
+	   rule is exactly as specific (`.sapMBtn .sapMBtnIcon`), and in the launchpad
+	   the theme is the later stylesheet, so the tie went to the theme and the
+	   glyphs came out in its icon colour: איפוס פילטרים, הגדרות תצוגה and
+	   ייצוא לאקסל on the reports screen, and תצוגת היררכיה / מיון / הדפסה /
+	   פתיחת כל השורות on נתוני כל העובדים.
+
+	   Colours only - the fills are deliberately left alone. §3b / §5 already win
+	   the background (three classes against the theme's two), and an !important
+	   background here would also outrank the :hover fills those sections declare
+	   and kill the hover feedback on every one of these buttons - as well as the
+	   white pill of .mtFilterToggle. */
+	.mtFilterActions .sapMBtnIcon,
+	.mtTableActions .sapMBtnIcon,
+	.mtTableToolbar .sapMBtnIcon,
+	.aeTableToolbar .sapMBtnIcon,
+	.hmPrintButton .sapMBtnIcon,
+	.hmMonthArrow .sapMBtnIcon,
+	.hmMonthField .sapMBtnIcon,
+	.hmCardFooter .sapMBtnIcon,
+	.hmPage .hmLauncherCard .sapMBtnIcon {
+		color: var(--mt-color-brand) !important;
+	}
+
+	.mtFilterActions .sapMBtnContent,
+	.mtTableActions .sapMBtnContent,
+	.mtTableToolbar .sapMBtnContent,
+	.aeTableToolbar .sapMBtnContent,
+	.hmCardFooter .sapMBtnContent {
+		color: var(--mt-color-brand) !important;
+	}
+
+	/* ---------------------------------------------------------------------------
+	   12d. Row actions - היעדרויות / השתלמויות
+	   ------------------------------------------------------------------------
+	   The only icons in the app that never had a colour of their own: both columns
+	   hold a bare Transparent button and took the theme's default, which read as
+	   brand blue under sap_horizon and as the shell's icon colour in the
+	   launchpad. Stated explicitly now, for both tables at once - the two screens
+	   deliberately draw these columns alike (see the note on colAbsences).
+
+	   Scoped through the tables rather than through a class on the buttons, so the
+	   views stay as they are; sap.m.Table and sap.ui.table have separate cell DOM,
+	   hence the two selectors per rule. The sub-row selector covers the pop-in
+	   layout the reports table falls back to on a tablet. */
+	.mtRow .sapMListTblCell .sapMBtn .sapMBtnIcon,
+	.mtTable .sapMListTblSubCnt .sapMBtn .sapMBtnIcon,
+	.aeTable .sapUiTableCtrl td.sapUiTableCell .sapMBtn .sapMBtnIcon {
+		color: var(--mt-color-brand) !important;
+	}
+
+	/* Both 12c and 12d: the glyph itself is drawn by ::before, and a theme that
+	   colours it there rather than on the span would otherwise still win. */
+	.mtFilterActions .sapMBtnIcon::before,
+	.mtTableActions .sapMBtnIcon::before,
+	.mtTableToolbar .sapMBtnIcon::before,
+	.aeTableToolbar .sapMBtnIcon::before,
+	.hmPrintButton .sapMBtnIcon::before,
+	.hmMonthArrow .sapMBtnIcon::before,
+	.hmMonthField .sapMBtnIcon::before,
+	.hmCardFooter .sapMBtnIcon::before,
+	.hmPage .hmLauncherCard .sapMBtnIcon::before,
+	.mtRow .sapMListTblCell .sapMBtn .sapMBtnIcon::before,
+	.mtTable .sapMListTblSubCnt .sapMBtn .sapMBtnIcon::before,
+	.aeTable .sapUiTableCtrl td.sapUiTableCell .sapMBtn .sapMBtnIcon::before {
+		color: inherit !important;
+	}
+
+	/* ---------------------------------------------------------------------------
+	   12e. TreeTable expand / collapse arrow
+	   ------------------------------------------------------------------------
+	   Same story as 12d - §8d colours it through `.aeTable .sapUiTableTreeIcon`
+	   (two classes), which is a tie with sap.ui.table's own rule. */
+	.aeTable .sapUiTableTreeIcon,
+	.aeTable .sapUiTableTreeIcon::before {
+		color: var(--mt-color-brand) !important;
+	}
+}
+

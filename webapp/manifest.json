@@ -8,6 +8,15 @@
 		"description": "Manager attendance approval worklist",
 		"applicationVersion": {
 			"version": "1.0.0"
+		},
+		"dataSources": {
+			"ZHR_TM_ATTENDANCE_SYSTEM_SRV_N": {
+				"uri": "/sap/opu/odata/sap/ZHR_TM_ATTENDANCE_SYSTEM_SRV_N/",
+				"type": "OData",
+				"settings": {
+					"odataVersion": "2.0"
+				}
+			}
 		}
 	},
 	"sap.ui": {
@@ -26,7 +35,7 @@
 			"async": true
 		},
 		"dependencies": {
-			"minUI5Version": "1.108.0",
+			"minUI5Version": "1.71.0",
 			"libs": {
 				"sap.m": {},
 				"sap.ui.core": {},
@@ -72,6 +81,11 @@
 			"routes": [
 				{
 					"pattern": "",
+					"name": "home",
+					"target": "home"
+				},
+				{
+					"pattern": "ManagerReports:?query:",
 					"name": "managerReports",
 					"target": "managerReports"
 				},
@@ -82,6 +96,10 @@
 				}
 			],
 			"targets": {
+				"home": {
+					"viewId": "home",
+					"viewName": "Home"
+				},
 				"managerReports": {
 					"viewId": "managerReports",
 					"viewName": "ManagerReports"
