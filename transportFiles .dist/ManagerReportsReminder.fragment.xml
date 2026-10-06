@@ -1,0 +1,89 @@
+<core:FragmentDefinition
+	xmlns="sap.m"
+	xmlns:core="sap.ui.core">
+
+	<!-- ============================================================================
+	     שליחת תזכורת : opened by the toolbar button above the table.
+	     ============================================================================
+	     A compose box, deliberately shaped like the one the users already know from
+	     Outlook - אל / כותרת / תוכן, and שלח / ביטול at the bottom - because that is
+	     what the action is: a message to people, not a form.
+
+	     Nothing here holds state of its own. The dialog is filled on every open
+	     (ManagerReports.controller#_resetReminder): אל from the EMAIL column of the
+	     rows the table is currently showing, כותרת and תוכן from the service. That
+	     is also what makes "ביטול" free - an abandoned edit is overwritten by the
+	     next open rather than rolled back.
+
+	     אל is a MultiInput rather than a text field so a recipient can be removed
+	     one at a time; the controller adds the validator that turns a typed address
+	     into a token.
+
+	     Draggable but not resizable: a resizable Dialog is handed a fixed height
+	     at open time, and a footer holding 44px pills then has nowhere to grow
+	     into - which is what cut the buttons in half.
+
+	     The two field boxes carry .mtFilterField on purpose. That class is where the
+	     screens' field is defined - the 44px brand-blue pill, its 600/16 value, its
+	     icon colour and its stateless borders (§3a) - so the dialog wears the same
+	     field as the filter bar above it instead of a second, Horizon-grey one. The
+	     column geometry that comes with it is undone in §6b.
+	     ========================================================================= -->
+
+	<Dialog
+		id="reminderDialog"
+		title="{i18n>mrReminderTitle}"
+		contentWidth="46rem"
+		draggable="true"
+		class="mtReminderDialog">
+
+		<VBox class="mtReminderForm">
+
+			<VBox class="mtReminderField mtFilterField mtReminderFieldTo">
+				<Label text="{i18n>mrReminderTo}" labelFor="reminderTo" class="mtReminderLabel" />
+				<MultiInput
+					id="reminderTo"
+					width="100%"
+					showValueHelp="false"
+					placeholder="{i18n>mrReminderToPlaceholder}" />
+			</VBox>
+
+			<VBox class="mtReminderField mtFilterField">
+				<Label text="{i18n>mrReminderSubject}" labelFor="reminderSubject" class="mtReminderLabel" />
+				<Input
+					id="reminderSubject"
+					width="100%"
+					value="{view>/reminder/subject}" />
+			</VBox>
+
+			<!-- תוכן keeps the field's border and fill but not .mtFilterField: that
+			     class pins every control it holds to one 44px line. -->
+			<VBox class="mtReminderField mtReminderFieldBody">
+				<Label text="{i18n>mrReminderBody}" labelFor="reminderBody" class="mtReminderLabel" />
+				<TextArea
+					id="reminderBody"
+					width="100%"
+					rows="10"
+					value="{view>/reminder/body}" />
+			</VBox>
+
+		</VBox>
+
+		<beginButton>
+			<Button
+				text="{i18n>mrReminderSend}"
+				type="Emphasized"
+				icon="sap-icon://email"
+				class="mtButtonPrimary"
+				press=".onSendReminder" />
+		</beginButton>
+
+		<endButton>
+			<Button
+				text="{i18n>mrReminderCancel}"
+				class="mtButtonSecondary"
+				press=".onCancelReminder" />
+		</endButton>
+
+	</Dialog>
+</core:FragmentDefinition>

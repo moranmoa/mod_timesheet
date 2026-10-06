@@ -11,7 +11,7 @@
 
 			<!-- ================= Title ================= -->
 			<VBox class="mtHeader">
-				<Title text="דוחות נוכחות באחריות ממונה" level="H1" class="mtHeaderTitle" />
+				<Title text="{i18n>mrTitle}" level="H1" class="mtHeaderTitle" />
 			</VBox>
 
 			<!-- ================= Filter bar ================= -->
@@ -21,38 +21,22 @@
 					<!-- Search (right-most in RTL). Wider than the other columns:
 					     it carries the longest label. -->
 					<VBox class="mtFilterField mtFilterFieldSearch">
-						<Label text="חיפוש דוח לפי שם, מס. עובד או מחלקה" class="mtFilterLabel" />
+						<Label text="{i18n>mrSearchLabel}" class="mtFilterLabel" />
 						<SearchField
 							id="searchField"
-							placeholder="חיפוש לפי שם, מס. עובד, מחלקה"
+							placeholder="{i18n>mrSearchPlaceholder}"
 							search=".onSearch"
 							liveChange=".onSearch"
 							width="100%" />
 					</VBox>
 
-					<!-- Report type (single select) -->
-					<VBox class="mtFilterField">
-						<Label text="סוג דוח" class="mtFilterLabel" />
-						<Select
-							id="reportTypeSelect"
-							width="100%"
-							selectedKey="ATTENDANCE"
-							change=".onRequestFilterChange"
-							items="{
-								path: 'options>/reportTypes',
-								templateShareable: false
-							}">
-							<core:Item key="{options>key}" text="{options>text}" />
-						</Select>
-					</VBox>
-
 					<!-- Year (multi) -->
 					<VBox class="mtFilterField">
-						<Label text="שנה" class="mtFilterLabel" />
+						<Label text="{i18n>mrFilterYear}" class="mtFilterLabel" />
 						<MultiComboBox
 							id="yearFilter"
 							width="100%"
-							placeholder="הכל"
+							placeholder="{i18n>mrFilterAll}"
 							selectionFinish=".onRequestFilterChange"
 							items="{
 								path: 'options>/years',
@@ -64,11 +48,11 @@
 
 					<!-- Month (multi) -->
 					<VBox class="mtFilterField">
-						<Label text="חודש" class="mtFilterLabel" />
+						<Label text="{i18n>mrFilterMonth}" class="mtFilterLabel" />
 						<MultiComboBox
 							id="monthFilter"
 							width="100%"
-							placeholder="הכל"
+							placeholder="{i18n>mrFilterAll}"
 							selectionFinish=".onRequestFilterChange"
 							items="{
 								path: 'options>/months',
@@ -80,11 +64,11 @@
 
 					<!-- Population (multi) -->
 					<VBox class="mtFilterField">
-						<Label text="אוכלוסייה" class="mtFilterLabel" />
+						<Label text="{i18n>mrFilterPopulation}" class="mtFilterLabel" />
 						<MultiComboBox
 							id="populationFilter"
 							width="100%"
-							placeholder="אוכלוסייה"
+							placeholder="{i18n>mrFilterPopulation}"
 							selectionFinish=".onFilterChange"
 							items="{
 								path: 'options>/populations',
@@ -96,11 +80,11 @@
 
 					<!-- Branch (multi) -->
 					<VBox class="mtFilterField">
-						<Label text="אנף" class="mtFilterLabel" />
+						<Label text="{i18n>mrFilterBranch}" class="mtFilterLabel" />
 						<MultiComboBox
 							id="branchFilter"
 							width="100%"
-							placeholder="הכל"
+							placeholder="{i18n>mrFilterAll}"
 							selectionFinish=".onFilterChange"
 							items="{
 								path: 'options>/branches',
@@ -112,11 +96,11 @@
 
 					<!-- Unit (multi) -->
 					<VBox class="mtFilterField">
-						<Label text="יחידה" class="mtFilterLabel" />
+						<Label text="{i18n>mrFilterUnit}" class="mtFilterLabel" />
 						<MultiComboBox
 							id="unitFilter"
 							width="100%"
-							placeholder="הכל"
+							placeholder="{i18n>mrFilterAll}"
 							selectionFinish=".onFilterChange"
 							items="{
 								path: 'options>/units',
@@ -135,13 +119,13 @@
 					class="mtFilterRow mtFilterRowAdvanced"
 					visible="{view>/filtersExpanded}">
 
-					<!-- Manager name (default: current user) -->
+					<!-- Direct manager name (default: current user) -->
 					<VBox class="mtFilterField">
-						<Label text="שם ממונה" class="mtFilterLabel" />
+						<Label text="{i18n>mrFilterDirectManager}" class="mtFilterLabel" />
 						<MultiComboBox
 							id="managerFilter"
 							width="100%"
-							placeholder="הכל"
+							placeholder="{i18n>mrFilterAll}"
 							selectionFinish=".onFilterChange"
 							items="{
 								path: 'options>/managers',
@@ -153,11 +137,11 @@
 
 					<!-- Handling party (default: by role / selected tab) -->
 					<VBox class="mtFilterField">
-						<Label text="נמצא בטיפול" class="mtFilterLabel" />
+						<Label text="{i18n>mrFilterHandledBy}" class="mtFilterLabel" />
 						<MultiComboBox
 							id="handledByFilter"
 							width="100%"
-							placeholder="כל הגורמים המאשרים"
+							placeholder="{i18n>mrFilterHandledByPlaceholder}"
 							selectionChange=".onHandledByChange"
 							selectionFinish=".onFilterChange"
 							items="{
@@ -170,7 +154,7 @@
 
 					<!-- Subordinates (default: direct only) -->
 					<VBox class="mtFilterField">
-						<Label text="כפיפים" class="mtFilterLabel" />
+						<Label text="{i18n>mrFilterSubordinates}" class="mtFilterLabel" />
 						<Select
 							id="subordinatesFilter"
 							width="100%"
@@ -184,6 +168,32 @@
 						</Select>
 					</VBox>
 
+					<!-- ממתינים לאישור מחודשים קודמים (default: off).
+
+					     Not a narrowing of the rows on screen but a different question -
+					     "what is still open from the months that have already passed" - so
+					     turning it on re-asks the service with oldReports and resets the
+					     rest of the bar (see onToggleOldReports): a leftover חודש = this
+					     month would otherwise filter away the very rows it asks for.
+
+					     The column sizes itself to its label rather than to the 198px field
+					     grid, and alignItems centres the switch under it - the same reasons
+					     as the switch on נתוני כל העובדים. -->
+					<VBox class="mtFilterField mtFilterFieldSwitch" alignItems="Center">
+						<Label
+							text="{i18n>mrFilterOldReports}"
+							labelFor="oldReportsSwitch"
+							class="mtFilterLabel mtFilterLabelCentered" />
+						<Switch
+							id="oldReportsSwitch"
+							class="mtStateSwitch"
+							state="{view>/oldReports}"
+							customTextOn="{i18n>mrSwitchOn}"
+							customTextOff="{i18n>mrSwitchOff}"
+							tooltip="{i18n>mrFilterOldReportsTooltip}"
+							change=".onToggleOldReports" />
+					</VBox>
+
 				</FlexBox>
 
 				<!-- Footer: expand toggle (start / right) + reset (end / left, always shown) -->
@@ -192,10 +202,10 @@
 						class="mtFilterToggle"
 						type="Transparent"
 						icon="{= ${view>/filtersExpanded} ? 'sap-icon://slim-arrow-up' : 'sap-icon://slim-arrow-down' }"
-						text="{= ${view>/filtersExpanded} ? 'הסתר מסננים נוספים' : 'מסננים נוספים' }"
+						text="{= ${view>/filtersExpanded} ? ${i18n>mrHideMoreFilters} : ${i18n>mrShowMoreFilters} }"
 						press=".onToggleFilters" />
 					<Button
-						text="איפוס פילטרים"
+						text="{i18n>mrResetFilters}"
 						icon="sap-icon://clear-filter"
 						type="Transparent"
 						press=".onResetFilters" />
@@ -224,30 +234,30 @@
 					     and "אושרו" stays green (Positive). -->
 					<IconTabFilter
 						key="ALL"
-						text="הכל"
+						text="{i18n>mrTabAll}"
 						icon="sap-icon://list"
 						count="{view>/statusCounts/ALL}" />
 					<IconTabFilter
 						key="PENDING_EMPLOYEE"
-						text="ממתין לעובד"
+						text="{i18n>mrTabPendingEmployee}"
 						icon="sap-icon://employee"
 						iconColor="Critical"
 						count="{view>/statusCounts/PENDING_EMPLOYEE}" />
 					<IconTabFilter
 						key="PENDING_MY_APPROVAL"
-						text="ממתין לאישורי"
+						text="{i18n>mrTabPendingManager}"
 						icon="sap-icon://manager"
 						iconColor="Critical"
 						count="{view>/statusCounts/PENDING_MY_APPROVAL}" />
 					<IconTabFilter
 						key="PENDING_HR"
-						text='ממתין למשא"ן'
+						text="{i18n>mrTabPendingHr}"
 						icon="sap-icon://group"
 						iconColor="Critical"
 						count="{view>/statusCounts/PENDING_HR}" />
 					<IconTabFilter
 						key="APPROVED"
-						text="אושרו"
+						text="{i18n>mrTabApproved}"
 						icon="sap-icon://complete"
 						iconColor="Positive"
 						count="{view>/statusCounts/APPROVED}" />
@@ -258,22 +268,40 @@
 				<HBox alignItems="Center" class="mtTableActions">
 					<HBox alignItems="Center" class="mtLegend">
 						<core:Icon src="sap-icon://record" color="#d6b85e" class="mtLegendDot" />
-						<Text text="שלב ממתין" class="mtLegendText" />
+						<Text text="{i18n>mrLegendPending}" class="mtLegendText" />
 						<core:Icon src="sap-icon://record" color="#52ba65" class="mtLegendDot" />
-						<Text text="שלב אושר" class="mtLegendText" />
+						<Text text="{i18n>mrLegendApproved}" class="mtLegendText" />
 					</HBox>
+					<!-- רענון: the only thing that rebuilds the אגף / יחידה /
+					     אוכלוסיה / שם ממונה lists in the filter bar, because those
+					     come from the shared call and not from the rows below. -->
+					<Button
+						icon="sap-icon://refresh"
+						type="Transparent"
+						text="{i18n>mrRefresh}"
+						tooltip="{i18n>hmRefresh}"
+						press=".onRefresh" />
 					<Button
 						icon="sap-icon://action-settings"
 						type="Transparent"
-						text="הגדרות תצוגה"
-						tooltip="הגדרות תצוגה"
+						text="{i18n>mrViewSettings}"
+						tooltip="{i18n>mrViewSettings}"
 						press=".onOpenViewSettings" />
 					<Button
 						icon="sap-icon://excel-attachment"
 						type="Transparent"
-						text="ייצוא לאקסל"
-						tooltip="ייצוא לאקסל"
+						text="{i18n>mrExportExcel}"
+						tooltip="{i18n>mrExportExcel}"
 						press=".onExport" />
+					<!-- שליחת תזכורת: a message to the people behind the rows that are
+					     on screen, so it sits with the other actions that work on the
+					     current table contents rather than on one row. -->
+					<Button
+						icon="sap-icon://email"
+						type="Transparent"
+						text="{i18n>mrSendReminder}"
+						tooltip="{i18n>mrSendReminderTooltip}"
+						press=".onOpenReminder" />
 				</HBox>
 
 			</HBox>
@@ -306,28 +334,28 @@
 					<!-- Widths follow the frame: employee name 230px, wizard 147px,
 					     row action 33px - each plus the 16px cell inset. -->
 					<Column width="15rem" hAlign="Begin">
-						<Text text="שם עובד" />
+						<Text text="{i18n>mrColEmployeeName}" />
 					</Column>
 					<Column width="7rem" hAlign="Begin" minScreenWidth="Tablet" demandPopin="true">
-						<Text text="מספר עובד" />
+						<Text text="{i18n>mrColEmployeeNumber}" />
 					</Column>
 					<Column hAlign="Begin" minScreenWidth="Tablet" demandPopin="true">
-						<Text text="אוכלוסייה" />
+						<Text text="{i18n>mrColPopulation}" />
 					</Column>
 					<Column hAlign="Begin" minScreenWidth="Desktop" demandPopin="true">
-						<Text text="אנף" />
+						<Text text="{i18n>mrColBranch}" />
 					</Column>
 					<Column hAlign="Begin" minScreenWidth="Desktop" demandPopin="true">
-						<Text text="יחידה" />
+						<Text text="{i18n>mrColUnit}" />
 					</Column>
 					<Column hAlign="Begin" minScreenWidth="Desktop" demandPopin="true">
-						<Text text="שם ממונה" />
+						<Text text="{i18n>mrColDirectManager}" />
 					</Column>
 					<Column width="8rem" hAlign="Begin" minScreenWidth="Tablet" demandPopin="true">
-						<Text text="חודש לאישור" />
+						<Text text="{i18n>mrColApprovalMonth}" />
 					</Column>
 					<Column width="11.25rem" hAlign="Center">
-						<Text text="השלמת תהליך" />
+						<Text text="{i18n>mrColProcess}" />
 					</Column>
 
 					<!-- היעדרויות / השתלמויות. Action columns, not data: each holds a
@@ -343,10 +371,10 @@
 					     (leftmost); השתלמויות is the wider of the two only so its own
 					     header fits on one line. -->
 					<Column width="6rem" hAlign="Center">
-						<Text text="היעדרויות" />
+						<Text text="{i18n>mrColAbsences}" />
 					</Column>
 					<Column width="7.5rem" hAlign="Center">
-						<Text text="השתלמויות" />
+						<Text text="{i18n>mrColTraining}" />
 					</Column>
 				</columns>
 
@@ -375,7 +403,7 @@
 							<!-- יחידה -->
 							<Text text="{reports>unit}" maxLines="1" />
 
-							<!-- שם ממונה -->
+							<!-- שם מנהל ישיר -->
 							<Text text="{reports>managerName}" />
 
 							<!-- חודש לאישור -->
@@ -404,14 +432,14 @@
 							<Button
 								icon="sap-icon://date-time"
 								type="Transparent"
-								tooltip="פתיחת היעדרויות העובד"
+								tooltip="{i18n>mrOpenAbsences}"
 								press=".onOpenAbsences" />
 
 							<!-- השתלמויות -->
 							<Button
 								icon="sap-icon://education"
 								type="Transparent"
-								tooltip="פתיחת השתלמויות העובד"
+								tooltip="{i18n>mrOpenTraining}"
 								press=".onOpenTraining" />
 
 						</cells>

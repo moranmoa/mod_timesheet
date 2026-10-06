@@ -19,8 +19,9 @@
 	     the backend returns for this user. Adding or removing a card is therefore a
 	     backend decision, not a view change: no role is named anywhere in this file.
 
-	     The dark shell bar in the frame is the launchpad's own chrome, not the app's,
-	     so nothing here draws it - same as the other two screens.
+	     The dark shell bar in the frame is drawn by the app itself now, once for
+	     every screen: view/AppHeader.fragment.xml, included by App.view.xml above
+	     the sap.m.App. Nothing here draws it - same as the other two screens.
 	     ========================================================================= -->
 
 	<Page id="homePage" showHeader="false" backgroundDesign="Solid" class="hmPage">
@@ -80,9 +81,10 @@
 					<Title text="{i18n>hmReportStatus}" level="H3" class="hmCardTitle" />
 
 					<!-- Model order is inline-start first, i.e. right-to-left on
-					     screen: כל השגיאות, דיווחים חסרים, צרופות חסרות, חריגות.
-					     כל השגיאות carries tone "error", which is what draws both its
-					     red counter and the rule separating it from the other three. -->
+					     screen: דיווחים חסרים, אישורים חסרים, חריגות. There is no
+					     כל השגיאות total in front of them any more, and with it went the
+					     "error" tone and the rule that separated it from the rest - the
+					     three counters are now peers on one line. -->
 					<HBox renderType="Bare" class="hmKpiRow" items="{path: 'home>/reportStatus', templateShareable: false}">
 						<VBox class="hmKpi">
 							<customData>
@@ -104,17 +106,18 @@
 					</HBox>
 				</VBox>
 
-				<!-- הודעות אישיות - scrolls inside the card (frame: overflow-y auto) -->
+				<!-- הודעות - scrolls inside the card (frame: overflow-y auto).
+				     כלליות only in this phase; הודעות אישיות arrive in phase ב'.
+				     The line above each message names its kind and nothing else: there
+				     is no read / unread state on this card, so the dot in front of it
+				     is a bullet and takes its one colour from the CSS. -->
 				<VBox class="hmCard hmCardWide hmMessagesCard">
 					<Title text="{i18n>hmMessages}" level="H3" class="hmCardTitle" />
 					<VBox renderType="Bare" class="hmMessageList" items="{path: 'home>/messages', templateShareable: false}">
 						<VBox class="hmMessage">
 							<HBox alignItems="Center" renderType="Bare" class="hmMessageStatus">
-								<core:Icon
-									src="sap-icon://record"
-									class="hmMessageDot"
-									color="{path: 'home>isNew', formatter: '.formatter.messageDotColor'}" />
-								<Text text="{home>statusText}" class="hmMessageStatusText" />
+								<core:Icon src="sap-icon://record" class="hmMessageDot" />
+								<Text text="{home>typeText}" class="hmMessageStatusText" />
 							</HBox>
 							<Text text="{home>subject}" class="hmMessageSubject" />
 							<Text text="{home>body}" class="hmMessageBody" />

@@ -37,7 +37,7 @@
 		<!-- ================= Filter area =================
 		     RTL: the first child sits at the right, so the XML order is the
 		     right-to-left order of the design - הצגת עובדים לא פעילים, search,
-		     סוג דוח, אוכלוסיה, אגף, יחידה. -->
+		     שם מנהל ישיר, אוכלוסיה, אגף, יחידה. -->
 		<f:header>
 			<f:DynamicPageHeader pinnable="false">
 				<FlexBox wrap="Wrap" alignItems="End" class="aeFilterRow">
@@ -63,10 +63,10 @@
 						<Label
 							text="{i18n>aeFilterInactive}"
 							labelFor="aeInactiveSwitch"
-							class="mtFilterLabel aeFilterLabelCentered" />
+							class="mtFilterLabel mtFilterLabelCentered" />
 						<Switch
 							id="aeInactiveSwitch"
-							class="aeInactiveSwitch"
+							class="mtStateSwitch"
 							state="{view>/viewState/showInactive}"
 							customTextOn="{i18n>aeSwitchOn}"
 							customTextOff="{i18n>aeSwitchOff}"
@@ -103,29 +103,31 @@
 						</SearchField>
 					</VBox>
 
-					<!-- סוג דוח: single select. Changing it means "fetch a different
-					     report", so it re-enters the data-load path rather than
-					     filtering the rows already on screen. -->
+					<!-- שם מנהל ישיר / אוכלוסיה / אגף / יחידה: multi-select, everything
+					     checked on entry. Options are built from the data that actually
+					     arrived (_buildFilterOptionsFromData).
+
+					     שם מנהל ישיר matches on the row's OWN managerId, so picking a
+					     manager leaves that manager's direct reports. In tree mode the
+					     managers themselves stay on screen as the matches' ancestors
+					     (_collectWithAncestors), so the branch is still reachable. -->
 					<VBox class="mtFilterField aeFilterField">
-						<Label text="{i18n>aeFilterReportType}" class="mtFilterLabel aeFilterLabelCentered" />
-						<Select
-							id="aeReportTypeSelect"
+						<Label text="{i18n>aeFilterDirectManager}" class="mtFilterLabel mtFilterLabelCentered" />
+						<MultiComboBox
+							id="aeManagerFilter"
 							width="100%"
-							selectedKey="{view>/viewState/reportType}"
-							change=".onReportTypeChange"
+							placeholder="{i18n>aeFilterAll}"
+							selectionChange=".onFilterChange"
 							items="{
-								path: 'view>/filters/reportTypes',
+								path: 'view>/filters/managers',
 								templateShareable: false
 							}">
 							<core:Item key="{view>key}" text="{view>text}" />
-						</Select>
+						</MultiComboBox>
 					</VBox>
 
-					<!-- אוכלוסיה / אגף / יחידה: multi-select, everything checked on
-					     entry. Options are built from the data that actually
-					     arrived (_buildFilterOptionsFromData). -->
 					<VBox class="mtFilterField aeFilterField">
-						<Label text="{i18n>aeFilterPopulation}" class="mtFilterLabel aeFilterLabelCentered" />
+						<Label text="{i18n>aeFilterPopulation}" class="mtFilterLabel mtFilterLabelCentered" />
 						<MultiComboBox
 							id="aePopulationFilter"
 							width="100%"
@@ -140,7 +142,7 @@
 					</VBox>
 
 					<VBox class="mtFilterField aeFilterField">
-						<Label text="{i18n>aeFilterDivision}" class="mtFilterLabel aeFilterLabelCentered" />
+						<Label text="{i18n>aeFilterDivision}" class="mtFilterLabel mtFilterLabelCentered" />
 						<MultiComboBox
 							id="aeDivisionFilter"
 							width="100%"
@@ -155,7 +157,7 @@
 					</VBox>
 
 					<VBox class="mtFilterField aeFilterField">
-						<Label text="{i18n>aeFilterUnit}" class="mtFilterLabel aeFilterLabelCentered" />
+						<Label text="{i18n>aeFilterUnit}" class="mtFilterLabel mtFilterLabelCentered" />
 						<MultiComboBox
 							id="aeUnitFilter"
 							width="100%"
@@ -197,6 +199,11 @@
 						<core:InvisibleText id="employeesTableLabel" text="{i18n>aeTableAriaLabel}" />
 						<ToolbarSpacer />
 
+						<!-- No רענון button here. The handler is still on the
+						     controller (onRefresh) and is the only thing that
+						     rebuilds the four filter lists, so putting the button
+						     back is one element - but the screen is not meant to
+						     offer the action. -->
 						<Button
 							text="{i18n>aePrint}"
 							tooltip="{i18n>aePrint}"
@@ -216,19 +223,26 @@
 							type="Transparent"
 							press=".onOpenViewSettings" />
 
-						<!-- פתיחת / צמצום כל הרשומות. A pair, both always on screen and
-						     both changing state together - the design greys them out
-						     rather than removing them, so the toolbar never reflows and
-						     the buttons stay where the user last saw them.
+						<!-- פתיחת / צמצום כל הרשומות. ONE button in one place, which
+						     is whichever of the two the tree can currently be asked
+						     for: closed tree offers פתיחה, open tree offers צמצום.
+						     They are never both on screen - the action a press would
+						     be a no-op for is the one that is hidden, so the toolbar
+						     cannot offer something that does nothing.
 
-						     They are DISABLED whenever there is nothing to open: the flat
-						     table (every row a leaf), and מיון לפי שם - an alphabetical
-						     list answers the "who reports to whom" question the tree
-						     asks, so the depth controls have no meaning there.
+						     /viewState/allExpanded is written by the controller and
+						     not by the two handlers alone: a filter or a search opens
+						     the surviving branches all the way down (see
+						     _applyFiltersAndSort), and the button has to follow the
+						     tree's real state rather than the last press.
 
-						     Pressing either one twice is harmless - onExpandAll /
-						     onCollapseAll both restate a depth rather than toggle it -
-						     which is why this can be a plain pair and not a swap.
+						     The one that IS shown is DISABLED in the flat table, where
+						     every row is a leaf and there is nothing to open. That is
+						     the whole rule: the sort mode has NOTHING to do with it.
+						     מיון לפי שם orders siblings inside each level (see
+						     _sortNodes) - it does not flatten the tree, so a tree
+						     sorted by name has exactly as much depth to open as one
+						     sorted by hierarchy.
 
 						     Position: the spacer packs the actions against the (RTL) left
 						     edge and the toolbar lays them out from there in REVERSE
@@ -240,7 +254,8 @@
 							tooltip="{i18n>aeExpandAllTooltip}"
 							icon="sap-icon://expand"
 							type="Transparent"
-							enabled="{= ${view>/viewState/isHierarchy} &amp;&amp; ${view>/viewState/sortMode} === 'hierarchy' }"
+							visible="{= !${view>/viewState/allExpanded} }"
+							enabled="{view>/viewState/isHierarchy}"
 							press=".onExpandAll" />
 						<Button
 							id="collapseAllButton"
@@ -248,7 +263,8 @@
 							tooltip="{i18n>aeCollapseAllTooltip}"
 							icon="sap-icon://collapse"
 							type="Transparent"
-							enabled="{= ${view>/viewState/isHierarchy} &amp;&amp; ${view>/viewState/sortMode} === 'hierarchy' }"
+							visible="{= ${view>/viewState/allExpanded} }"
+							enabled="{view>/viewState/isHierarchy}"
 							press=".onCollapseAll" />
 
 						<!-- flat <-> tree. Label and icon always advertise the mode

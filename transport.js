@@ -4,6 +4,10 @@
 //   node transport.js pack                     -> refreshes the folder from the live webapp, then builds "transportFiles .dist/transport-bundle.txt"
 //   node transport.js unpack                   -> restores from that bundle into "transportFiles .dist/restored"
 //   node transport.js refresh                  -> only copies the live webapp files into "transportFiles .dist"
+//
+// "refresh" is the single source of truth for what travels: it copies every
+// SOURCE_FILES entry over the transport folder and deletes anything else there,
+// so a file that was removed from SOURCE_FILES cannot linger in the bundle.
 //   node transport.js pack   <srcDir> [bundle] -> packs an explicit folder as-is (no refresh)
 //   node transport.js unpack <bundle> [outDir]
 //   node transport.js refresh <destDir>
@@ -34,14 +38,19 @@ const MARKER = "***file";
 // always reflects the current webapp - no manual re-copying. Add a file here
 // and it gets refreshed and packed automatically.
 const SOURCE_FILES = [
+	"webapp/Component.js",
+	"webapp/controller/App.controller.js",
 	"webapp/controller/Home.controller.js",
 	"webapp/controller/AllEmployees.controller.js",
 	"webapp/controller/ManagerReports.controller.js",
+	"webapp/view/App.view.xml",
+	"webapp/view/AppHeader.fragment.xml",
 	"webapp/view/Home.view.xml",
 	"webapp/view/HomeMonthPicker.fragment.xml",
 	"webapp/view/AllEmployees.view.xml",
 	"webapp/view/AllEmployeesViewSettings.fragment.xml",
 	"webapp/view/ManagerReports.view.xml",
+	"webapp/view/ManagerReportsReminder.fragment.xml",
 	"webapp/model/DataService.js",
 	"webapp/model/formatter.js",
 	"webapp/model/mockEmployees.js",
@@ -73,10 +82,35 @@ function decodeText(text) {
 	}, text);
 }
 
+// SOURCE_FILES are flattened to their basename in the transport folder, so two
+// entries sharing a basename would silently overwrite each other - and only the
+// last one would reach DEV. Fail loudly instead.
+function assertUniqueBasenames() {
+	const seen = {};
+	SOURCE_FILES.forEach(function (rel) {
+		const name = path.basename(rel);
+		if (seen[name]) { throw new Error("Two source files share the basename \"" + name + "\": " + seen[name] + " and " + rel); }
+		seen[name] = rel;
+	});
+}
+
 // Copy every SOURCE_FILES entry from its live webapp location into destDir,
 // flattened to its basename, so the bundle reflects the current sources.
-function refresh(destDir) {
+// Anything else already in destDir is deleted first: pack() takes whatever sits
+// in the folder, so a leftover from an older run would travel to DEV as if it
+// were current. keepNames (the bundle) survives the cleanup.
+function refresh(destDir, keepNames) {
+	assertUniqueBasenames();
 	fs.mkdirSync(destDir, { recursive: true });
+
+	const expected = SOURCE_FILES.map(function (rel) { return path.basename(rel); });
+	const keep = expected.concat(keepNames || []);
+
+	const removed = fs.readdirSync(destDir).filter(function (name) {
+		if (keep.indexOf(name) !== -1) { return false; }
+		return fs.statSync(path.join(destDir, name)).isFile();
+	});
+	removed.forEach(function (name) { fs.unlinkSync(path.join(destDir, name)); });
 
 	const copied = SOURCE_FILES.map(function (rel) {
 		const from = path.join(__dirname, rel);
@@ -88,11 +122,15 @@ function refresh(destDir) {
 
 	console.log("Refreshed " + copied.length + " file(s) into: " + destDir);
 	copied.forEach(function (name) { console.log("  " + name); });
+	if (removed.length) {
+		console.log("Removed " + removed.length + " stale file(s) no longer in SOURCE_FILES:");
+		removed.forEach(function (name) { console.log("  " + name); });
+	}
 	return copied;
 }
 
 function pack(srcDir, bundlePath, doRefresh) {
-	if (doRefresh) { refresh(srcDir); }
+	if (doRefresh) { refresh(srcDir, [path.basename(bundlePath)]); }
 
 	if (!fs.existsSync(srcDir)) { throw new Error("Source folder not found: " + srcDir); }
 

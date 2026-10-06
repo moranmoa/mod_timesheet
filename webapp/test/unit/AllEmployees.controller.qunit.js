@@ -23,10 +23,9 @@ sap.ui.define([
 				sortMode: "name",
 				busy: false,
 				searchTerm: "",
-				reportType: "ATTENDANCE",
 				currentManagerId: ROOT
 			},
-			filters: { reportTypes: [], populations: [], divisions: [], units: [] },
+			filters: { managers: [], populations: [], divisions: [], units: [] },
 			group: { text: "", count: 0 },
 			employees: aFlat || [],
 			flatEmployees: [],

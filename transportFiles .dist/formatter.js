@@ -76,16 +76,11 @@ sap.ui.define([], function () {
 		/** Semantic accent of a KPI cell / metric row. Unknown tones read as brand. */
 		toneColor: function (sTone) {
 			return TONE_COLORS[sTone] || TONE_COLORS.brand;
-		},
-
-		/**
-		 * The 9px marker in front of a personal message. An unread one is the
-		 * pending amber the whole system uses for "needs you"; a read one drops back
-		 * to the heading navy so it reads as a bullet rather than as a status.
-		 */
-		messageDotColor: function (bIsNew) {
-			return bIsNew ? TONE_COLORS.warning : "#121842"; // --mt-color-navy-deep
 		}
+
+		// The 9px marker in front of a message needs no formatter: the card shows no
+		// read / unread state, so the dot is a bullet in one colour and css §11f
+		// sets it.
 
 		// שם מנהל ישיר needs no formatter: managerName is filled on every row,
 		// including the top level, whose direct manager is the logged-in user.

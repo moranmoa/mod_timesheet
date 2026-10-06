@@ -5,8 +5,9 @@ sap.ui.define([
 	"sap/m/MessageToast",
 	"sap/base/Log",
 	"modtimesheet/model/formatter",
+	"modtimesheet/model/DataService",
 	"modtimesheet/model/mockEmployees"
-], function (Controller, Fragment, JSONModel, MessageToast, Log, formatter, mockEmployees) {
+], function (Controller, Fragment, JSONModel, MessageToast, Log, formatter, DataService, mockEmployees) {
 	"use strict";
 
 	/* ============================================================================
@@ -35,17 +36,42 @@ sap.ui.define([
 	var MAX_SUGGESTIONS = 8;
 
 	/**
-	 * The three multi-select filters, in one place: which control they drive,
-	 * where their option list lives, and which pair of fields on an employee row
-	 * the options are distilled from. Everything that iterates the multi-selects -
-	 * building the options, reading the criteria, collapsing the tokenizer - reads
-	 * this list, so a control id exists in exactly one place.
+	 * The four multi-select filters, in one place: which control they drive,
+	 * where their option list lives, which field on an employee row a selected key
+	 * is matched against, and which list of the shared manager context the options
+	 * come from. Everything that iterates the multi-selects - filling the options,
+	 * reading the criteria, collapsing the tokenizer - reads this list, so a
+	 * control id exists in exactly one place.
+	 *
+	 * `contextKey` is the new part. The options are no longer distilled from the
+	 * rows of this screen: they come from the single /ManagerEmployeesSet read the
+	 * app makes on entry (DataService.loadManagerContext), which is what makes
+	 * opening one of these instant - the values are already in memory - and what
+	 * keeps the lists still while the user works the bar. They move on a refresh
+	 * and at no other time.
+	 *
+	 * In view (RTL) order.
 	 */
 	var MULTI_FILTERS = [
+		{
+			controlId: "aeManagerFilter",
+			path: "/filters/managers",
+			criteriaKey: "managers",
+			contextKey: "managers",
+			// The row's OWN manager - so the filter answers "who reports to X",
+			// and X itself only shows up as an ancestor of its reports.
+			//
+			// Matched by NAME and not by id: the shared call carries ManagerName
+			// and no manager personnel number at all, so the name is the only
+			// value both sides can agree on.
+			keyField: "managerName",
+			textField: "managerName"
+		},
 		{
 			controlId: "aePopulationFilter",
 			path: "/filters/populations",
 			criteriaKey: "populations",
+			contextKey: "populations",
 			keyField: "populationKey",
 			textField: "populationText"
 		},
@@ -53,6 +79,7 @@ sap.ui.define([
 			controlId: "aeDivisionFilter",
 			path: "/filters/divisions",
 			criteriaKey: "divisions",
+			contextKey: "branches",
 			keyField: "divisionKey",
 			textField: "divisionName"
 		},
@@ -60,6 +87,7 @@ sap.ui.define([
 			controlId: "aeUnitFilter",
 			path: "/filters/units",
 			criteriaKey: "units",
+			contextKey: "units",
 			keyField: "unitKey",
 			textField: "unitName"
 		}
@@ -154,7 +182,8 @@ sap.ui.define([
 			}
 		}
 
-		return inKeySet(o.populations, oRow.populationKey)
+		return inKeySet(o.managers, oRow.managerName)
+			&& inKeySet(o.populations, oRow.populationKey)
 			&& inKeySet(o.divisions, oRow.divisionKey)
 			&& inKeySet(o.units, oRow.unitKey);
 	}
@@ -206,9 +235,13 @@ sap.ui.define([
 				viewState: {
 					isHierarchy: false,
 					sortMode: SORT_NAME,
+					// Which of פתיחת / צמצום כל הרשומות the toolbar is offering.
+					// It describes the TREE, not the last button press, so
+					// _bindTable owns it - that is the one place that knows what
+					// depth the table was actually left at.
+					allExpanded: false,
 					busy: false,
 					searchTerm: "",
-					reportType: "ATTENDANCE",
 					currentManagerId: this._getCurrentManagerId(),
 					// הצגת עובדים לא פעילים. Off is the common case, and it is also the
 					// safe default: the screen opens on the current workforce and the
@@ -216,11 +249,7 @@ sap.ui.define([
 					showInactive: false
 				},
 				filters: {
-					reportTypes: [
-						{ key: "ATTENDANCE", text: this._getText("aeReportTypeAttendance") },
-						{ key: "ABSENCE", text: this._getText("aeReportTypeAbsence") },
-						{ key: "TRAINING", text: this._getText("aeReportTypeTraining") }
-					],
+					managers: [],
 					populations: [],
 					divisions: [],
 					units: []
@@ -273,6 +302,49 @@ sap.ui.define([
 		/* ========================= routing / data load ========================= */
 
 		_onRouteMatched: function () {
+			// The filter option lists come from the shared call and the rows from
+			// this screen's own source, so the two are started together rather than
+			// chained - neither waits on the other.
+			this._loadFilterOptions();
+			this._loadEmployees();
+		},
+
+		/**
+		 * The four filter option lists, from the shared manager context.
+		 *
+		 * Cached in the DataService, so this is a round trip only on the first
+		 * screen of the session and after a רענון. A failure leaves the lists as
+		 * they were - the table is still perfectly readable without them.
+		 *
+		 * @returns {Promise} always resolves
+		 */
+		_loadFilterOptions: function () {
+			return DataService.loadManagerContext(this.getOwnerComponent())
+				.then(function (oContext) {
+					this._applyContextOptions(oContext.filterOptions);
+				}.bind(this))
+				.catch(function (oErr) {
+					Log.error("AllEmployees: loading the shared filter options failed",
+						oErr, "AllEmployees");
+				});
+		},
+
+		/**
+		 * רענון - back to the service for both the shared option lists and the
+		 * employee rows.
+		 *
+		 * Nothing presses this: the button was taken off the toolbar (see the note
+		 * where it used to be, in the view). Kept because it is the only thing that
+		 * rebuilds the four filter lists, so restoring the action is one element in
+		 * the view and no code at all.
+		 */
+		onRefresh: function () {
+			DataService.invalidateManagerContext();
+			this._loadFilterOptions();
+			this._loadEmployees();
+		},
+
+		_loadEmployees: function () {
 			var oViewModel = this.getView().getModel("view");
 			oViewModel.setProperty("/viewState/busy", true);
 
@@ -338,7 +410,9 @@ sap.ui.define([
 				return oRow.managerId === sRoot;
 			}).length);
 
-			this._buildFilterOptionsFromData(aRows);
+			// The filter option lists are NOT built here any more - they come from
+			// the shared manager context (_loadFilterOptions), which is what keeps
+			// them still while the user works the bar.
 			this._invalidateTreeCache();
 			this._applyFiltersAndSort();
 
@@ -379,9 +453,14 @@ sap.ui.define([
 		},
 
 		/**
-		 * $filter for the read call. The report type and the multi-selects are
-		 * server-side restrictions once the backend is wired; search stays
-		 * client-side because it also has to match מנהל ישיר.
+		 * $filter for the read call. אוכלוסיה / אגף / יחידה are server-side
+		 * restrictions once the backend is wired; search stays client-side because
+		 * it also has to match מנהל ישיר.
+		 *
+		 * שם מנהל ישיר is client-side too, deliberately: its keys are the internal
+		 * employeeIds ("E" + Pernr) the tree is built from, not a backend field, and
+		 * restricting the read by manager would also strip the ancestors tree mode
+		 * needs to place the surviving rows under.
 		 *
 		 * Employment status is deliberately NOT here. The read must return leavers
 		 * too: הצגת עובדים לא פעילים is a client-side gate (filterByActive), and it
@@ -392,9 +471,8 @@ sap.ui.define([
 		 * @returns {string} an OData V2 $filter expression
 		 */
 		_buildBackendFilter: function () {
-			var oViewModel = this.getView().getModel("view");
 			var oCriteria = this._readFilterCriteria();
-			var aTerms = ["ReportType eq '" + oViewModel.getProperty("/viewState/reportType") + "'"];
+			var aTerms = [];
 
 			[
 				{ field: "Persg", keys: oCriteria.populations },
@@ -443,31 +521,22 @@ sap.ui.define([
 		},
 
 		/**
-		 * Distinct אוכלוסייה / אגף / יחידה option lists, taken from the data that
-		 * actually arrived rather than from a hardcoded table, and everything
-		 * selected on entry.
+		 * Fills שם מנהל ישיר / אוכלוסייה / אגף / יחידה from the shared manager
+		 * context, with everything selected - which on this screen is what "no
+		 * restriction" looks like, because the tokenizer shows the user what they
+		 * are currently allowed to see rather than an empty box.
 		 *
-		 * @param {object[]} aFlat flat employee rows
+		 * Runs on entry and on a refresh, and nowhere else: changing a filter must
+		 * not rebuild the list the filter was picked from.
+		 *
+		 * @param {object} oOptions {populations, branches, units, managers} from
+		 *   DataService.loadManagerContext
 		 */
-		_buildFilterOptionsFromData: function (aFlat) {
+		_applyContextOptions: function (oOptions) {
 			var oViewModel = this.getView().getModel("view");
 
-			var fnDistinct = function (sKeyField, sTextField) {
-				var oSeen = {};
-				return aFlat.reduce(function (aOut, oRow) {
-					var sKey = oRow[sKeyField];
-					if (sKey && !oSeen[sKey]) {
-						oSeen[sKey] = true;
-						aOut.push({ key: sKey, text: oRow[sTextField] || sKey });
-					}
-					return aOut;
-				}, []).sort(function (oA, oB) {
-					return oA.text.localeCompare(oB.text, "he");
-				});
-			};
-
 			MULTI_FILTERS.forEach(function (oFilter) {
-				var aItems = fnDistinct(oFilter.keyField, oFilter.textField);
+				var aItems = oOptions[oFilter.contextKey] || [];
 				oViewModel.setProperty(oFilter.path, aItems);
 
 				// The JSON model updates the bound aggregation synchronously, so the
@@ -481,6 +550,8 @@ sap.ui.define([
 			}, this);
 
 			this._syncSelectAllState();
+			this._invalidateTreeCache();
+			this._applyFiltersAndSort();
 		},
 
 		/* ============================ filters & search ============================ */
@@ -559,16 +630,6 @@ sap.ui.define([
 			this.getView().getModel("view").setProperty("/suggestions", []);
 			this._invalidateTreeCache();
 			this._applyFiltersAndSort();
-		},
-
-		/**
-		 * סוג דוח picks *which* report is being read, not which of the loaded rows
-		 * to show - so it re-enters the data-load path. Today that returns the same
-		 * mock; once the OData read in _onRouteMatched is live it re-reads
-		 * /EmployeeSet with the new ReportType in $filter.
-		 */
-		onReportTypeChange: function () {
-			this._onRouteMatched();
 		},
 
 		/** Reads the current filter UI into a plain, model-free criteria object. */
@@ -778,6 +839,15 @@ sap.ui.define([
 					oTable.collapseAll();
 				}
 			}
+
+			// Which of the two toolbar buttons is on offer. In flat mode it is
+			// false rather than left as it was: the one visible button is the
+			// disabled פתיחה, and a greyed צמצום would promise a tree that is not
+			// on screen.
+			this.getView().getModel("view").setProperty(
+				"/viewState/allExpanded",
+				!!(bHierarchy && iExpandLevel > 0)
+			);
 		},
 
 		/**
@@ -974,12 +1044,13 @@ sap.ui.define([
 		 * פתיחת כל הרשומות. expandToLevel wants an absolute depth, so the tree's own
 		 * depth is measured rather than passing some arbitrarily large number.
 		 *
-		 * Restates a depth rather than toggling one, so pressing it twice is a no-op
-		 * - which is what lets the view show both buttons at once instead of swapping
-		 * one for the other.
+		 * Once it has run, the toolbar offers צמצום instead - the two swap rather
+		 * than sit beside each other, so /viewState/allExpanded moves with the
+		 * tree here as it does in _bindTable.
 		 *
 		 * Not persistent by design: a filter, a search or a sort rebuilds the tree and
-		 * sap.ui.table resets the expand state with it.
+		 * sap.ui.table resets the expand state with it - and _bindTable then restates
+		 * the flag, so the button still matches what is on screen.
 		 */
 		onExpandAll: function () {
 			var oTable = this.byId("employeesTable");
@@ -991,18 +1062,20 @@ sap.ui.define([
 
 			var aNodes = this._flattenTree(oViewModel.getProperty("/treeEmployees"));
 			oTable.expandToLevel(maxLevel(aNodes) + 1);
+			oViewModel.setProperty("/viewState/allExpanded", true);
 		},
 
-		/** צמצום כל הרשומות - back to the level-0 rows. */
+		/** צמצום כל הרשומות - back to the level-0 rows, and back to offering פתיחה. */
 		onCollapseAll: function () {
 			var oTable = this.byId("employeesTable");
+			var oViewModel = this.getView().getModel("view");
 
-			if (!oTable || !this.getView().getModel("view")
-					.getProperty("/viewState/isHierarchy")) {
+			if (!oTable || !oViewModel.getProperty("/viewState/isHierarchy")) {
 				return;
 			}
 
 			oTable.collapseAll();
+			oViewModel.setProperty("/viewState/allExpanded", false);
 		},
 
 		onOpenViewSettings: function () {
@@ -1094,7 +1167,7 @@ sap.ui.define([
 		/* ================================ helpers ================================ */
 
 		/**
-		 * All three multi-selects start with every option checked, which UI5 would
+		 * Every multi-select starts with all its options checked, which UI5 would
 		 * render as a row of tokens inside a 44px pill. `aeAllSelected` collapses
 		 * that back to the field's "הכל" placeholder while the selection is
 		 * complete, and lifts as soon as the user narrows it down.

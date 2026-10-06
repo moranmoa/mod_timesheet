@@ -1,0 +1,88 @@
+<core:FragmentDefinition
+	xmlns="sap.m"
+	xmlns:core="sap.ui.core"
+	xmlns:f="sap.f">
+
+	<!-- ============================================================================
+	     שורת ה-header של האפליקציה : the app shell bar
+	     ============================================================================
+	     The navy strip across the top of every screen. One fragment, placed once in
+	     App.view.xml above the sap.m.App, so it is drawn for all three screens and
+	     for any screen added later. Each Page keeps showHeader="false" and carries
+	     its own title inside the content, exactly as before.
+
+	     What it holds, in RTL order:
+
+	       right   שם המערכת ־ דף הבית   the second half is a link home. It is the
+	                                     same text on every screen on purpose: it is
+	                                     a way back, not a breadcrumb of where you
+	                                     are.
+	       left    bell + the user circle
+	                                     the bell is wired to a placeholder toast,
+	                                     since there is no notifications screen yet,
+	                                     and the count badge only appears once
+	                                     shell>/notificationCount is non zero. The
+	                                     avatar is off by default
+	                                     (shell>/user/visible).
+
+	     Reusing it elsewhere: drop
+	         <core:Fragment fragmentName="modtimesheet.view.AppHeader" type="XML" />
+	     into a view whose controller has onNavHome + onOpenNotifications (see
+	     controller/App.controller.js), with the "shell" JSON model on the component
+	     (Component.js _setupShellModel) and the sh* keys in i18n.
+
+	     Note for the Fiori launchpad: the FLP draws a shell bar of its own, so
+	     inside it this one sits beneath a second dark strip. Standalone, and in the
+	     frame this was built from, it is the only one.
+	     ========================================================================= -->
+
+	<FlexBox
+		class="shBar"
+		renderType="Bare"
+		alignItems="Center"
+		justifyContent="SpaceBetween">
+
+		<!-- ================= Right: system name + way home ================= -->
+		<HBox class="shBrand" renderType="Bare" alignItems="Center">
+			<Text text="{i18n>shSystemTitle}" class="shSystemTitle" />
+			<Text text="-" class="shTitleSeparator" />
+			<Link
+				text="{i18n>shHome}"
+				tooltip="{i18n>shHomeTooltip}"
+				press=".onNavHome"
+				class="shHomeLink" />
+		</HBox>
+
+		<!-- ================= Left: notifications + user ================= -->
+		<HBox class="shActions" renderType="Bare" alignItems="Center">
+
+			<!-- The badge is positioned against this box, so the two stay together
+			     however wide the count grows. -->
+			<HBox class="shNotifications" renderType="Bare" alignItems="Center">
+				<Button
+					icon="sap-icon://bell"
+					type="Transparent"
+					tooltip="{i18n>shNotifications}"
+					press=".onOpenNotifications"
+					class="shIconButton" />
+				<Text
+					text="{shell>/notificationCount}"
+					visible="{= ${shell>/notificationCount} > 0 }"
+					class="shBadge" />
+			</HBox>
+
+			<!-- sap.f.Avatar and not sap.m.Avatar: the latter arrived in 1.73 and the
+			     launchpad this runs in is on the 1.71 line (see index.html). -->
+			<f:Avatar
+				visible="{shell>/user/visible}"
+				src="{shell>/user/src}"
+				initials="{shell>/user/initials}"
+				tooltip="{shell>/user/name}"
+				displaySize="XS"
+				displayShape="Circle"
+				class="shAvatar" />
+		</HBox>
+
+	</FlexBox>
+
+</core:FragmentDefinition>

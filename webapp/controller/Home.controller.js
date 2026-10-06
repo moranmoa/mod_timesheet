@@ -16,12 +16,12 @@ sap.ui.define([
 
 	     DataService.getHomeData({year, month, populationKey})
 	       -> _toViewData(...)      counts -> bar widths, minutes -> "עודכן מלפני",
-	                                name  -> greeting, isNew -> "חדש" / "נקרא"
+	                                name  -> greeting, type -> "הודעה כללית"
 	       -> the "home" JSON model, which the view binds as-is.
 
 	   Everything the view shows is therefore ready to render: no formatter reaches
-	   the resource bundle, and the only two that remain (toneColor,
-	   messageDotColor) exist because sap.ui.core.Icon takes a literal colour.
+	   the resource bundle, and the only one that remains (toneColor) exists because
+	   sap.ui.core.Icon takes a literal colour.
 
 	   The month stepper and the אוכלוסיה filter are request parameters, not
 	   client-side filters - changing either re-asks the service, exactly as a real
@@ -83,10 +83,15 @@ sap.ui.define([
 			this._aMonthNames = DataService.getFilterOptions().months;
 
 			// The requested slice of data. The service owns everything else.
-			var oNow = new Date();
+			//
+			// The screen opens on the ACTIVE month and not on the calendar one: up
+			// to the 10th the month that just ended is still being closed, so that
+			// is the one people are working on. The rule lives in the DataService,
+			// beside the call that asks the backend for the same span.
+			var oPeriod = DataService.getActivePeriod();
 			this._oRequest = {
-				year: oNow.getFullYear(),
-				month: oNow.getMonth() + 1,
+				year: oPeriod.year,
+				month: oPeriod.month,
 				populationKey: "ALL"
 			};
 
@@ -121,7 +126,7 @@ sap.ui.define([
 
 			oPage.setBusy(true);
 
-			return DataService.getHomeData({
+			return DataService.getHomeData(this.getOwnerComponent(), {
 				year: this._oRequest.year,
 				month: this._oRequest.month,
 				populationKey: this._oRequest.populationKey
@@ -164,8 +169,13 @@ sap.ui.define([
 				populationOptions: o.populationOptions || [],
 				messages: (o.messages || []).map(function (oMessage) {
 					return {
-						isNew: !!oMessage.isNew,
-						statusText: that._oBundle.getText(oMessage.isNew ? "hmMessageNew" : "hmMessageRead"),
+						// The kind of message, not its read state: הודעה כללית today,
+						// הודעה אישית once phase ב' starts sending those too. An
+						// unknown type falls back on כללית, which is the only kind the
+						// service sends at the moment.
+						typeText: that._oBundle.getText(
+							oMessage.type === "PERSONAL" ? "hmMessagePersonal" : "hmMessageGeneral"
+						),
 						subject: oMessage.subject,
 						body: oMessage.body
 					};
@@ -307,7 +317,17 @@ sap.ui.define([
 			this._load();
 		},
 
+		/**
+		 * רענון הנתונים - go back to the service, rather than redraw what is
+		 * already here.
+		 *
+		 * Dropping the cached context is the whole of it: the counters on this
+		 * screen AND the filter option lists on the two report screens are counted
+		 * off it, so this one press is what makes all three current. It is also the
+		 * only thing that does - working the filters never disturbs those lists.
+		 */
 		onRefresh: function () {
+			DataService.invalidateManagerContext();
 			this._load();
 		},
 

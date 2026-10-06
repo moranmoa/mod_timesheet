@@ -132,6 +132,20 @@
 	box-sizing: content-box;
 }
 
+/* The toggle column. Its label is the longest in the bar and the control
+   under it is by far the narrowest, so the column sizes itself to the label
+   instead of taking a 198px field slot it would only leave half empty. */
+.mtFilterFieldSwitch {
+	flex: 0 0 auto;
+}
+
+/* A label centred over its control rather than aligned to the start of it -
+   the switches are far narrower than the text above them. */
+.mtFilterLabelCentered {
+	text-align: center;
+	width: 100%;
+}
+
 /* ---------------------------------------------------------------------------
    3a. Filter controls - Select / MultiComboBox / SearchField
    Figma: height 44, radius pill, 2px brand-blue border, white fill,
@@ -667,6 +681,82 @@
 	font-size: 28px; /* Figma: the chevron is the 28px SAP-icons glyph */
 }
 
+/* ---------------------------------------------------------------------------
+   3c. The filter-bar switch - הצגת עובדים לא פעילים (עובדים)
+       and ממתינים לאישור מחודשים קודמים (דוחות באחריות ממונה)
+   ------------------------------------------------------------------------
+   A 56x28 pill under the standard 700/16 filter label. The whole track carries
+   the state, not just the knob: brand blue + "כן" while the switch is on, the
+   system's decline red + "לא" while it is off. Red for the OFF state is
+   deliberate in the design - it reads as "a restriction is in force", which is
+   exactly what an unexplained missing employee needs it to say.
+
+   It is the one control in the filter row that is not a 44px field. The row is
+   bottom-aligned on those fields, so the missing 16px is handed to the switch as
+   bottom margin, which lands it on their vertical middle instead of their
+   baseline; the horizontal centring is the box's own alignItems (see the view).
+
+   Horizon paints the track and its state colour from selectors that nest
+   deeper than one class, and adds its own animated overlay on top, so the fill,
+   the border and that overlay are all pinned here - same reasoning as §3a.
+   ------------------------------------------------------------------------ */
+.mtStateSwitch.sapMSwt {
+	width: 56px;
+	min-width: 56px;
+	height: 28px;
+	margin: 0 0 var(--mt-space-3) 0;
+	border: none;
+	border-radius: var(--mt-radius-pill);
+	overflow: hidden;
+}
+
+.mtStateSwitch .sapMSwtInner {
+	height: 100%;
+	border: none !important;
+	border-radius: var(--mt-radius-pill);
+	background: var(--mt-color-error-accent) !important;
+	transition: background-color 0.15s ease-in-out;
+}
+
+.mtStateSwitch.sapMSwtOn .sapMSwtInner {
+	background: var(--mt-color-brand) !important;
+}
+
+/* Horizon's second, sliding fill layer. The track above is already the state
+   colour, so this one would only smear a second colour across it. */
+.mtStateSwitch .sapMSwtInner::before,
+.mtStateSwitch .sapMSwtInner::after {
+	display: none;
+}
+
+/* "כן" / "לא" - white on the coloured track, in the field-value type of the row. */
+.mtStateSwitch .sapMSwtText,
+.mtStateSwitch .sapMSwtLabel {
+	font: var(--mt-text-field-value);
+	color: var(--mt-color-white) !important;
+	text-shadow: none;
+}
+
+.mtStateSwitch .sapMSwtHandle {
+	width: 20px;
+	height: 20px;
+	inset-block-start: 4px;
+	border: none !important;
+	border-radius: 50%;
+	background: var(--mt-color-white) !important;
+	box-shadow: none;
+}
+
+/* "לא" - brand blue rather than the white of "כן". Both labels are in the DOM
+   at all times and slide with the track, so the colour is pinned to the off
+   label itself and not to the switch's state class, which would repaint the
+   one sliding out of view as well. */
+.mtStateSwitch .sapMSwtTextOff,
+.mtStateSwitch .sapMSwtTextOff span,
+.mtStateSwitch .sapMSwtLabelOff {
+	color: var(--mt-color-brand) !important;
+}
+
 /* ============================================================================
    4. Status tabs (sap.m.IconTabBar)
    ------------------------------------------------------------------------
@@ -1192,6 +1282,365 @@
    report. The --mt-icon-button token stays in tokens.css for reuse elsewhere. */
 
 /* ============================================================================
+   6b. שליחת תזכורת - the compose dialog
+   ------------------------------------------------------------------------
+   The screens are built out of four things: the 16px card, the brand-blue pill
+   field, the 700/16 navy label and the pill button. A dialog left in Horizon's
+   own frame - square corners, grey fields, system buttons - reads as a second
+   application dropped on top of this one, so the same four are applied here.
+
+   Almost none of it is new geometry. אל and כותרת carry .mtFilterField (see the
+   fragment), which is where the field is already worked out: the 44px pill, its
+   600/16 value, its 20px brand icons and its borders that do not move between
+   idle, hover and focus. What this section adds is the frame around them, תוכן
+   - the one field a filter row has no equivalent of - and the footer pair.
+   ========================================================================= */
+
+/* --- the frame --------------------------------------------------------- */
+
+.mtReminderDialog.sapMDialog {
+	border: none;
+	border-radius: var(--mt-radius-lg);
+	box-shadow: var(--mt-shadow-overlay);
+	background-color: var(--mt-bg-card);
+}
+
+/* Horizon separates header, content and footer with a tinted bar and a rule.
+   The kit's surfaces are single and white - a card, a popover and this - so the
+   three are flattened into one.
+
+   Addressed as ELEMENTS. sapMDialogTitle is the class on the Title control and
+   not on the bar around it, and the footer is a Toolbar in one version of UI5
+   and a Bar in another - but Dialog always renders the two as <header> and
+   <footer> directly under its root, whatever control it built them from.
+   !important because the theme paints them from its own context classes
+   (sapMHeader-CTX / sapMFooter-CTX), which no class here outranks. */
+.mtReminderDialog > header,
+.mtReminderDialog > footer,
+.mtReminderDialog .sapMHeader-CTX,
+.mtReminderDialog .sapMDialogFooter {
+	background: var(--mt-bg-card) !important;
+	border: none !important;
+	box-shadow: none !important;
+}
+
+/* The title reads as a section title, in the navy every heading on the screens
+   is set in. It stays centred: that is what a dialog title does, and it is the
+   one place the screens' start-aligned headings would look misplaced. */
+.mtReminderDialog > header,
+.mtReminderDialog .sapMHeader-CTX {
+	height: auto !important;
+	min-height: 0 !important;
+	padding: var(--mt-space-6) var(--mt-content-inset) var(--mt-space-3) !important;
+}
+
+.mtReminderDialog > header .sapMTitle,
+.mtReminderDialog .sapMHeader-CTX .sapMTitle,
+.mtReminderDialog .sapMDialogTitle {
+	font: var(--mt-text-section-title);
+	color: var(--mt-text-primary);
+	line-height: 1.3;
+	max-width: none;
+}
+
+.mtReminderDialog .sapMDialogScrollCont {
+	padding: var(--mt-space-6) var(--mt-content-inset) var(--mt-content-inset);
+	background-color: var(--mt-bg-card);
+}
+
+/* --- the three fields --------------------------------------------------- */
+
+.mtReminderForm {
+	width: 100%;
+}
+
+/* .mtFilterField describes a COLUMN in the filter row: 198px of basis, 168px at
+   its narrowest. In a stacked form that basis is read down the axis instead of
+   across it - i.e. as a height - so the sizing half of the class is undone here
+   and only the field itself is kept. Its 4px of vertical padding is left alone:
+   it is the same 4px the filter row gives the field, and the gap between the
+   fields is set below, by a single-class rule this one must not outrank. */
+.mtReminderDialog .mtFilterField {
+	flex: 0 0 auto;
+	width: 100%;
+	min-width: 0;
+}
+
+/* The gap between the three fields; the last one is separated from the footer
+   by the content's own padding, hence the rule after it. */
+.mtReminderField {
+	padding-bottom: var(--mt-space-6);
+}
+
+.mtReminderField:last-child {
+	padding-bottom: 0;
+}
+
+/* Same 700/16 navy as the labels over the filter fields - the dialog opens on
+   top of them. */
+.mtReminderLabel {
+	font: var(--mt-text-field-label);
+	color: var(--mt-text-primary);
+	padding-bottom: var(--mt-space-2);
+}
+
+/* The tokens get the room before the typing area does - the same priority the
+   MultiComboBox needed in §3a, and needed again here because that fix is
+   written for .sapMMultiComboBox and אל is a MultiInput. The inner <input> is
+   width: 100% in the theme, which as a flex item is a claim on the whole pill;
+   the tokenizer then gives way and the addresses are cut off mid-word. */
+.mtReminderDialog .sapMMultiInput .sapMTokenizer {
+	flex: 0 1 auto;
+	min-width: 0;
+	position: relative;
+	z-index: 1;
+}
+
+.mtReminderDialog .sapMMultiInput .sapMInputBaseInner {
+	flex: 1 1 3rem;
+	min-width: 0;
+	width: auto;
+}
+
+/* Each recipient is a token, and the kit already draws that shape: the employee
+   tag of §6 - a 28px pill, hairline brand border, 6% brand wash, 600/16. */
+.mtReminderDialog .sapMToken {
+	height: var(--mt-tag-height);
+	box-sizing: border-box;
+	border: var(--mt-border-width) solid var(--mt-color-brand);
+	border-radius: var(--mt-radius-pill);
+	background-color: var(--mt-color-brand-wash);
+	box-shadow: none;
+}
+
+.mtReminderDialog .sapMTokenText {
+	font: var(--mt-text-tag);
+	color: var(--mt-text-primary);
+}
+
+.mtReminderDialog .sapMTokenIcon {
+	color: var(--mt-color-brand);
+}
+
+/* A selected token is the one about to be removed - the wash deepens rather
+   than the theme's blue block, which would hide the address it is about to
+   take out. */
+.mtReminderDialog .sapMToken.sapMTokenSelected {
+	background-color: var(--mt-color-brand-tint);
+	border-color: var(--mt-color-brand);
+	color: var(--mt-text-primary);
+}
+
+/* תוכן is the one field with no counterpart in the filter row: a message is
+   written over a dozen lines. It keeps the field's 2px brand border and white
+   fill, and takes the card radius instead of the pill - a pill only reads as a
+   field while it is one line high - and the body type, because this is the one
+   field holding prose rather than a value. */
+.mtReminderDialog .sapMTextArea {
+	width: 100%;
+	height: auto;
+	border: none;
+	background-color: transparent;
+}
+
+/* InputBase renders a wrapper around the <textarea>, and that wrapper is what
+   the theme paints - so it carries the border and the fill, exactly as the
+   pill's wrapper does in §3a, and the textarea inside it is stripped bare. */
+.mtReminderDialog .sapMTextArea .sapMInputBaseContentWrapper {
+	box-sizing: border-box;
+	height: auto;
+	min-height: 12rem;
+	padding: var(--mt-space-4) var(--mt-space-5);
+	border: var(--mt-border-width-strong) solid var(--mt-border-field) !important;
+	border-radius: var(--mt-radius-md);
+	background-color: var(--mt-color-white) !important;
+}
+
+.mtReminderDialog .sapMTextAreaInner {
+	height: 100%;
+	min-height: 0;
+	padding: 0;
+	border: none;
+	background-color: transparent;
+	font: var(--mt-font-weight-regular) var(--mt-font-size-base) / 1.5 var(--mt-font-sans);
+	color: var(--mt-color-black);
+}
+
+/* The placeholder-grey of the filter fields, for the same reason. */
+.mtReminderDialog .sapMTextAreaInner::placeholder,
+.mtReminderDialog .sapMInputBaseInner::placeholder {
+	color: var(--mt-text-secondary);
+	opacity: 1;
+}
+
+/* No rings, in any state - same reasoning as the filter fields in §3a: the
+   border is this design's only outline, and Horizon's focus ring lands just
+   inside it as a second, squarer one. */
+.mtReminderDialog .sapMTextArea,
+.mtReminderDialog .sapMTextAreaInner,
+.mtReminderDialog .sapMInputBase,
+.mtReminderDialog .sapMInputBaseContentWrapper,
+.mtReminderDialog .sapMInputBaseInner {
+	box-shadow: none !important;
+	outline: none !important;
+}
+
+.mtReminderDialog .sapMTextArea::before,
+.mtReminderDialog .sapMTextArea::after,
+.mtReminderDialog .sapMTextAreaInner::before,
+.mtReminderDialog .sapMTextAreaInner::after {
+	display: none;
+}
+
+/* --- the footer pair ---------------------------------------------------- */
+/* Generic on purpose. The kit has exactly one primary and one secondary button
+   - a filled brand pill and the same pill outlined - and the next dialog gets
+   them by putting these two classes on its own footer buttons. Nothing else in
+   the app is a filled button yet: the toolbar and filter actions are text and
+   icon, because they act on what is already on screen, while these two end a
+   task and are the only thing in the dialog that leaves it. */
+
+/* !important on the LAYOUT and not only on the colours, which is what the first
+   attempt got wrong: the compact theme sizes a button from
+   `.sapUiSizeCompact .sapMBtn .sapMBtnInner` - three classes - so every plain
+   declaration here was outranked and only the painted ones landed. The button
+   was still an inline box, and the icon inside it still sat on the theme's own
+   line-height, above the label. */
+.mtButtonPrimary .sapMBtnInner,
+.mtButtonSecondary .sapMBtnInner {
+	display: flex !important;
+	align-items: center !important;
+	justify-content: center !important;
+	gap: var(--mt-space-2);
+	height: var(--mt-field-height) !important;
+	min-height: var(--mt-field-height) !important;
+	min-width: 7.5rem;
+	padding-inline: var(--mt-space-7) !important;
+	border-radius: var(--mt-radius-pill) !important;
+	box-shadow: none !important;
+	line-height: normal !important;
+}
+
+.mtButtonPrimary .sapMBtnContent,
+.mtButtonSecondary .sapMBtnContent {
+	font: var(--mt-text-button) !important;
+	display: flex !important;
+	align-items: center !important;
+	max-width: none;
+	overflow: visible;
+	text-overflow: clip;
+	white-space: nowrap;
+}
+
+/* Icons keep the SAP-icons family - only size, colour and placement are themed.
+
+   The placement is the point: in the compact theme a button icon is laid out
+   as an inline box with a 1.5rem line-height and max-height of its own, which
+   inside a 44px pill leaves it sitting above the label's centre line. Made a
+   flex item of the inner (which is already display: flex, §above) with its own
+   line-height and margins cleared, it centres on the label instead. */
+.mtButtonPrimary .sapMBtnIcon,
+.mtButtonSecondary .sapMBtnIcon {
+	display: flex !important;
+	align-items: center !important;
+	justify-content: center !important;
+	flex: 0 0 auto;
+	position: static !important;
+	width: auto !important;
+	min-width: 0 !important;
+	height: auto !important;
+	max-height: none !important;
+	margin: 0 !important;
+	padding: 0 !important;
+	line-height: normal !important;
+	vertical-align: middle !important;
+	font-size: var(--mt-font-size-base) !important;
+}
+
+.mtButtonPrimary .sapMBtnInner {
+	background-color: var(--mt-color-brand) !important;
+	border: var(--mt-border-width-strong) solid var(--mt-color-brand) !important;
+}
+
+.mtButtonPrimary .sapMBtnContent,
+.mtButtonPrimary .sapMBtnIcon {
+	color: var(--mt-color-white) !important;
+}
+
+.mtButtonPrimary .sapMBtnInner:hover {
+	background-color: var(--mt-color-brand-hover) !important;
+	border-color: var(--mt-color-brand-hover) !important;
+}
+
+.mtButtonPrimary .sapMBtnInner:active {
+	background-color: var(--mt-color-brand-active) !important;
+	border-color: var(--mt-color-brand-active) !important;
+}
+
+.mtButtonSecondary .sapMBtnInner {
+	background-color: var(--mt-color-white) !important;
+	border: var(--mt-border-width-strong) solid var(--mt-color-brand) !important;
+}
+
+.mtButtonSecondary .sapMBtnContent,
+.mtButtonSecondary .sapMBtnIcon {
+	color: var(--mt-color-brand) !important;
+}
+
+/* The text-button hover fill of the kit - the same one the filter actions use. */
+.mtButtonSecondary .sapMBtnInner:hover {
+	background-color: var(--mt-color-brand-tint) !important;
+}
+
+/* Horizon's own focus ring is a square outline just inside a pill button. */
+.mtButtonPrimary .sapMBtnInner::before,
+.mtButtonPrimary .sapMBtnInner::after,
+.mtButtonSecondary .sapMBtnInner::before,
+.mtButtonSecondary .sapMBtnInner::after {
+	display: none;
+}
+
+/* The footer is a 2.5rem bar in the compact theme, so a 44px pill does not fit
+   in it and was cut off along the bottom. Its height comes from the buttons
+   instead - !important because the theme's own height carries a context class
+   this cannot outrank on specificity alone.
+
+   The height alone is not enough, which is what the first attempt at this
+   showed. The dialog is a flex column whose root height is fixed once, on open;
+   a flex item's default min-height is auto, i.e. "never smaller than my
+   content", and תוכן is a 12rem field, so the scroll area refused to give up
+   the pixels the taller footer needed and the footer was pushed out through the
+   bottom of a root that clips. min-height: 0 on the area that SHOULD absorb the
+   difference - the one that scrolls - plus flex-shrink: 0 on the two that
+   should not, settles which of the three gives way. */
+.mtReminderDialog > footer,
+.mtReminderDialog .sapMDialogFooter {
+	height: auto !important;
+	min-height: 0 !important;
+	padding: var(--mt-space-4) var(--mt-content-inset) var(--mt-space-5) !important;
+	overflow: visible;
+}
+
+.mtReminderDialog > header,
+.mtReminderDialog > footer,
+.mtReminderDialog .sapMHeader-CTX,
+.mtReminderDialog .sapMDialogFooter {
+	flex-shrink: 0;
+}
+
+.mtReminderDialog .sapMDialogSection,
+.mtReminderDialog .sapMDialogScroll,
+.mtReminderDialog .sapMDialogScrollCont {
+	min-height: 0;
+}
+
+.mtReminderDialog > footer .sapMBarChild,
+.mtReminderDialog .sapMDialogFooter .sapMBarChild {
+	margin-inline: var(--mt-space-2) !important;
+	margin-block: 0 !important;
+}
+
+/* ============================================================================
    7. Shared layout helper (kept from the original markup)
    ========================================================================= */
 .width_auto {
@@ -1318,98 +1767,12 @@
 	flex-basis: 320px;
 }
 
-.aeFilterLabelCentered {
-	text-align: center;
-	width: 100%;
-}
-
 /* Every multi-select starts fully checked, which UI5 renders as a row of tokens
    inside a 44px pill. While the selection is complete it carries no
    information, so the tokenizer is collapsed and the field falls back to its
    "הכל" placeholder. The controller adds/removes .aeAllSelected. */
 .aeFilterField .sapMMultiComboBox.aeAllSelected .sapMTokenizer {
 	display: none;
-}
-
-/* ---------------------------------------------------------------------------
-   הצגת עובדים לא פעילים - the switch
-   ------------------------------------------------------------------------
-   A 56x28 pill under the standard 700/16 filter label. The whole track carries
-   the state, not just the knob: brand blue + "כן" while leavers are listed, the
-   system's decline red + "לא" while they are hidden. Red for the default state
-   is deliberate in the design - it reads as "a restriction is in force", which
-   is exactly what an unexplained missing employee needs it to say.
-
-   It is the one control in the filter row that is not a 44px field. The row is
-   bottom-aligned on those fields, so the missing 16px is handed to the switch as
-   bottom margin, which lands it on their vertical middle instead of their
-   baseline; the horizontal centring is the box's own alignItems (see the view).
-
-   Horizon paints the track and its state colour from selectors that nest
-   deeper than one class, and adds its own animated overlay on top, so the fill,
-   the border and that overlay are all pinned here - same reasoning as §3a.
-   ------------------------------------------------------------------------ */
-.aeInactiveSwitch.sapMSwt {
-	width: 56px;
-	min-width: 56px;
-	height: 28px;
-	margin: 0 0 var(--mt-space-3) 0;
-	border: none;
-	border-radius: var(--mt-radius-pill);
-	overflow: hidden;
-}
-
-.aeInactiveSwitch .sapMSwtInner {
-	height: 100%;
-	border: none !important;
-	border-radius: var(--mt-radius-pill);
-	background: var(--mt-color-error-accent) !important;
-	transition: background-color 0.15s ease-in-out;
-}
-
-.aeInactiveSwitch.sapMSwtOn .sapMSwtInner {
-	background: var(--mt-color-brand) !important;
-}
-
-/* Horizon's second, sliding fill layer. The track above is already the state
-   colour, so this one would only smear a second colour across it. */
-.aeInactiveSwitch .sapMSwtInner::before,
-.aeInactiveSwitch .sapMSwtInner::after {
-	display: none;
-}
-
-/* "כן" / "לא" - white on the coloured track, in the field-value type of the row. */
-.aeInactiveSwitch .sapMSwtText,
-.aeInactiveSwitch .sapMSwtLabel {
-	font: var(--mt-text-field-value);
-	color: var(--mt-color-white) !important;
-	text-shadow: none;
-}
-
-.aeInactiveSwitch .sapMSwtHandle {
-	width: 20px;
-	height: 20px;
-	inset-block-start: 4px;
-	border: none !important;
-	border-radius: 50%;
-	background: var(--mt-color-white) !important;
-	box-shadow: none;
-}
-
-/* סוג דוח: the frame tints the active entry amber and the rest brand blue.
-   A Select's picker is rendered into the static area, so a class on the Select
-   never reaches it - but the picker's id is derived from the Select's, which
-   scopes these rules to this one drop-down without touching any other. */
-.sapMSelectList[id*="aeReportTypeSelect"] .sapMSelectListItemBase,
-.sapMSltPicker[id*="aeReportTypeSelect"] .sapMSelectListItemBase {
-	font: var(--mt-text-field-value);
-	color: var(--mt-color-brand);
-}
-
-.sapMSelectList[id*="aeReportTypeSelect"] .sapMSelectListItemBaseSelected,
-.sapMSltPicker[id*="aeReportTypeSelect"] .sapMSelectListItemBaseSelected {
-	color: var(--mt-color-warning-text);
-	font-weight: var(--mt-font-weight-bold);
 }
 
 /* ---------------------------------------------------------------------------
@@ -1904,7 +2267,7 @@
 	overflow: hidden;
 }
 
-/* סטטוס הדו"ח and הודעות אישיות are the frame's two 463px cards. */
+/* סטטוס הדו"ח and הודעות are the frame's two 463px cards. */
 .hmCardWide {
 	flex-basis: var(--mt-card-width-wide);
 	min-width: var(--mt-card-width-wide);
@@ -1913,7 +2276,7 @@
 /* The frame draws all three of these at exactly 283px, and a fixed height is
    what it takes to get that - min-height alone did not.
    ------------------------------------------------------------------------
-   הודעות אישיות is the one card in the row whose content can outgrow the box: with
+   הודעות is the one card in the row whose content can outgrow the box: with
    only a minimum it stretched to its message list (317px for the two seeded
    messages), alignItems="Stretch" handed that height to סטטוס הדו"ח as well, and
    הזנת נוכחות - a Button, whose height the theme sets explicitly, so it does not
@@ -2133,10 +2496,10 @@
 /* ---------------------------------------------------------------------------
    11e. סטטוס הדו"ח
    ------------------------------------------------------------------------
-   Four counters on one line, each an 800/28 number with its 32px glyph on the
-   inline-start side and a 400/16 label beneath. "כל השגיאות" is the total, so
-   the frame sets it in the decline red and rules it off from the three
-   breakdown counters beside it.
+   Three counters on one line, each an 800/28 number with its 32px glyph on the
+   inline-start side and a 400/16 label beneath. They are peers: the "כל השגיאות"
+   total that used to lead the row in the decline red, ruled off from the rest,
+   is gone, and with it the data-tone="error" cell this section styled.
    ------------------------------------------------------------------------ */
 
 /* Two children - title and counter row - pushed to the top and bottom of the
@@ -2156,12 +2519,6 @@
 	min-width: 0;
 }
 
-/* The rule belongs to the total, on the side facing the breakdown. */
-.hmKpi[data-tone="error"] {
-	padding-inline-end: var(--mt-space-6);
-	border-inline-end: var(--mt-border-width) solid rgba(170, 170, 170, 0.67);
-}
-
 .hmKpiValueRow {
 	gap: var(--mt-space-2);
 }
@@ -2177,11 +2534,6 @@
 	color: var(--mt-text-primary);
 }
 
-.hmKpi[data-tone="error"] .hmKpiValue,
-.hmPage .hmKpi[data-tone="error"] .hmKpiValue.sapMText {
-	color: var(--mt-color-error-accent);
-}
-
 .hmKpiLabel,
 .hmPage .hmKpiLabel.sapMText {
 	font: var(--mt-text-body);
@@ -2189,7 +2541,7 @@
 }
 
 /* ---------------------------------------------------------------------------
-   11f. הודעות אישיות
+   11f. הודעות
    ------------------------------------------------------------------------
    A fixed-height card that scrolls its own list (frame: overflow-y auto), each
    message closed off with a 1px #939EC9 rule.
@@ -2214,8 +2566,18 @@
 }
 
 /* Same technique as the wizard dots in §6: the "record" glyph draws a circle
-   smaller than its box, so the box becomes the dot and the bound `color` is
-   picked up through currentColor. font-size:0 hides the glyph itself. */
+   smaller than its box, so the box becomes the dot and its colour is picked up
+   through currentColor. font-size:0 hides the glyph itself.
+
+   One colour, set here rather than bound: the card shows no read / unread state,
+   so the dot marks the message and says nothing about it. It is written on a
+   doubled selector because it has to beat the theme's own .sapUiIcon colour,
+   which an inline style used to win against for free. */
+.hmMessageDot,
+.hmPage .hmMessageDot.sapUiIcon {
+	color: var(--mt-color-navy-deep);
+}
+
 .hmMessageDot {
 	box-sizing: border-box;
 	width: var(--mt-message-dot);
@@ -2868,3 +3230,180 @@
 	}
 }
 
+
+/* ============================================================================
+   13. שורת ה-header של האפליקציה - the shell bar
+   ----------------------------------------------------------------------------
+   view/AppHeader.fragment.xml, included once by App.view.xml above the
+   sap.m.App. Navy strip, the system name and the way home at the start (right,
+   in RTL), the bell and the user circle at the end.
+
+   Two structural notes:
+
+   (1) The bar and the screens are the two rows of one flex column (.shShell).
+       The bar keeps its own height and the sap.m.App takes what is left, which
+       is what stops a screen's own scrolling from running underneath the bar or
+       past the bottom of the window. sap.m.NavContainer sets height:100% on
+       itself, so .shContent has to take that back - hence the two-class
+       selector, which also settles the tie in the launchpad (§12(1)).
+
+   (2) Colours are stated against .shBar rather than globally: the strip is the
+       one dark surface in the app and everything in it is inverted, so scoping
+       keeps that inversion from leaking into a screen.
+   ========================================================================= */
+.shShell {
+	height: 100%;
+}
+
+/* Both rows are addressed through .shShell so they outrank sap.m's own
+   one-class .sapMFlexItem, whose stylesheet is the later one inside the
+   launchpad (§12(1)) - a bar that starts shrinking there would be a hard
+   thing to trace back to a tie in the cascade. */
+.shShell > .shBar {
+	flex: 0 0 auto;
+}
+
+.shShell > .shContent {
+	flex: 1 1 0;
+	height: auto;
+	min-height: 0;
+}
+
+.shBar {
+	box-sizing: border-box;
+	height: var(--mt-shell-height);
+	padding: 0 var(--mt-content-inset);
+	background-color: var(--mt-color-navy-deep);
+	color: var(--mt-text-inverse);
+	font-family: var(--mt-font-sans);
+}
+
+/* ----------------------------------------------------------------------------
+   13a. Right: system name + way home
+   ------------------------------------------------------------------------- */
+.shBrand > * {
+	margin-inline-end: var(--mt-space-2);
+}
+
+.shBrand > *:last-child {
+	margin-inline-end: 0;
+}
+
+.shBar .shSystemTitle,
+.shBar .shTitleSeparator {
+	color: var(--mt-text-inverse);
+	font: var(--mt-text-field-value);
+	font-family: var(--mt-font-sans);
+}
+
+/* The link is the only interactive text on the strip, so it carries the weight
+   the plain system name does not - that difference is what says it can be
+   clicked, since an underline only appears on hover. */
+.shBar .shHomeLink,
+.shBar .shHomeLink:visited {
+	color: var(--mt-text-inverse);
+	font: var(--mt-text-button);
+	font-family: var(--mt-font-sans);
+	text-decoration: none;
+}
+
+.shBar .shHomeLink:hover,
+.shBar .shHomeLink:active {
+	color: var(--mt-text-inverse);
+	text-decoration: underline;
+}
+
+/* Keyboard focus has to be visible on navy, where the theme's dark focus ring
+   is not. */
+.shBar .shHomeLink:focus,
+.shBar .shIconButton:focus,
+.shBar .shIconButton:focus .sapMBtnInner {
+	outline: var(--mt-border-width) dotted var(--mt-text-inverse);
+	outline-offset: 2px;
+}
+
+/* ----------------------------------------------------------------------------
+   13b. Left: notifications + user
+   ------------------------------------------------------------------------- */
+.shActions > * {
+	margin-inline-start: var(--mt-space-4);
+}
+
+.shActions > *:first-child {
+	margin-inline-start: 0;
+}
+
+/* Three classes deep on purpose: sap.m's own `.sapMBtn .sapMBtnIcon` is a tie
+   at two, which the launchpad's later stylesheet would win (§12(1)). The glyph
+   is drawn by ::before, where a theme may colour it again. */
+.shBar .shIconButton.sapMBtn,
+.shBar .shIconButton .sapMBtnInner,
+.shBar .shIconButton .sapMBtnIcon,
+.shBar .shIconButton .sapMBtnIcon::before {
+	background: transparent;
+	border: none;
+	box-shadow: none;
+	color: var(--mt-text-inverse);
+}
+
+.shBar .shIconButton .sapMBtnIcon {
+	font-size: var(--mt-font-size-lg);
+}
+
+.shBar .shIconButton:hover .sapMBtnInner,
+.shBar .shIconButton .sapMBtnInner:hover {
+	background: rgba(255, 255, 255, 0.12);
+}
+
+/* The count sits on the bell rather than beside it, so the pair reads as one
+   object and the row does not reflow when the number appears or changes width
+   (translate keeps it centred on the corner at any width). */
+.shNotifications {
+	position: relative;
+}
+
+.shBar .shBadge {
+	position: absolute;
+	top: -2px;
+	inset-inline-start: -2px;
+	min-width: 18px;
+	height: 18px;
+	box-sizing: border-box;
+	padding: 0 5px;
+	border-radius: var(--mt-radius-pill);
+	background-color: var(--mt-color-white);
+	color: var(--mt-color-navy-deep);
+	font: var(--mt-font-weight-bold) var(--mt-font-size-xs) / 18px var(--mt-font-sans);
+	text-align: center;
+	pointer-events: none;
+}
+
+.shBar .shAvatar {
+	flex: 0 0 auto;
+}
+
+/* ----------------------------------------------------------------------------
+   13c. Narrow screens
+   ------------------------------------------------------------------------
+   The gutter only. Everything on the strip is one short phrase and one button,
+   which still fits at 320px, so nothing has to be dropped - and the system name
+   is the only place the app says what it is.
+   ------------------------------------------------------------------------- */
+@media screen and (max-width: 599px) {
+
+	.shBar {
+		padding: 0 var(--mt-space-5);
+	}
+}
+
+/* ----------------------------------------------------------------------------
+   13d. Print
+   ------------------------------------------------------------------------
+   §10 takes the app's chrome off the page; the strip is chrome.
+   ------------------------------------------------------------------------- */
+@media print {
+
+	.shBar {
+		display: none;
+	}
+}

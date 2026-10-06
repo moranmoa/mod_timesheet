@@ -186,7 +186,7 @@
 
 	/* דף הבית (frame 87:4991) - the card grid */
 	--mt-card-min-width: 342px;             /* every card's narrowest column */
-	--mt-card-width-wide: 463px;            /* סטטוס הדו"ח / הודעות אישיות */
+	--mt-card-width-wide: 463px;            /* סטטוס הדו"ח / הודעות */
 	--mt-card-gap: 34px;                    /* space between cards in a row */
 	--mt-card-height: 283px;                /* "נתוני הנוכחות שלי" row */
 	--mt-card-min-height: 224px;            /* subordinate card row */
