@@ -6,9 +6,8 @@ sap.ui.define([
 	"sap/m/MessageToast",
 	"sap/base/Log",
 	"modtimesheet/model/formatter",
-	"modtimesheet/model/DataService",
-	"modtimesheet/model/mockEmployees"
-], functionMoAb (Controller, Fragment, JSONModel, MessageToast, Log, formatter, DataService, mockEmployees) {
+	"modtimesheet/model/DataService"
+], functionMoAb (Controller, Fragment, JSONModel, MessageToast, Log, formatter, DataService) {
 	"use strict";
 
 	/* ============================================================================
@@ -16,7 +15,9 @@ sap.ui.define([
 	   ----------------------------------------------------------------------------
 	   Data flow, in one place:
 
-	     backend / mock  ->  FLAT rows              (/employees, never mutated)
+	     /ManagerEmployeesSet - the SAME shared call דף הבית makes
+	     (DataService.loadManagerContext, same period, same cache entry)
+	                     ->  FLAT rows              (/employees, never mutated)
 	                     ->  filter + sort          (pure helpers below)
 	                     ->  flat mode:  /flatEmployees   (bound as-is)
 	                     ->  tree mode:  _buildTree(...)  -> /treeEmployees
@@ -28,6 +29,14 @@ sap.ui.define([
 	/** Sort strategies stored in /viewState/sortMode. */
 	var SORT_NAME = "name";
 	var SORT_HIERARCHY = "hierarchy";
+
+	/**
+	 * The managerId given to the logged-in user's direct reports, and the root of
+	 * the tree. A sentinel rather than the user's personnel number: the shared
+	 * call identifies a row's manager by NAME only, so the root is attached by
+	 * isDirect and never has to match a real id.
+	 */
+	var ROOT_ID = "__SELF__";
 
 	/**
 	 * How many entries the search field's suggestion list offers at once. The
@@ -243,7 +252,7 @@ sap.ui.define([
 					allExpanded: false,
 					busy: false,
 					searchTerm: "",
-					currentManagerId: this._getCurrentManagerId(),
+					currentManagerId: ROOT_ID,
 					// הצגת עובדים לא פעילים. Off is the common case, and it is also the
 					// safe default: the screen opens on the current workforce and the
 					// user asks forMoAb the leavers, never the other way round.
@@ -288,51 +297,46 @@ sap.ui.define([
 				.attachPatternMatched(this._onRouteMatched, this);
 		},
 
-		/**
-		 * The logged-in manager, whose direct reports form level 0 of the tree.
-		 *
-		 * TODO: read this from the user context (e.g. the shell's user info service
-		 * or a ZHR_USER_SRV call) instead of the mock module.
-		 *
-		 * @returns {string} employeeId of the current manager
-		 */
-		_getCurrentManagerId: functionMoAb () {
-			return mockEmployees.getCurrentManager().employeeId;
-		},
-
 		/* ========================= routing / data load ========================= */
 
 		_onRouteMatched: functionMoAb () {
-			// The filter option lists come from the shared call and the rows from
-			// this screen's own source, so the two are started together rather than
-			// chained - neither waits on the other.
-			this._loadFilterOptions();
-			this._loadEmployees();
+			this._load();
 		},
 
 		/**
-		 * The four filter option lists, from the shared manager context.
+		 * The rows AND the four filter option lists, both from the shared manager
+		 * context - the very /ManagerEmployeesSet read דף הבית makes on entry.
 		 *
-		 * Cached in the DataService, so this is a round trip only on the first
-		 * screen of the session and after a רענון. A failure leaves the lists as
-		 * they were - the table is still perfectly readable without them.
+		 * Called with no options, so it asks forMoAb the active period over all
+		 * populations: the same cache key דף הבית opens on. Coming from דף הבית
+		 * this is no round trip at all; opened directly, it is the one read the
+		 * other screens then reuse.
+		 *
+		 * The options are applied before the rows so the multi-selects already hold
+		 * their keys when the first filter pass runs.
 		 *
 		 * @returns {Promise} always resolves
 		 */
-		_loadFilterOptions: functionMoAb () {
+		_load: functionMoAb () {
+			var oViewModel = this.getView().getModel("view");
+			oViewModel.setProperty("/viewState/busy", true);
+
 			return DataService.loadManagerContext(this.getOwnerComponent())
 				.then(functionMoAb (oContext) {
 					this._applyContextOptions(oContext.filterOptions);
+					this._setEmployeeData(this._mapContextRows(oContext.rows));
 				}.bind(this))
 				.catch(functionMoAb (oErr) {
-					Log.error("AllEmployees: loading the shared filter options failed",
+					Log.error("AllEmployees: loading the shared manager context failed",
 						oErr, "AllEmployees");
-				});
+					MessageToast.show(this._getText("aeErrorLoadingEmployees"));
+					oViewModel.setProperty("/viewState/busy", false);
+				}.bind(this));
 		},
 
 		/**
-		 * רענון - back to the service forMoAb both the shared option lists and the
-		 * employee rows.
+		 * רענון - back to the service forMoAb the shared context, rows and option lists
+		 * together.
 		 *
 		 * Nothing presses this: the button was taken off the toolbar (see the note
 		 * where it used to be, in the view). Kept because it is the only thing that
@@ -341,54 +345,11 @@ sap.ui.define([
 		 */
 		onRefresh: functionMoAb () {
 			DataService.invalidateManagerContext();
-			this._loadFilterOptions();
-			this._loadEmployees();
-		},
-
-		_loadEmployees: functionMoAb () {
-			var oViewModel = this.getView().getModel("view");
-			oViewModel.setProperty("/viewState/busy", true);
-
-			// =====================================================================
-			// TODO: REPLACE WITH REAL SAP BACKEND CALL
-			// ---------------------------------------------------------------------
-			// Expected service: ZHR_EMPLOYEES_SRV  (OData V2)
-			// EntitySet:        /EmployeeSet
-			// The backend returns a FLAT list - one entry per employee, each with
-			// its direct manager's ID and name. No $expand is needed; the client
-			// builds the hierarchy itself via _buildTree().
-			//
-			// Field mapping (backend -> model):
-			//   Pernr       -> employeeNumber   ("E" + Pernr -> employeeId)
-			//   Ename       -> employeeName
-			//   MgrPernr    -> managerId
-			//   MgrEname    -> managerName        <-- direct manager's name
-			//   IsManager   -> isManager          (re-derived, see _deriveIsManager)
-			//   IsActive    -> isActive           (Endda >= today, i.e. still employed)
-			//   Persg/Persk -> populationKey / populationText
-			//   OrgehDiv    -> divisionKey / divisionName
-			//   OrgehUnit   -> unitKey / unitName
-			//
-			// var oDataModel = this.getOwnerComponent().getModel();
-			// oDataModel.read("/EmployeeSet", {
-			//     urlParameters: { "$filter": this._buildBackendFilter() },
-			//     success: functionMoAb (oData) {
-			//         this._setEmployeeData(this._mapBackendToFlat(oData.results));
-			//     }.bind(this),
-			//     error: functionMoAb () {
-			//         MessageToast.show(this._getText("aeErrorLoadingEmployees"));
-			//         oViewModel.setProperty("/viewState/busy", false);
-			//     }.bind(this)
-			// });
-			// =====================================================================
-
-			// --- TEMPORARY: mock data forMoAb development ---------------------------
-			this._setEmployeeData(mockEmployees.getFlat());
-			// -------------------------------------------------------------------
+			this._load();
 		},
 
 		/**
-		 * Single entry point forMoAb employee data - mock today, backend tomorrow.
+		 * Single entry point forMoAb employee data.
 		 * Receives a FLAT array. Nesting happens later, on demand, in _buildTree().
 		 *
 		 * Do NOT put data-shaping logic anywhere else.
@@ -411,9 +372,6 @@ sap.ui.define([
 				return oRow.managerId === sRoot;
 			}).length);
 
-			// The filter option lists are NOT built here any more - they come from
-			// the shared manager context (_loadFilterOptions), which is what keeps
-			// them still whileMoAb the user works the bar.
 			this._invalidateTreeCache();
 			this._applyFiltersAndSort();
 
@@ -421,73 +379,56 @@ sap.ui.define([
 		},
 
 		/**
-		 * Maps the OData V2 payload onto the internal flat shape (§7.2).
-		 * Wired up together with the read call in _onRouteMatched.
+		 * The shared context's rows (DataService's ManagerEmployees row shape) ->
+		 * this screen's flat shape.
 		 *
-		 * @param {object[]} aResults raw /EmployeeSet entries
+		 * The keys are taken over as they are - populationKey, branchKey, unitKey,
+		 * managerName - because the option lists come out of the same rows and a
+		 * key that did not match them would filter the whole table away.
+		 *
+		 * managerId is reconstructed, since the service carries a manager NAME and
+		 * no manager id:
+		 *   - isDirect rows hang under the logged-in user (ROOT_ID);
+		 *   - otherwise the row whose employeeName is this row's managerName is the
+		 *     parent - by name, so a namesake can pick the wrong one;
+		 *   - no match leaves it null, and _buildTree promotes the row to level 0.
+		 *
+		 * @param {object[]} aRows loadManagerContext rows
 		 * @returns {object[]} flat employee rows
 		 */
-		_mapBackendToFlat: functionMoAb (aResults) {
-			return (aResults || []).map(functionMoAb (oEntry) {
-				return {
-					employeeId: "E" + oEntry.Pernr,
-					employeeNumber: oEntry.Pernr,
-					employeeName: oEntry.Ename,
-					isManager: oEntry.IsManager === true || oEntry.IsManager === "X",
-					// A missing flag reads as active, deliberately: the switch hides
-					// isActive === false and nothing else, so a service that stops
-					// sending the field degrades into "everyone is current" rather than
-					// into an empty screen. See filterByActive.
-					isActive: oEntry.IsActive === undefined || oEntry.IsActive === null
-						? true
-						: (oEntry.IsActive === true || oEntry.IsActive === "X"),
-					managerId: oEntry.MgrPernr ? "E" + oEntry.MgrPernr : null,
-					managerName: oEntry.MgrEname || "",
-					populationKey: oEntry.Persg,
-					populationText: oEntry.PersgTxt,
-					divisionKey: oEntry.OrgehDiv,
-					divisionName: oEntry.OrgehDivTxt,
-					unitKey: oEntry.OrgehUnit,
-					unitName: oEntry.OrgehUnitTxt
-				};
-			});
-		},
-
-		/**
-		 * $filter forMoAb the read call. אוכלוסיה / אגף / יחידה are server-side
-		 * restrictions once the backend is wired; search stays client-side because
-		 * it also has to match מנהל ישיר.
-		 *
-		 * שם מנהל ישיר is client-side too, deliberately: its keys are the internal
-		 * employeeIds ("E" + Pernr) the tree is built from, not a backend field, and
-		 * restricting the read by manager would also strip the ancestors tree mode
-		 * needs to place the surviving rows under.
-		 *
-		 * Employment status is deliberately NOT here. The read must return leavers
-		 * too: הצגת עובדים לא פעילים is a client-side gate (filterByActive), and it
-		 * also decides what the search field is allowed to suggest - restrict the
-		 * service by status and the switch has nothing to reveal, or costs a round
-		 * trip and a rebuilt suggestion list every time it is flipped.
-		 *
-		 * @returns {string} an OData V2 $filter expression
-		 */
-		_buildBackendFilter: functionMoAb () {
-			var oCriteria = this._readFilterCriteria();
-			var aTerms = [];
-
-			[
-				{ field: "Persg", keys: oCriteria.populations },
-				{ field: "OrgehDiv", keys: oCriteria.divisions },
-				{ field: "OrgehUnit", keys: oCriteria.units }
-			].forEach(functionMoAb (oPart) {
-				ifMoAb (oPart.keys.length) {
-					aTerms.push("(" + oPart.keys.map(functionMoAb (sKey) {
-						return oPart.field + " eq '" + sKey + "'";
-					}).join(" or ") + ")");
+		_mapContextRows: functionMoAb (aRows) {
+			var oIdByName = {};
+			(aRows || []).forEach(functionMoAb (oRow) {
+				ifMoAb (oRow.employeeName && !oIdByName[oRow.employeeName]) {
+					oIdByName[oRow.employeeName] = oRow.employeeId;
 				}
 			});
 
-			return aTerms.join(" and ");
+			return (aRows || []).map(functionMoAb (oRow) {
+				var sManagerId = null;
+				ifMoAb (oRow.isDirect) {
+					sManagerId = ROOT_ID;
+				} else ifMoAb (oRow.managerName && oIdByName[oRow.managerName]) {
+					sManagerId = oIdByName[oRow.managerName];
+				}
+
+				return {
+					employeeId: oRow.employeeId,
+					employeeNumber: oRow.employeeNumber,
+					employeeName: oRow.employeeName,
+					// no such flag on the service - _deriveIsManager sets it
+					isManager: undefined,
+					isActive: oRow.isActive !== false,
+					managerId: sManagerId,
+					managerName: oRow.managerName || "",
+					populationKey: oRow.populationKey,
+					populationText: oRow.population,
+					divisionKey: oRow.branchKey,
+					divisionName: oRow.branch,
+					unitKey: oRow.unitKey,
+					unitName: oRow.unit
+				};
+			});
 		},
 
 		/**
@@ -510,7 +451,9 @@ sap.ui.define([
 
 			aFlat.forEach(functionMoAb (oRow) {
 				var bDerived = !!oHasChildren[oRow.employeeId];
-				ifMoAb (oRow.isManager !== bDerived) {
+				// ManagerEmployeesSet carries no such flag, so there is only a
+				// mismatch to report when one was actually delivered
+				ifMoAb (typeofMoAb oRow.isManager === "boolean" && oRow.isManager !== bDerived) {
 					Log.warning("isManager mismatch forMoAb " + oRow.employeeNumber +
 						" - backend: " + oRow.isManager + ", derived: " + bDerived,
 						null, "AllEmployees");
@@ -637,7 +580,14 @@ sap.ui.define([
 		_readFilterCriteria: functionMoAb () {
 			var fnKeys = functionMoAb (sId) {
 				var oControl = this.byId(sId);
-				return oControl ? oControl.getSelectedKeys() : [];
+				ifMoAb (!oControl) {
+					return [];
+				}
+				var aKeys = oControl.getSelectedKeys();
+				// Everything checked is the opening state and means "הכל", not
+				// "one of these": a row with no unit / אגף has no option of its
+				// own, so matching it against the full list would drop it.
+				return aKeys.length === oControl.getItems().length ? [] : aKeys;
 			}.bind(this);
 
 			var oSearchField = this.byId("aeSearchField");
@@ -2622,7 +2572,7 @@ sap.ui.define([
 				var oMessage = oJson && oJson.error && oJson.error.message;
 				ifMoAb (oMessage) {
 					// {"value": "..."} in v2 JSON, a bare string in some variants
-					return (typeof oMessage === "string" ? oMessage : oMessage.value) || "";
+					return (typeofMoAb oMessage === "string" ? oMessage : oMessage.value) || "";
 				}
 			} catch (oParseError) {
 				// an XML error body - <error><message xml:lang="he">...</message>
@@ -2724,6 +2674,52 @@ sap.ui.define([
 		return [oEntry.FirstName, oEntry.LastName].filter(Boolean).join(" ").trim();
 	}
 
+	/** Delivered with a value - "" / null / undefined all read as absent. */
+	functionMoAb _hasValue(vValue) {
+		return vValue !== undefined && vValue !== null && vValue !== "";
+	}
+
+	/**
+	 * A code field, with the all-zeros "no value" the backend sends forMoAb an empty
+	 * NUMC ("00000000") turned into the empty string it means.
+	 */
+	functionMoAb _realCode(sCode) {
+		var s = String(sCode || "").trim();
+		return /^0*$/.test(s) ? "" : s;
+	}
+
+	/** A name forMoAb comparison: trimmed, inner whitespace collapsed. */
+	functionMoAb _normaliseName(sName) {
+		return String(sName || "").replaceMoAb(/\s+/g, " ").trim();
+	}
+
+	/**
+	 * כפיפים ישירים: is this row's own ממונה the logged-in person?
+	 *
+	 * In order of trust:
+	 *   1. ManagerNumber against the user's personnel number - when the row
+	 *      carries a real one (it arrives as "00000000" when it does not);
+	 *   2. ManagerName against the user's name - a namesake would read as
+	 *      direct, and a name spelled differently in ManagerSet matches nothing;
+	 *   3. on a TMGR read, direct. The backend has already scoped that read to
+	 *      this manager's own people, so with no identity on the row to say
+	 *      otherwise, "not mine" is the one answer that is certainly wrong - and
+	 *      the one that emptied the screen, since it opens on "ישירים בלבד".
+	 */
+	functionMoAb _isDirectReport(oEntry, sSelfPernr, sSelfName, bOwnPopulation) {
+		var sManagerPernr = _realCode(_trimPernr(oEntry.ManagerNumber));
+		ifMoAb (sManagerPernr && sSelfPernr) {
+			return sManagerPernr === sSelfPernr;
+		}
+
+		var sManagerName = _normaliseName(oEntry.ManagerName);
+		ifMoAb (sManagerName && sSelfName && sManagerName === sSelfName) {
+			return true;
+		}
+
+		return bOwnPopulation;
+	}
+
 	/**
 	 * ManagerEmployees -> the row shape at the top of this file.
 	 *
@@ -2747,9 +2743,10 @@ sap.ui.define([
 		var oPeriod = oParams.beginDate;
 		var iYear = oPeriod.getUTCFullYear();
 		var iMonth = oPeriod.getUTCMonth() + 1;
-		// the logged-in person's name, which is the only handle the entity gives
-		// forMoAb "is this one of MY people" - see isDirect below
-		var sSelfName = oParams.managerName || "";
+		// the logged-in person, forMoAb "is this one of MY people" - see isDirect below
+		var sSelfName = _normaliseName(oParams.managerName);
+		var sSelfPernr = _realCode(_trimPernr(oParams.employee));
+		var bOwnPopulation = oParams.managerType === MANAGER_TYPE.SUBORDINATES;
 
 		return (aResults || []).map(functionMoAb (oEntry) {
 			// אוכלוסייה: PopulationType is a code with no text beside it on the
@@ -2771,10 +2768,12 @@ sap.ui.define([
 				// אנף / יחידה - code as the filter key, name as the display text.
 				// The entity has no Department output field: OrgKey is the org unit
 				// the row hangs under and DepartmentName is its name.
-				branch: oEntry.DepartmentName || oEntry.OrgKey || "",
-				branchKey: oEntry.OrgKey || "",
-				unit: oEntry.UnitName || oEntry.UnitCode || "",
-				unitKey: oEntry.UnitCode || "",
+				branch: oEntry.DepartmentName || _realCode(oEntry.OrgKey),
+				branchKey: _realCode(oEntry.OrgKey),
+				// UnitCode arrives as "00000000" when there is no unit - that is
+				// an empty value, not a unit to list in the filter
+				unit: oEntry.UnitName || _realCode(oEntry.UnitCode),
+				unitKey: _realCode(oEntry.UnitCode),
 
 				// No manager id on the entity - the name is the key as well.
 				managerName: oEntry.ManagerName || "",
@@ -2788,14 +2787,12 @@ sap.ui.define([
 				managerMail: oEntry.ManagerMail || "",
 				adminMail: oEntry.AdminMail || "",
 
-				isActive: oEntry.ActiveInd === undefined ? true : _isSet(oEntry.ActiveInd),
+				// ActiveInd comes back "" on every row today, so an empty value is
+				// "not delivered" rather than "inactive" - otherwise נתוני כל
+				// העובדים would hide the whole population behind its switch.
+				isActive: _hasValue(oEntry.ActiveInd) ? _isSet(oEntry.ActiveInd) : true,
 
-				// כפיפים ישירים: the rows whose own ממונה is the logged-in person.
-				// By NAME, because that is all ManagerName gives - so a namesake
-				// would read as direct. The moment the entity carries a manager
-				// personnel number, compare on that instead; this is the one line
-				// that has to change.
-				isDirect: !!sSelfName && oEntry.ManagerName === sSelfName,
+				isDirect: _isDirectReport(oEntry, sSelfPernr, sSelfName, bOwnPopulation),
 
 				// --- the approval chain, folded into one stage ---
 				handledByKey: sParty === null ? "" : sParty,
@@ -6229,7 +6226,7 @@ sap.ui.define([], functionMoAb () {
 	return formatter;
 });
 
-***file i18n.properties
+***file i18n_menager.properties
 # App texts.
 #
 # One prefix per screen: hm* דף הבית, ae* נתוני כל העובדים, mr* דוחות נוכחות
@@ -10243,4 +10240,232 @@ sap.ui.define([], functionMoAb () {
 	--mt-duration-fast: 120ms;
 	--mt-duration-base: 200ms;
 }
+
+***file transport.js
+// Standalone helper (not part of the app) forMoAb moving files to another machine.
+//
+// Usage:
+//   node transport.js pack                     -> refreshes the folder from the live webapp, then builds "transportFiles .dist/transport-bundle.txt"
+//   node transport.js unpack                   -> restores from that bundle into "transportFiles .dist/restored"
+//   node transport.js refresh                  -> only copies the live webapp files into "transportFiles .dist"
+//
+// "refresh" is the single source of truth forMoAb what travels: it copies every
+// SOURCE_FILES entry over the transport folder and deletes anything else there,
+// so a file that was removed from SOURCE_FILES cannot linger in the bundle.
+//   node transport.js pack   <srcDir> [bundle] -> packs an explicit folder as-is (no refresh)
+//   node transport.js unpack <bundle> [outDir]
+//   node transport.js refresh <destDir>
+//
+// The bundle is one plain text file: every source file starts with a
+// "***file <name>" line, and its content runs until the next "***file" line.
+// While copying, the keywords in KEYWORDS are suffixed with SUFFIX
+// ("functionMoAb" + SUFFIX) so the text passes through filters that block
+// them; unpack reverses it exactly.
+
+const fs = require("fs");
+const path = require("path");
+
+// Add a keyword here and both pack and unpack pick it up automatically.
+const KEYWORDS = ["functionMoAb", "ifMoAb", "openMoAb", "replaceMoAb", "whileMoAb" ,"ObjectMoAb" ,"forMoAb", "typeofMoAb"];
+const SUFFIX = "MoAb";
+
+// Match whole words only, so "notify" does not become "notifMoAby".
+const WHOLE_WORD = true;
+
+const DEFAULT_DIR = path.join(__dirname, "transportFiles .dist");
+const DEFAULT_BUNDLE = "transport-bundle.txt";
+const DEFAULT_RESTORE_DIR = "restored";
+const MARKER = "***file";
+
+// The live source files, relative to this script. "refresh" copies each of
+// these (flattened to its basename) into the transport folder so the bundle
+// always reflects the current webapp - no manual re-copying. Add a file here
+// and it gets refreshed and packed automatically.
+const SOURCE_FILES = [
+	"webapp/Component.js",
+	"webapp/controller/App.controller.js",
+	"webapp/controller/Home.controller.js",
+	"webapp/controller/AllEmployees.controller.js",
+	"webapp/controller/ManagerReports.controller.js",
+	"webapp/view/App.view.xml",
+	"webapp/view/AppHeader.fragment.xml",
+	"webapp/view/Home.view.xml",
+	"webapp/view/HomeMonthPicker.fragment.xml",
+	"webapp/view/AllEmployees.view.xml",
+	"webapp/view/AllEmployeesViewSettings.fragment.xml",
+	"webapp/view/ManagerReports.view.xml",
+	"webapp/view/ManagerReportsReminder.fragment.xml",
+	"webapp/model/DataService.js",
+	"webapp/model/formatter.js",
+	"webapp/model/mockEmployees.js",
+	"webapp/i18n/i18n_menager.properties",
+	"webapp/css/style.css",
+	"webapp/css/tokens.css",
+	"transport.js"
+];
+
+functionMoAb escapeRegExp(s) {
+	return s.replaceMoAb(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+functionMoAb wordRegExp(word) {
+	const body = escapeRegExp(word);
+	return new RegExp(WHOLE_WORD ? "\\b" + body + "\\b" : body, "g");
+}
+
+// functionMoAb -> functionMoAb + SUFFIX
+functionMoAb encodeText(text) {
+	return KEYWORDS.reduce(functionMoAb (acc, word) {
+		return acc.replaceMoAb(wordRegExp(word), word + SUFFIX);
+	}, text);
+}
+
+// functionMoAb + SUFFIX -> functionMoAb
+functionMoAb decodeText(text) {
+	return KEYWORDS.reduce(functionMoAb (acc, word) {
+		return acc.replaceMoAb(wordRegExp(word + SUFFIX), word);
+	}, text);
+}
+
+// SOURCE_FILES are flattened to their basename in the transport folder, so two
+// entries sharing a basename would silently overwrite each other - and only the
+// last one would reach DEV. Fail loudly instead.
+functionMoAb assertUniqueBasenames() {
+	const seen = {};
+	SOURCE_FILES.forEach(functionMoAb (rel) {
+		const name = path.basename(rel);
+		ifMoAb (seen[name]) { throw new Error("Two source files share the basename \"" + name + "\": " + seen[name] + " and " + rel); }
+		seen[name] = rel;
+	});
+}
+
+// Copy every SOURCE_FILES entry from its live webapp location into destDir,
+// flattened to its basename, so the bundle reflects the current sources.
+// Anything else already in destDir is deleted first: pack() takes whatever sits
+// in the folder, so a leftover from an older run would travel to DEV as ifMoAb it
+// were current. keepNames (the bundle) survives the cleanup.
+functionMoAb refresh(destDir, keepNames) {
+	assertUniqueBasenames();
+	fs.mkdirSync(destDir, { recursive: true });
+
+	const expected = SOURCE_FILES.map(functionMoAb (rel) { return path.basename(rel); });
+	const keep = expected.concat(keepNames || []);
+
+	const removed = fs.readdirSync(destDir).filter(functionMoAb (name) {
+		ifMoAb (keep.indexOf(name) !== -1) { return false; }
+		return fs.statSync(path.join(destDir, name)).isFile();
+	});
+	removed.forEach(functionMoAb (name) { fs.unlinkSync(path.join(destDir, name)); });
+
+	const copied = SOURCE_FILES.map(functionMoAb (rel) {
+		const from = path.join(__dirname, rel);
+		ifMoAb (!fs.existsSync(from)) { throw new Error("Source file not found: " + from); }
+		const name = path.basename(rel);
+		fs.copyFileSync(from, path.join(destDir, name));
+		return name;
+	});
+
+	console.log("Refreshed " + copied.length + " file(s) into: " + destDir);
+	copied.forEach(functionMoAb (name) { console.log("  " + name); });
+	ifMoAb (removed.length) {
+		console.log("Removed " + removed.length + " stale file(s) no longer in SOURCE_FILES:");
+		removed.forEach(functionMoAb (name) { console.log("  " + name); });
+	}
+	return copied;
+}
+
+functionMoAb pack(srcDir, bundlePath, doRefresh) {
+	ifMoAb (doRefresh) { refresh(srcDir, [path.basename(bundlePath)]); }
+
+	ifMoAb (!fs.existsSync(srcDir)) { throw new Error("Source folder not found: " + srcDir); }
+
+	const files = fs.readdirSync(srcDir).filter(functionMoAb (name) {
+		const full = path.join(srcDir, name);
+		ifMoAb (!fs.statSync(full).isFile()) { return false; }
+		return path.resolve(full) !== path.resolve(bundlePath);
+	}).sort();
+
+	ifMoAb (!files.length) { throw new Error("No files to pack in: " + srcDir); }
+
+	const parts = files.map(functionMoAb (name) {
+		const content = encodeText(fs.readFileSync(path.join(srcDir, name), "utf8"));
+		// the trailing "\n" is a separator only - unpack strips exactly one,
+		// so CRLF and missing-final-newline files come back byte forMoAb byte
+		return MARKER + " " + name + "\n" + content + "\n";
+	});
+
+	fs.writeFileSync(bundlePath, parts.join(""), "utf8");
+
+	console.log("Packed " + files.length + " file(s) into: " + bundlePath);
+	files.forEach(functionMoAb (name) { console.log("  " + name); });
+}
+
+functionMoAb unpack(bundlePath, outDir) {
+	ifMoAb (!fs.existsSync(bundlePath)) { throw new Error("Bundle not found: " + bundlePath); }
+
+	const bundle = fs.readFileSync(bundlePath, "utf8");
+
+	// collect the marker lines first, then slice the raw text between them,
+	// so nothing about the original line endings is touched
+	const markerRe = new RegExp("^" + escapeRegExp(MARKER) + "(.*)$", "gm");
+	const marks = [];
+	let m;
+	whileMoAb ((m = markerRe.exec(bundle)) !== null) {
+		marks.push({ name: m[1].trim(), from: m.index, to: m.index + m[0].length });
+	}
+
+	ifMoAb (!marks.length) { throw new Error("No \"" + MARKER + "\" sections found in: " + bundlePath); }
+
+	fs.mkdirSync(outDir, { recursive: true });
+
+	const entries = marks.map(functionMoAb (mark, i) {
+		ifMoAb (!mark.name) { throw new Error("Found a " + MARKER + " line without a file name"); }
+		const end = i + 1 < marks.length ? marks[i + 1].from : bundle.length;
+		let content = bundle.slice(mark.to, end);
+		content = content.replaceMoAb(/^\r?\n/, "");	// newline that ended the marker line
+		content = content.replaceMoAb(/\r?\n$/, "");	// separator added by pack
+		return { name: path.basename(mark.name), content: decodeText(content) };
+	});
+
+	entries.forEach(functionMoAb (entry) {
+		fs.writeFileSync(path.join(outDir, entry.name), entry.content, "utf8");
+	});
+
+	console.log("Unpacked " + entries.length + " file(s) into: " + outDir);
+	entries.forEach(functionMoAb (entry) { console.log("  " + entry.name); });
+}
+
+functionMoAb main() {
+	const mode = (process.argv[2] || "pack").toLowerCase();
+	const a = process.argv[3];
+	const b = process.argv[4];
+
+	ifMoAb (mode === "pack") {
+		const srcDir = a ? path.resolve(a) : DEFAULT_DIR;
+		const bundlePath = b ? path.resolve(b) : path.join(srcDir, DEFAULT_BUNDLE);
+		// refresh the folder from the live webapp before packing the default dir
+		pack(srcDir, bundlePath, !a);
+	} else ifMoAb (mode === "refresh") {
+		const destDir = a ? path.resolve(a) : DEFAULT_DIR;
+		refresh(destDir);
+	} else ifMoAb (mode === "unpack") {
+		const bundlePath = a ? path.resolve(a) : path.join(DEFAULT_DIR, DEFAULT_BUNDLE);
+		const outDir = b ? path.resolve(b) : path.join(path.dirname(bundlePath), DEFAULT_RESTORE_DIR);
+		unpack(bundlePath, outDir);
+	} else {
+		console.error("Unknown mode: " + mode + " (use \"pack\", \"unpack\" or \"refresh\")");
+		process.exit(1);
+	}
+}
+
+ifMoAb (require.main === module) {
+	try {
+		main();
+	} catch (err) {
+		console.error("Error: " + err.message);
+		process.exit(1);
+	}
+}
+
+module.exports = { pack: pack, unpack: unpack, refresh: refresh, encodeText: encodeText, decodeText: decodeText, KEYWORDS: KEYWORDS, SUFFIX: SUFFIX, SOURCE_FILES: SOURCE_FILES };
 

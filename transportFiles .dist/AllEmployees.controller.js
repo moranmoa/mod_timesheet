@@ -5,9 +5,8 @@ sap.ui.define([
 	"sap/m/MessageToast",
 	"sap/base/Log",
 	"modtimesheet/model/formatter",
-	"modtimesheet/model/DataService",
-	"modtimesheet/model/mockEmployees"
-], function (Controller, Fragment, JSONModel, MessageToast, Log, formatter, DataService, mockEmployees) {
+	"modtimesheet/model/DataService"
+], function (Controller, Fragment, JSONModel, MessageToast, Log, formatter, DataService) {
 	"use strict";
 
 	/* ============================================================================
@@ -15,7 +14,9 @@ sap.ui.define([
 	   ----------------------------------------------------------------------------
 	   Data flow, in one place:
 
-	     backend / mock  ->  FLAT rows              (/employees, never mutated)
+	     /ManagerEmployeesSet - the SAME shared call דף הבית makes
+	     (DataService.loadManagerContext, same period, same cache entry)
+	                     ->  FLAT rows              (/employees, never mutated)
 	                     ->  filter + sort          (pure helpers below)
 	                     ->  flat mode:  /flatEmployees   (bound as-is)
 	                     ->  tree mode:  _buildTree(...)  -> /treeEmployees
@@ -27,6 +28,14 @@ sap.ui.define([
 	/** Sort strategies stored in /viewState/sortMode. */
 	var SORT_NAME = "name";
 	var SORT_HIERARCHY = "hierarchy";
+
+	/**
+	 * The managerId given to the logged-in user's direct reports, and the root of
+	 * the tree. A sentinel rather than the user's personnel number: the shared
+	 * call identifies a row's manager by NAME only, so the root is attached by
+	 * isDirect and never has to match a real id.
+	 */
+	var ROOT_ID = "__SELF__";
 
 	/**
 	 * How many entries the search field's suggestion list offers at once. The
@@ -242,7 +251,7 @@ sap.ui.define([
 					allExpanded: false,
 					busy: false,
 					searchTerm: "",
-					currentManagerId: this._getCurrentManagerId(),
+					currentManagerId: ROOT_ID,
 					// הצגת עובדים לא פעילים. Off is the common case, and it is also the
 					// safe default: the screen opens on the current workforce and the
 					// user asks for the leavers, never the other way round.
@@ -287,51 +296,46 @@ sap.ui.define([
 				.attachPatternMatched(this._onRouteMatched, this);
 		},
 
-		/**
-		 * The logged-in manager, whose direct reports form level 0 of the tree.
-		 *
-		 * TODO: read this from the user context (e.g. the shell's user info service
-		 * or a ZHR_USER_SRV call) instead of the mock module.
-		 *
-		 * @returns {string} employeeId of the current manager
-		 */
-		_getCurrentManagerId: function () {
-			return mockEmployees.getCurrentManager().employeeId;
-		},
-
 		/* ========================= routing / data load ========================= */
 
 		_onRouteMatched: function () {
-			// The filter option lists come from the shared call and the rows from
-			// this screen's own source, so the two are started together rather than
-			// chained - neither waits on the other.
-			this._loadFilterOptions();
-			this._loadEmployees();
+			this._load();
 		},
 
 		/**
-		 * The four filter option lists, from the shared manager context.
+		 * The rows AND the four filter option lists, both from the shared manager
+		 * context - the very /ManagerEmployeesSet read דף הבית makes on entry.
 		 *
-		 * Cached in the DataService, so this is a round trip only on the first
-		 * screen of the session and after a רענון. A failure leaves the lists as
-		 * they were - the table is still perfectly readable without them.
+		 * Called with no options, so it asks for the active period over all
+		 * populations: the same cache key דף הבית opens on. Coming from דף הבית
+		 * this is no round trip at all; opened directly, it is the one read the
+		 * other screens then reuse.
+		 *
+		 * The options are applied before the rows so the multi-selects already hold
+		 * their keys when the first filter pass runs.
 		 *
 		 * @returns {Promise} always resolves
 		 */
-		_loadFilterOptions: function () {
+		_load: function () {
+			var oViewModel = this.getView().getModel("view");
+			oViewModel.setProperty("/viewState/busy", true);
+
 			return DataService.loadManagerContext(this.getOwnerComponent())
 				.then(function (oContext) {
 					this._applyContextOptions(oContext.filterOptions);
+					this._setEmployeeData(this._mapContextRows(oContext.rows));
 				}.bind(this))
 				.catch(function (oErr) {
-					Log.error("AllEmployees: loading the shared filter options failed",
+					Log.error("AllEmployees: loading the shared manager context failed",
 						oErr, "AllEmployees");
-				});
+					MessageToast.show(this._getText("aeErrorLoadingEmployees"));
+					oViewModel.setProperty("/viewState/busy", false);
+				}.bind(this));
 		},
 
 		/**
-		 * רענון - back to the service for both the shared option lists and the
-		 * employee rows.
+		 * רענון - back to the service for the shared context, rows and option lists
+		 * together.
 		 *
 		 * Nothing presses this: the button was taken off the toolbar (see the note
 		 * where it used to be, in the view). Kept because it is the only thing that
@@ -340,54 +344,11 @@ sap.ui.define([
 		 */
 		onRefresh: function () {
 			DataService.invalidateManagerContext();
-			this._loadFilterOptions();
-			this._loadEmployees();
-		},
-
-		_loadEmployees: function () {
-			var oViewModel = this.getView().getModel("view");
-			oViewModel.setProperty("/viewState/busy", true);
-
-			// =====================================================================
-			// TODO: REPLACE WITH REAL SAP BACKEND CALL
-			// ---------------------------------------------------------------------
-			// Expected service: ZHR_EMPLOYEES_SRV  (OData V2)
-			// EntitySet:        /EmployeeSet
-			// The backend returns a FLAT list - one entry per employee, each with
-			// its direct manager's ID and name. No $expand is needed; the client
-			// builds the hierarchy itself via _buildTree().
-			//
-			// Field mapping (backend -> model):
-			//   Pernr       -> employeeNumber   ("E" + Pernr -> employeeId)
-			//   Ename       -> employeeName
-			//   MgrPernr    -> managerId
-			//   MgrEname    -> managerName        <-- direct manager's name
-			//   IsManager   -> isManager          (re-derived, see _deriveIsManager)
-			//   IsActive    -> isActive           (Endda >= today, i.e. still employed)
-			//   Persg/Persk -> populationKey / populationText
-			//   OrgehDiv    -> divisionKey / divisionName
-			//   OrgehUnit   -> unitKey / unitName
-			//
-			// var oDataModel = this.getOwnerComponent().getModel();
-			// oDataModel.read("/EmployeeSet", {
-			//     urlParameters: { "$filter": this._buildBackendFilter() },
-			//     success: function (oData) {
-			//         this._setEmployeeData(this._mapBackendToFlat(oData.results));
-			//     }.bind(this),
-			//     error: function () {
-			//         MessageToast.show(this._getText("aeErrorLoadingEmployees"));
-			//         oViewModel.setProperty("/viewState/busy", false);
-			//     }.bind(this)
-			// });
-			// =====================================================================
-
-			// --- TEMPORARY: mock data for development ---------------------------
-			this._setEmployeeData(mockEmployees.getFlat());
-			// -------------------------------------------------------------------
+			this._load();
 		},
 
 		/**
-		 * Single entry point for employee data - mock today, backend tomorrow.
+		 * Single entry point for employee data.
 		 * Receives a FLAT array. Nesting happens later, on demand, in _buildTree().
 		 *
 		 * Do NOT put data-shaping logic anywhere else.
@@ -410,9 +371,6 @@ sap.ui.define([
 				return oRow.managerId === sRoot;
 			}).length);
 
-			// The filter option lists are NOT built here any more - they come from
-			// the shared manager context (_loadFilterOptions), which is what keeps
-			// them still while the user works the bar.
 			this._invalidateTreeCache();
 			this._applyFiltersAndSort();
 
@@ -420,73 +378,56 @@ sap.ui.define([
 		},
 
 		/**
-		 * Maps the OData V2 payload onto the internal flat shape (§7.2).
-		 * Wired up together with the read call in _onRouteMatched.
+		 * The shared context's rows (DataService's ManagerEmployees row shape) ->
+		 * this screen's flat shape.
 		 *
-		 * @param {object[]} aResults raw /EmployeeSet entries
+		 * The keys are taken over as they are - populationKey, branchKey, unitKey,
+		 * managerName - because the option lists come out of the same rows and a
+		 * key that did not match them would filter the whole table away.
+		 *
+		 * managerId is reconstructed, since the service carries a manager NAME and
+		 * no manager id:
+		 *   - isDirect rows hang under the logged-in user (ROOT_ID);
+		 *   - otherwise the row whose employeeName is this row's managerName is the
+		 *     parent - by name, so a namesake can pick the wrong one;
+		 *   - no match leaves it null, and _buildTree promotes the row to level 0.
+		 *
+		 * @param {object[]} aRows loadManagerContext rows
 		 * @returns {object[]} flat employee rows
 		 */
-		_mapBackendToFlat: function (aResults) {
-			return (aResults || []).map(function (oEntry) {
-				return {
-					employeeId: "E" + oEntry.Pernr,
-					employeeNumber: oEntry.Pernr,
-					employeeName: oEntry.Ename,
-					isManager: oEntry.IsManager === true || oEntry.IsManager === "X",
-					// A missing flag reads as active, deliberately: the switch hides
-					// isActive === false and nothing else, so a service that stops
-					// sending the field degrades into "everyone is current" rather than
-					// into an empty screen. See filterByActive.
-					isActive: oEntry.IsActive === undefined || oEntry.IsActive === null
-						? true
-						: (oEntry.IsActive === true || oEntry.IsActive === "X"),
-					managerId: oEntry.MgrPernr ? "E" + oEntry.MgrPernr : null,
-					managerName: oEntry.MgrEname || "",
-					populationKey: oEntry.Persg,
-					populationText: oEntry.PersgTxt,
-					divisionKey: oEntry.OrgehDiv,
-					divisionName: oEntry.OrgehDivTxt,
-					unitKey: oEntry.OrgehUnit,
-					unitName: oEntry.OrgehUnitTxt
-				};
-			});
-		},
-
-		/**
-		 * $filter for the read call. אוכלוסיה / אגף / יחידה are server-side
-		 * restrictions once the backend is wired; search stays client-side because
-		 * it also has to match מנהל ישיר.
-		 *
-		 * שם מנהל ישיר is client-side too, deliberately: its keys are the internal
-		 * employeeIds ("E" + Pernr) the tree is built from, not a backend field, and
-		 * restricting the read by manager would also strip the ancestors tree mode
-		 * needs to place the surviving rows under.
-		 *
-		 * Employment status is deliberately NOT here. The read must return leavers
-		 * too: הצגת עובדים לא פעילים is a client-side gate (filterByActive), and it
-		 * also decides what the search field is allowed to suggest - restrict the
-		 * service by status and the switch has nothing to reveal, or costs a round
-		 * trip and a rebuilt suggestion list every time it is flipped.
-		 *
-		 * @returns {string} an OData V2 $filter expression
-		 */
-		_buildBackendFilter: function () {
-			var oCriteria = this._readFilterCriteria();
-			var aTerms = [];
-
-			[
-				{ field: "Persg", keys: oCriteria.populations },
-				{ field: "OrgehDiv", keys: oCriteria.divisions },
-				{ field: "OrgehUnit", keys: oCriteria.units }
-			].forEach(function (oPart) {
-				if (oPart.keys.length) {
-					aTerms.push("(" + oPart.keys.map(function (sKey) {
-						return oPart.field + " eq '" + sKey + "'";
-					}).join(" or ") + ")");
+		_mapContextRows: function (aRows) {
+			var oIdByName = {};
+			(aRows || []).forEach(function (oRow) {
+				if (oRow.employeeName && !oIdByName[oRow.employeeName]) {
+					oIdByName[oRow.employeeName] = oRow.employeeId;
 				}
 			});
 
-			return aTerms.join(" and ");
+			return (aRows || []).map(function (oRow) {
+				var sManagerId = null;
+				if (oRow.isDirect) {
+					sManagerId = ROOT_ID;
+				} else if (oRow.managerName && oIdByName[oRow.managerName]) {
+					sManagerId = oIdByName[oRow.managerName];
+				}
+
+				return {
+					employeeId: oRow.employeeId,
+					employeeNumber: oRow.employeeNumber,
+					employeeName: oRow.employeeName,
+					// no such flag on the service - _deriveIsManager sets it
+					isManager: undefined,
+					isActive: oRow.isActive !== false,
+					managerId: sManagerId,
+					managerName: oRow.managerName || "",
+					populationKey: oRow.populationKey,
+					populationText: oRow.population,
+					divisionKey: oRow.branchKey,
+					divisionName: oRow.branch,
+					unitKey: oRow.unitKey,
+					unitName: oRow.unit
+				};
+			});
 		},
 
 		/**
@@ -509,7 +450,9 @@ sap.ui.define([
 
 			aFlat.forEach(function (oRow) {
 				var bDerived = !!oHasChildren[oRow.employeeId];
-				if (oRow.isManager !== bDerived) {
+				// ManagerEmployeesSet carries no such flag, so there is only a
+				// mismatch to report when one was actually delivered
+				if (typeof oRow.isManager === "boolean" && oRow.isManager !== bDerived) {
 					Log.warning("isManager mismatch for " + oRow.employeeNumber +
 						" - backend: " + oRow.isManager + ", derived: " + bDerived,
 						null, "AllEmployees");
@@ -636,7 +579,14 @@ sap.ui.define([
 		_readFilterCriteria: function () {
 			var fnKeys = function (sId) {
 				var oControl = this.byId(sId);
-				return oControl ? oControl.getSelectedKeys() : [];
+				if (!oControl) {
+					return [];
+				}
+				var aKeys = oControl.getSelectedKeys();
+				// Everything checked is the opening state and means "הכל", not
+				// "one of these": a row with no unit / אגף has no option of its
+				// own, so matching it against the full list would drop it.
+				return aKeys.length === oControl.getItems().length ? [] : aKeys;
 			}.bind(this);
 
 			var oSearchField = this.byId("aeSearchField");

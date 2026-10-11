@@ -37,7 +37,7 @@
 
 ## 3. רשימת הקבצים המועברים — `SOURCE_FILES`
 
-`SOURCE_FILES` שבראש `transport.js` היא **מקור האמת היחיד** לשאלה אילו קבצים עוברים ל־DEV. נכון להיום היא מכילה 19 קבצים:
+`SOURCE_FILES` שבראש `transport.js` היא **מקור האמת היחיד** לשאלה אילו קבצים עוברים ל־DEV. נכון להיום היא מכילה 20 קבצים:
 
 | תחום | קבצים |
 |---|---|
@@ -46,7 +46,8 @@
 | Views | `App.view.xml`, `Home.view.xml`, `AllEmployees.view.xml`, `ManagerReports.view.xml` |
 | Fragments | `AppHeader.fragment.xml`, `HomeMonthPicker.fragment.xml`, `AllEmployeesViewSettings.fragment.xml`, **`ManagerReportsReminder.fragment.xml`** |
 | מודל | `DataService.js`, `formatter.js`, `mockEmployees.js` |
-| משאבים | `i18n.properties`, `style.css`, `tokens.css` |
+| משאבים | `i18n_menager.properties`, `style.css`, `tokens.css` |
+| הכלי עצמו | `transport.js` (כדי ששינויים בכלי, כמו מילת מפתח חדשה ב־`KEYWORDS`, יגיעו ל־DEV) |
 
 ### 3.1 הוספת קובץ חדש
 
@@ -76,7 +77,7 @@
 
 | | |
 |---|---|
-| **מילות מפתח** | `function`, `if`, `open`, `replace`, `while`, `Object`, `for` |
+| **מילות מפתח** | `function`, `if`, `open`, `replace`, `while`, `Object`, `for`, `typeof` |
 | **סיומת** | `MoAb` |
 | **התאמה** | מילה שלמה בלבד (`\b…\b`) — כדי ש־`notify` לא יהפוך ל־`notifMoAby` |
 

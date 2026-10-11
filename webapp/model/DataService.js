@@ -759,6 +759,52 @@ sap.ui.define([
 		return [oEntry.FirstName, oEntry.LastName].filter(Boolean).join(" ").trim();
 	}
 
+	/** Delivered with a value - "" / null / undefined all read as absent. */
+	function _hasValue(vValue) {
+		return vValue !== undefined && vValue !== null && vValue !== "";
+	}
+
+	/**
+	 * A code field, with the all-zeros "no value" the backend sends for an empty
+	 * NUMC ("00000000") turned into the empty string it means.
+	 */
+	function _realCode(sCode) {
+		var s = String(sCode || "").trim();
+		return /^0*$/.test(s) ? "" : s;
+	}
+
+	/** A name for comparison: trimmed, inner whitespace collapsed. */
+	function _normaliseName(sName) {
+		return String(sName || "").replace(/\s+/g, " ").trim();
+	}
+
+	/**
+	 * כפיפים ישירים: is this row's own ממונה the logged-in person?
+	 *
+	 * In order of trust:
+	 *   1. ManagerNumber against the user's personnel number - when the row
+	 *      carries a real one (it arrives as "00000000" when it does not);
+	 *   2. ManagerName against the user's name - a namesake would read as
+	 *      direct, and a name spelled differently in ManagerSet matches nothing;
+	 *   3. on a TMGR read, direct. The backend has already scoped that read to
+	 *      this manager's own people, so with no identity on the row to say
+	 *      otherwise, "not mine" is the one answer that is certainly wrong - and
+	 *      the one that emptied the screen, since it opens on "ישירים בלבד".
+	 */
+	function _isDirectReport(oEntry, sSelfPernr, sSelfName, bOwnPopulation) {
+		var sManagerPernr = _realCode(_trimPernr(oEntry.ManagerNumber));
+		if (sManagerPernr && sSelfPernr) {
+			return sManagerPernr === sSelfPernr;
+		}
+
+		var sManagerName = _normaliseName(oEntry.ManagerName);
+		if (sManagerName && sSelfName && sManagerName === sSelfName) {
+			return true;
+		}
+
+		return bOwnPopulation;
+	}
+
 	/**
 	 * ManagerEmployees -> the row shape at the top of this file.
 	 *
@@ -782,9 +828,10 @@ sap.ui.define([
 		var oPeriod = oParams.beginDate;
 		var iYear = oPeriod.getUTCFullYear();
 		var iMonth = oPeriod.getUTCMonth() + 1;
-		// the logged-in person's name, which is the only handle the entity gives
-		// for "is this one of MY people" - see isDirect below
-		var sSelfName = oParams.managerName || "";
+		// the logged-in person, for "is this one of MY people" - see isDirect below
+		var sSelfName = _normaliseName(oParams.managerName);
+		var sSelfPernr = _realCode(_trimPernr(oParams.employee));
+		var bOwnPopulation = oParams.managerType === MANAGER_TYPE.SUBORDINATES;
 
 		return (aResults || []).map(function (oEntry) {
 			// אוכלוסייה: PopulationType is a code with no text beside it on the
@@ -806,10 +853,12 @@ sap.ui.define([
 				// אנף / יחידה - code as the filter key, name as the display text.
 				// The entity has no Department output field: OrgKey is the org unit
 				// the row hangs under and DepartmentName is its name.
-				branch: oEntry.DepartmentName || oEntry.OrgKey || "",
-				branchKey: oEntry.OrgKey || "",
-				unit: oEntry.UnitName || oEntry.UnitCode || "",
-				unitKey: oEntry.UnitCode || "",
+				branch: oEntry.DepartmentName || _realCode(oEntry.OrgKey),
+				branchKey: _realCode(oEntry.OrgKey),
+				// UnitCode arrives as "00000000" when there is no unit - that is
+				// an empty value, not a unit to list in the filter
+				unit: oEntry.UnitName || _realCode(oEntry.UnitCode),
+				unitKey: _realCode(oEntry.UnitCode),
 
 				// No manager id on the entity - the name is the key as well.
 				managerName: oEntry.ManagerName || "",
@@ -823,14 +872,12 @@ sap.ui.define([
 				managerMail: oEntry.ManagerMail || "",
 				adminMail: oEntry.AdminMail || "",
 
-				isActive: oEntry.ActiveInd === undefined ? true : _isSet(oEntry.ActiveInd),
+				// ActiveInd comes back "" on every row today, so an empty value is
+				// "not delivered" rather than "inactive" - otherwise נתוני כל
+				// העובדים would hide the whole population behind its switch.
+				isActive: _hasValue(oEntry.ActiveInd) ? _isSet(oEntry.ActiveInd) : true,
 
-				// כפיפים ישירים: the rows whose own ממונה is the logged-in person.
-				// By NAME, because that is all ManagerName gives - so a namesake
-				// would read as direct. The moment the entity carries a manager
-				// personnel number, compare on that instead; this is the one line
-				// that has to change.
-				isDirect: !!sSelfName && oEntry.ManagerName === sSelfName,
+				isDirect: _isDirectReport(oEntry, sSelfPernr, sSelfName, bOwnPopulation),
 
 				// --- the approval chain, folded into one stage ---
 				handledByKey: sParty === null ? "" : sParty,
