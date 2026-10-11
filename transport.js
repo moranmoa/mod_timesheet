@@ -15,14 +15,14 @@
 // The bundle is one plain text file: every source file starts with a
 // "***file <name>" line, and its content runs until the next "***file" line.
 // While copying, the keywords in KEYWORDS are suffixed with SUFFIX
-// (function -> functionMoAb) so the text passes through filters that block
+// ("function" + SUFFIX) so the text passes through filters that block
 // them; unpack reverses it exactly.
 
 const fs = require("fs");
 const path = require("path");
 
 // Add a keyword here and both pack and unpack pick it up automatically.
-const KEYWORDS = ["function", "if", "open", "replace", "while" ,"Object" ,"for"];
+const KEYWORDS = ["function", "if", "open", "replace", "while" ,"Object" ,"for", "typeof"];
 const SUFFIX = "MoAb";
 
 // Match whole words only, so "notify" does not become "notifMoAby".
@@ -54,9 +54,10 @@ const SOURCE_FILES = [
 	"webapp/model/DataService.js",
 	"webapp/model/formatter.js",
 	"webapp/model/mockEmployees.js",
-	"webapp/i18n/i18n.properties",
+	"webapp/i18n/i18n_menager.properties",
 	"webapp/css/style.css",
-	"webapp/css/tokens.css"
+	"webapp/css/tokens.css",
+	"transport.js"
 ];
 
 function escapeRegExp(s) {
@@ -68,14 +69,14 @@ function wordRegExp(word) {
 	return new RegExp(WHOLE_WORD ? "\\b" + body + "\\b" : body, "g");
 }
 
-// function -> functionMoAb
+// function -> function + SUFFIX
 function encodeText(text) {
 	return KEYWORDS.reduce(function (acc, word) {
 		return acc.replace(wordRegExp(word), word + SUFFIX);
 	}, text);
 }
 
-// functionMoAb -> function
+// function + SUFFIX -> function
 function decodeText(text) {
 	return KEYWORDS.reduce(function (acc, word) {
 		return acc.replace(wordRegExp(word + SUFFIX), word);
