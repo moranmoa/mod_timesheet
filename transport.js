@@ -38,26 +38,13 @@ const MARKER = "***file";
 // always reflects the current webapp - no manual re-copying. Add a file here
 // and it gets refreshed and packed automatically.
 const SOURCE_FILES = [
-	"webapp/Component.js",
-	"webapp/controller/App.controller.js",
+	// פירוט ימי לימודים - only the files this change touches
 	"webapp/controller/Home.controller.js",
-	"webapp/controller/AllEmployees.controller.js",
-	"webapp/controller/ManagerReports.controller.js",
-	"webapp/view/App.view.xml",
-	"webapp/view/AppHeader.fragment.xml",
+	"webapp/controller/StudyDaysDialog.js",
 	"webapp/view/Home.view.xml",
-	"webapp/view/HomeMonthPicker.fragment.xml",
-	"webapp/view/AllEmployees.view.xml",
-	"webapp/view/AllEmployeesViewSettings.fragment.xml",
-	"webapp/view/ManagerReports.view.xml",
-	"webapp/view/ManagerReportsReminder.fragment.xml",
-	"webapp/model/DataService.js",
-	"webapp/model/formatter.js",
-	"webapp/model/mockEmployees.js",
+	"webapp/view/StudyDays.fragment.xml",
 	"webapp/i18n/i18n_menager.properties",
-	"webapp/css/style.css",
-	"webapp/css/tokens.css",
-	"transport.js"
+	"webapp/css/style.css"
 ];
 
 function escapeRegExp(s) {

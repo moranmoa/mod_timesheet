@@ -30,12 +30,22 @@
 			<!-- ================= Greeting ================= -->
 			<HBox alignItems="Center" justifyContent="SpaceBetween" class="hmGreetingBar">
 				<Title text="{home>/user/greeting}" level="H1" class="hmGreeting" />
-				<Button
-					icon="sap-icon://print"
-					type="Transparent"
-					tooltip="{i18n>hmPrint}"
-					press=".onPrint"
-					class="hmPrintButton" />
+				<HBox alignItems="Center" renderType="Bare">
+					<!-- פירוט ימי לימודים - the whole dialog is
+					     controller/StudyDaysDialog.js; see the note there. -->
+					<Button
+						icon="sap-icon://education"
+						type="Transparent"
+						text="{i18n>sdOpen}"
+						press=".onOpenStudyDays"
+						class="sdOpenButton" />
+					<Button
+						icon="sap-icon://print"
+						type="Transparent"
+						tooltip="{i18n>hmPrint}"
+						press=".onPrint"
+						class="hmPrintButton" />
+				</HBox>
 			</HBox>
 
 			<!-- ================= נתוני הנוכחות שלי ================= -->

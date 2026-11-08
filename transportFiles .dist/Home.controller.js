@@ -5,8 +5,9 @@ sap.ui.define([
 	"sap/m/MessageToast",
 	"sap/base/Log",
 	"modtimesheet/model/formatter",
-	"modtimesheet/model/DataService"
-], function (Controller, Fragment, JSONModel, MessageToast, Log, formatter, DataService) {
+	"modtimesheet/model/DataService",
+	"modtimesheet/controller/StudyDaysDialog"
+], function (Controller, Fragment, JSONModel, MessageToast, Log, formatter, DataService, StudyDaysDialog) {
 	"use strict";
 
 	/* ============================================================================
@@ -359,6 +360,14 @@ sap.ui.define([
 
 		onPrint: function () {
 			window.print();
+		},
+
+		/** פירוט ימי לימודים - the dialog owns everything; see StudyDaysDialog.js. */
+		onOpenStudyDays: function () {
+			if (!this._oStudyDays) {
+				this._oStudyDays = new StudyDaysDialog(this.getView());
+			}
+			this._oStudyDays.open();
 		},
 
 		/* ========================================================================

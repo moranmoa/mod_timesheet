@@ -3407,3 +3407,279 @@
 		display: none;
 	}
 }
+
+/* ============================================================================
+   14. פירוט ימי לימודים - the StudyDays dialog
+   ----------------------------------------------------------------------------
+   Opened from דף הבית (.sdOpenButton, beside the print glyph). The dialog's
+   markup is view/StudyDays.fragment.xml and its logic
+   controller/StudyDaysDialog.js; this section is the third and last place it
+   lives. Nothing here touches another screen's classes - the one thing it
+   borrows is the footer pill, .mtButtonPrimary from §6b, put on the button in
+   the fragment.
+
+   Same frame as שליחת תזכורת (§6b): one white surface, the header and footer
+   bars flattened into it - !important for the same reason given there. Inside,
+   a fully ruled grid on the kit's table colours, and a two-part footer row:
+   the column totals and the month's usage bar.
+   ========================================================================= */
+
+/* --- the opener on דף הבית ----------------------------------------------- */
+.sdOpenButton,
+.sdOpenButton .sapMBtnInner {
+	background-color: transparent;
+	border: none;
+	box-shadow: none;
+	border-radius: var(--mt-radius-pill);
+	color: var(--mt-color-brand);
+}
+
+.sdOpenButton .sapMBtnContent,
+.sdOpenButton .sapMBtnIcon {
+	font: var(--mt-text-button);
+	color: var(--mt-color-brand);
+}
+
+.sdOpenButton .sapMBtnInner:hover {
+	background-color: var(--mt-color-brand-tint);
+}
+
+/* --- the frame ----------------------------------------------------------- */
+.sdDialog.sapMDialog {
+	border: var(--mt-border-width) solid var(--mt-color-border);
+	border-radius: var(--mt-radius-lg);
+	box-shadow: var(--mt-shadow-overlay);
+	background-color: var(--mt-bg-card);
+	max-width: calc(100vw - 2 * var(--mt-content-inset));
+}
+
+.sdDialog > header,
+.sdDialog > footer,
+.sdDialog .sapMHeader-CTX,
+.sdDialog .sapMDialogFooter {
+	background: var(--mt-bg-card) !important;
+	border: none !important;
+	box-shadow: none !important;
+	flex-shrink: 0;
+}
+
+.sdDialog .sapMDialogSection,
+.sdDialog .sapMDialogScroll,
+.sdDialog .sapMDialogScrollCont {
+	min-height: 0;
+	background-color: var(--mt-bg-card);
+}
+
+.sdDialog .sapMDialogScrollCont {
+	padding: var(--mt-space-3) var(--mt-space-6) var(--mt-space-6);
+}
+
+/* --- header: title + date (start), close (end) -------------------------- */
+.sdDialog .sdHeader.sapMBar {
+	height: auto !important;
+	padding: var(--mt-space-7) var(--mt-content-inset) var(--mt-space-4) !important;
+	background: var(--mt-bg-card) !important;
+	box-shadow: none !important;
+	border: none !important;
+}
+
+.sdDialog .sdHeader .sapMBarLeft,
+.sdDialog .sdHeader .sapMBarRight {
+	display: flex;
+	align-items: center;
+	gap: var(--mt-space-7);
+	height: auto;
+}
+
+.sdTitle,
+.sdTitle .sapMTitleInner {
+	font: var(--mt-font-weight-extrabold) 24px / 1.2 var(--mt-font-sans);
+	color: var(--mt-text-primary);
+}
+
+/* The date is a small pill: 1px brand outline, 600/14 value, brand glyph. */
+.sdDate .sapMInputBaseContentWrapper {
+	height: 26px;
+	border: var(--mt-border-width) solid var(--mt-color-brand) !important;
+	border-radius: var(--mt-radius-pill);
+	background-color: var(--mt-color-white) !important;
+	box-shadow: none !important;
+	padding-inline: var(--mt-space-3);
+}
+
+.sdDate .sapMInputBaseInner {
+	height: 24px;
+	font: var(--mt-font-weight-semibold) var(--mt-font-size-sm) / 1 var(--mt-font-sans);
+	color: var(--mt-color-navy);
+}
+
+.sdDate .sapMInputBaseIconContainer,
+.sdDate .sapUiIcon {
+	height: 24px;
+	line-height: 24px;
+	color: var(--mt-color-brand);
+	background: transparent;
+}
+
+.sdClose .sapMBtnInner {
+	background: transparent;
+	border: none;
+	box-shadow: none;
+	border-radius: var(--mt-radius-pill);
+}
+
+.sdClose .sapMBtnIcon {
+	color: var(--mt-color-brand);
+	font-size: 22px;
+}
+
+.sdClose .sapMBtnInner:hover {
+	background-color: var(--mt-color-brand-tint);
+}
+
+/* --- the grid -------------------------------------------------------------- */
+.sdTable .sapMListTbl {
+	border-collapse: collapse;
+}
+
+/* Header band: the kit's table-header wash, 700/14 navy, rounded top. */
+.sdTable .sapMListTblHeader,
+.sdTable .sapMListTblHeader > th {
+	background-color: var(--mt-bg-table-header);
+	border: none;
+}
+
+.sdTable .sapMListTblHeader > th {
+	height: 40px;
+	padding: 0 var(--mt-space-3);
+}
+
+.sdTable .sapMListTblHeader > th:first-child {
+	border-start-start-radius: var(--mt-radius-md);
+}
+
+.sdTable .sapMListTblHeader > th:last-child {
+	border-start-end-radius: var(--mt-radius-md);
+}
+
+.sdTable .sapMListTblHeader .sapMText {
+	font: var(--mt-text-column-header);
+	color: var(--mt-text-primary);
+}
+
+/* Body cells: every cell ruled on all sides, 50px rows, 500/14 black. */
+.sdTable .sapMListTblRow,
+.sdTable .sapMListTblRow:hover,
+.sdTable .sapMListTblFooter {
+	background-color: var(--mt-bg-row) !important;
+	border: none;
+}
+
+.sdTable .sapMListTblRow > td.sapMListTblCell,
+.sdTable .sapMListTblFooter > td.sapMListTblCell,
+.sdTable tfoot td.sapMListTblCell {
+	height: 50px;
+	padding: 0 var(--mt-space-3);
+	border: var(--mt-border-width) solid var(--mt-color-border);
+	vertical-align: middle;
+}
+
+/* the outer edge is the dialog's, not the grid's */
+.sdTable .sapMListTblRow > td.sapMListTblCell:last-child,
+.sdTable tfoot td.sapMListTblCell:last-child {
+	border-inline-end: none;
+}
+
+.sdTable .sapMListTblRow .sapMText,
+.sdTable tfoot .sapMText {
+	font: var(--mt-font-weight-semibold) var(--mt-font-size-sm) / var(--mt-line-height-base) var(--mt-font-sans);
+	color: var(--mt-color-black);
+}
+
+.sdTable .sapMText.sdStrong {
+	font-weight: var(--mt-font-weight-bold);
+	color: var(--mt-color-navy);
+}
+
+/* Footer row: the page canvas, so it reads as a total and not a row. */
+.sdTable tfoot td.sapMListTblCell,
+.sdTable .sapMListTblFooter {
+	background-color: var(--mt-bg-app) !important;
+	font-weight: var(--mt-font-weight-bold);
+}
+
+/* --- % הניצול: track + fill, the value at the fill's far end ------------- */
+.sdBar {
+	display: flex;
+	width: 100%;
+	height: 24px;
+	background-color: var(--mt-color-grey-300);
+	overflow: hidden;
+}
+
+.sdBarFill {
+	display: flex;
+	align-items: center;
+	justify-content: flex-end;
+	height: 100%;
+	background-color: var(--mt-color-brand);
+	box-sizing: border-box;
+	padding-inline-end: var(--mt-space-1);
+}
+
+.sdTable .sdBarText.sapMText {
+	font: var(--mt-font-weight-semibold) var(--mt-font-size-sm) / 1 var(--mt-font-sans);
+	color: var(--mt-text-inverse);
+	white-space: nowrap;
+}
+
+/* --- the month summary, in the last footer cell -------------------------- */
+.sdSummary {
+	display: flex;
+	flex-direction: column;
+	gap: var(--mt-space-1);
+	padding-block: var(--mt-space-2);
+}
+
+.sdSummaryText {
+	font: var(--mt-font-weight-regular) var(--mt-font-size-sm) / 1.3 var(--mt-font-sans);
+	color: var(--mt-text-primary);
+}
+
+.sdSummaryText strong {
+	font-weight: var(--mt-font-weight-extrabold);
+}
+
+.sdSummaryTrack {
+	display: flex;
+	width: 100%;
+	height: 8px;
+	background-color: var(--mt-color-grey-300);
+}
+
+.sdSummaryFill {
+	height: 100%;
+	background-color: var(--mt-color-brand);
+}
+
+/* --- footer: a rule above, the pill at the end ---------------------------- */
+.sdDialog > footer,
+.sdDialog .sapMDialogFooter {
+	height: auto !important;
+	min-height: 0 !important;
+	padding: var(--mt-space-6) var(--mt-content-inset) var(--mt-space-6) !important;
+	border-top: var(--mt-border-width) solid var(--mt-color-border) !important;
+	overflow: visible;
+}
+
+.sdDialog > footer .sapMBarChild,
+.sdDialog .sapMDialogFooter .sapMBarChild {
+	margin-inline: 0 !important;
+	margin-block: 0 !important;
+}
+
+@media print {
+	.sdOpenButton {
+		display: none !important;
+	}
+}
