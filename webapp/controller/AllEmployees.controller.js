@@ -5,8 +5,9 @@ sap.ui.define([
 	"sap/m/MessageToast",
 	"sap/base/Log",
 	"modtimesheet/model/formatter",
-	"modtimesheet/model/DataService"
-], function (Controller, Fragment, JSONModel, MessageToast, Log, formatter, DataService) {
+	"modtimesheet/model/DataService",
+	"modtimesheet/controller/MultiSelectAll"
+], function (Controller, Fragment, JSONModel, MessageToast, Log, formatter, DataService, MultiSelectAll) {
 	"use strict";
 
 	/* ============================================================================
@@ -103,6 +104,20 @@ sap.ui.define([
 	];
 
 	/**
+	 * Column header sorting: the row field each sortable column orders by. A
+	 * column that is not listed here (היעדרויות, השתלמויות - actions, not values)
+	 * ignores a press on its header.
+	 */
+	var COLUMN_SORT_FIELDS = {
+		colEmployeeName: "employeeDisplayName",
+		colDirectManager: "managerName",
+		colEmployeeNumber: "employeeNumber",
+		colPopulation: "populationText",
+		colDivision: "divisionName",
+		colUnit: "unitName"
+	};
+
+	/**
 	 * Columns offered in the הגדרות תצוגה dialog, in table order.
 	 * Keep this in step with the <t:columns> order in the view - the dialog lists
 	 * them in this sequence, so a mismatch reads as a bug to the user.
@@ -126,9 +141,20 @@ sap.ui.define([
 	   so the unit tests can call either.
 	   ========================================================================= */
 
-	/** Hebrew-aware alphabetical comparison on employeeName. */
+	/**
+	 * The name as this screen shows it: family name first, then the first name.
+	 * Falls back to the full employeeName for a row that did not come with the two
+	 * parts (the unit tests' fixtures, or a service row missing them).
+	 */
+	function displayName(oRow) {
+		return oRow.employeeDisplayName
+			|| [oRow.lastName, oRow.firstName].filter(Boolean).join(" ")
+			|| String(oRow.employeeName || "");
+	}
+
+	/** Hebrew-aware alphabetical comparison on the displayed name - family name first. */
 	function compareByName(oA, oB) {
-		return String(oA.employeeName || "").localeCompare(String(oB.employeeName || ""), "he");
+		return displayName(oA).localeCompare(displayName(oB), "he");
 	}
 
 	/**
@@ -142,7 +168,32 @@ sap.ui.define([
 		return iA !== iB ? iA - iB : compareByName(oA, oB);
 	}
 
-	function getComparator(sMode) {
+	/**
+	 * Hebrew-aware comparison of two cell values. `numeric` puts "9" before "10",
+	 * which is what מספר עובד needs; text compares as before.
+	 */
+	function compareValues(vA, vB) {
+		return String(vA === undefined || vA === null ? "" : vA)
+			.localeCompare(String(vB === undefined || vB === null ? "" : vB), "he", { numeric: true });
+	}
+
+	/**
+	 * The comparator for the current sort. A column sort (a press on a column
+	 * header) wins over the default sort mode; ties fall back to the name so the
+	 * order is stable from one press to the next.
+	 *
+	 * @param {string} sMode         "name" | "hierarchy"
+	 * @param {object} [oColumnSort] {field, descending} - no field, no column sort
+	 * @returns {function} the comparator
+	 */
+	function getComparator(sMode, oColumnSort) {
+		if (oColumnSort && oColumnSort.field) {
+			var sField = oColumnSort.field;
+			var iDir = oColumnSort.descending ? -1 : 1;
+			return function (oA, oB) {
+				return iDir * (compareValues(oA[sField], oB[sField]) || compareByName(oA, oB));
+			};
+		}
 		return sMode === SORT_HIERARCHY ? compareByHierarchy : compareByName;
 	}
 
@@ -184,7 +235,9 @@ sap.ui.define([
 		var o = oCriteria || {};
 
 		if (o.search) {
-			var sHaystack = [oRow.employeeName, oRow.employeeNumber, oRow.managerName]
+			// both name orders: the displayed one (which a picked suggestion writes
+			// into the field) and the first-name-first one people tend to type
+			var sHaystack = [displayName(oRow), oRow.employeeNumber, oRow.employeeName, oRow.managerName]
 				.join(" ").toLowerCase();
 			if (sHaystack.indexOf(o.search) === -1) {
 				return false;
@@ -244,6 +297,9 @@ sap.ui.define([
 				viewState: {
 					isHierarchy: false,
 					sortMode: SORT_NAME,
+					// The column header sort, when one is active: the row field and
+					// the direction. Empty field - sortMode above decides.
+					columnSort: { field: "", descending: false },
 					// Which of פתיחת / צמצום כל הרשומות the toolbar is offering.
 					// It describes the TREE, not the last button press, so
 					// _bindTable owns it - that is the one place that knows what
@@ -415,6 +471,10 @@ sap.ui.define([
 					employeeId: oRow.employeeId,
 					employeeNumber: oRow.employeeNumber,
 					employeeName: oRow.employeeName,
+					// what the שם עובד column shows and sorts by: family name first.
+					// employeeName stays the full "first last" name, because that is
+					// the form managerName arrives in and the tree is matched on.
+					employeeDisplayName: displayName(oRow),
 					// no such flag on the service - _deriveIsManager sets it
 					isManager: undefined,
 					isActive: oRow.isActive !== false,
@@ -478,21 +538,21 @@ sap.ui.define([
 		_applyContextOptions: function (oOptions) {
 			var oViewModel = this.getView().getModel("view");
 
+			var sAllText = this._getText("aeFilterAll");
+
 			MULTI_FILTERS.forEach(function (oFilter) {
-				var aItems = oOptions[oFilter.contextKey] || [];
-				oViewModel.setProperty(oFilter.path, aItems);
+				// "הכל" first on a long list - see MultiSelectAll
+				oViewModel.setProperty(oFilter.path,
+					MultiSelectAll.withAllItem(oOptions[oFilter.contextKey], sAllText));
 
 				// The JSON model updates the bound aggregation synchronously, so the
 				// items exist by the time the keys are applied.
 				var oControl = this.byId(oFilter.controlId);
 				if (oControl) {
-					oControl.setSelectedKeys(aItems.map(function (oItem) {
-						return oItem.key;
-					}));
+					MultiSelectAll.selectAll(oControl);
 				}
 			}, this);
 
-			this._syncSelectAllState();
 			this._invalidateTreeCache();
 			this._applyFiltersAndSort();
 		},
@@ -506,8 +566,43 @@ sap.ui.define([
 			this._applyFiltersAndSort();
 		},
 
-		onFilterChange: function () {
-			this._syncSelectAllState();
+		/**
+		 * selectionChange of the four multi-selects. "הכל" is settled first, so the
+		 * table is filtered on the selection the user is actually looking at.
+		 *
+		 * @param {sap.ui.base.Event} oEvent selectionChange of a MultiComboBox
+		 */
+		onFilterChange: function (oEvent) {
+			MultiSelectAll.onSelectionChange(oEvent);
+			this._invalidateTreeCache();
+			this._applyFiltersAndSort();
+		},
+
+		/**
+		 * איפוס פילטרים - the bar back to how the screen opens: search empty, every
+		 * multi-select fully checked, הצגת עובדים לא פעילים off.
+		 *
+		 * Filters only. The sort, the flat / tree mode and the hidden columns are
+		 * how the user chose to LOOK at the rows, not which rows - they stay.
+		 */
+		onResetFilters: function () {
+			var oViewModel = this.getView().getModel("view");
+			var oSearchField = this.byId("aeSearchField");
+
+			if (oSearchField) {
+				oSearchField.setValue("");
+			}
+			oViewModel.setProperty("/viewState/searchTerm", "");
+			oViewModel.setProperty("/viewState/showInactive", false);
+			oViewModel.setProperty("/suggestions", []);
+
+			MULTI_FILTERS.forEach(function (oFilter) {
+				var oControl = this.byId(oFilter.controlId);
+				if (oControl) {
+					MultiSelectAll.selectAll(oControl);
+				}
+			}, this);
+
 			this._invalidateTreeCache();
 			this._applyFiltersAndSort();
 		},
@@ -544,7 +639,7 @@ sap.ui.define([
 			oViewModel.setProperty("/suggestions", aRows.filter(function (oRow) {
 				// name and number in one haystack, so "כהן" and "2251424" both hit -
 				// the field's label promises exactly those two
-				return (oRow.employeeName + " " + oRow.employeeNumber)
+				return (displayName(oRow) + " " + oRow.employeeNumber + " " + oRow.employeeName)
 					.toLowerCase().indexOf(sTerm) !== -1;
 			}).sort(compareByName).slice(0, MAX_SUGGESTIONS).map(function (oRow) {
 				return {
@@ -552,7 +647,7 @@ sap.ui.define([
 					// Picking an entry writes this text straight into the search field,
 					// and matchesCriteria's haystack opens with the same "name number"
 					// pair - so a pick narrows the table to that one employee.
-					text: oRow.employeeName + " " + oRow.employeeNumber,
+					text: displayName(oRow) + " " + oRow.employeeNumber,
 					// grey note, never part of `text`: it must not travel into the
 					// search field and stop matching anything
 					description: oRow.isActive === false ? sInactiveNote : ""
@@ -579,14 +674,10 @@ sap.ui.define([
 		_readFilterCriteria: function () {
 			var fnKeys = function (sId) {
 				var oControl = this.byId(sId);
-				if (!oControl) {
-					return [];
-				}
-				var aKeys = oControl.getSelectedKeys();
 				// Everything checked is the opening state and means "הכל", not
 				// "one of these": a row with no unit / אגף has no option of its
 				// own, so matching it against the full list would drop it.
-				return aKeys.length === oControl.getItems().length ? [] : aKeys;
+				return oControl ? MultiSelectAll.getFilterKeys(oControl) : [];
 			}.bind(this);
 
 			var oSearchField = this.byId("aeSearchField");
@@ -613,11 +704,12 @@ sap.ui.define([
 			);
 			var oCriteria = this._readFilterCriteria();
 			var sSortMode = oViewModel.getProperty("/viewState/sortMode");
+			var oColumnSort = oViewModel.getProperty("/viewState/columnSort");
 			var bTree = oViewModel.getProperty("/viewState/isHierarchy");
 
 			if (bTree) {
 				var sRoot = oViewModel.getProperty("/viewState/currentManagerId");
-				var aTree = this._getTree(aAll, oCriteria, sSortMode, sRoot);
+				var aTree = this._getTree(aAll, oCriteria, sSortMode, sRoot, oColumnSort);
 				var aNodes = this._flattenTree(aTree);
 
 				oViewModel.setProperty("/treeEmployees", aTree);
@@ -634,7 +726,7 @@ sap.ui.define([
 
 				this._bindTable(true, bNarrowed ? maxLevel(aNodes) + 1 : 0);
 			} else {
-				var aFlat = this._sortFlat(this._filterFlat(aAll, oCriteria), sSortMode);
+				var aFlat = this._sortFlat(this._filterFlat(aAll, oCriteria), sSortMode, oColumnSort);
 
 				oViewModel.setProperty("/flatEmployees", aFlat);
 				oViewModel.setProperty("/group/count", aFlat.length);
@@ -652,17 +744,19 @@ sap.ui.define([
 		 * @param {object}   oCriteria current search + filter criteria
 		 * @param {string}   sSortMode "name" | "hierarchy"
 		 * @param {string}   sRoot     the logged-in manager's id
+		 * @param {object}   [oColumnSort] {field, descending} of a column header sort
 		 * @returns {object[]} level-0 nodes
 		 */
-		_getTree: function (aAll, oCriteria, sSortMode, sRoot) {
-			var sKey = JSON.stringify([oCriteria, sSortMode, sRoot, aAll.length]);
+		_getTree: function (aAll, oCriteria, sSortMode, sRoot, oColumnSort) {
+			var sKey = JSON.stringify([oCriteria, sSortMode, sRoot, aAll.length, oColumnSort || null]);
 			if (this._oTreeCache && this._oTreeCache.key === sKey) {
 				return this._oTreeCache.tree;
 			}
 
 			var aTree = this._sortNodes(
 				this._buildTree(this._collectWithAncestors(aAll, oCriteria), sRoot),
-				sSortMode
+				sSortMode,
+				oColumnSort
 			);
 
 			this._oTreeCache = { key: sKey, tree: aTree };
@@ -740,16 +834,59 @@ sap.ui.define([
 			this._applyFiltersAndSort();
 		},
 
-		onToggleSort: function (oEvent) {
-			var oItem = oEvent.getParameter("item");
-			var sMode = oItem && oItem.data("sortMode");
-			if (!sMode) {
+		/**
+		 * A press on a column header sorts by that column: ascending first, and
+		 * each further press on the same header flips the direction. Works in both
+		 * modes - in the tree it orders the siblings inside every level.
+		 *
+		 * This replaced the toolbar's מיון menu. Until a header is pressed the rows
+		 * keep /viewState/sortMode's order - by name, family name first.
+		 *
+		 * sap.ui.table would open the column menu on the same press; it has nothing
+		 * to offer here, so the default is prevented.
+		 *
+		 * @param {sap.ui.base.Event} oEvent columnSelect of the TreeTable
+		 */
+		onColumnSelect: function (oEvent) {
+			oEvent.preventDefault();
+
+			var oColumn = oEvent.getParameter("column");
+			var sColumnId = oColumn && this.getView().getLocalId(oColumn.getId());
+			var sField = COLUMN_SORT_FIELDS[sColumnId];
+			if (!sField) {
 				return;
 			}
 
-			this.getView().getModel("view").setProperty("/viewState/sortMode", sMode);
+			var oCurrent = this.getView().getModel("view").getProperty("/viewState/columnSort") || {};
+			this._setColumnSort(sField, oCurrent.field === sField ? !oCurrent.descending : false);
 			this._invalidateTreeCache();
 			this._applyFiltersAndSort();
+		},
+
+		/**
+		 * Stores the column header sort and draws its arrow on the one column it
+		 * belongs to. An empty field clears both.
+		 *
+		 * @param {string}  sField      row field, "" for none
+		 * @param {boolean} bDescending direction
+		 */
+		_setColumnSort: function (sField, bDescending) {
+			this.getView().getModel("view").setProperty("/viewState/columnSort", {
+				field: sField,
+				descending: !!sField && bDescending
+			});
+
+			Object.keys(COLUMN_SORT_FIELDS).forEach(function (sColumnId) {
+				var oColumn = this.byId(sColumnId);
+				if (!oColumn) {
+					return;
+				}
+				var bSorted = !!sField && COLUMN_SORT_FIELDS[sColumnId] === sField;
+				oColumn.setSorted(bSorted);
+				if (bSorted) {
+					oColumn.setSortOrder(bDescending ? "Descending" : "Ascending");
+				}
+			}, this);
 		},
 
 		/**
@@ -807,10 +944,11 @@ sap.ui.define([
 		 *
 		 * @param {object[]} aNodes nested nodes
 		 * @param {string}   sMode  "name" | "hierarchy"
+		 * @param {object}   [oColumnSort] {field, descending} of a column header sort
 		 * @returns {object[]} the same array, sorted
 		 */
-		_sortNodes: function (aNodes, sMode) {
-			var fnCompare = getComparator(sMode);
+		_sortNodes: function (aNodes, sMode, oColumnSort) {
+			var fnCompare = getComparator(sMode, oColumnSort);
 
 			(function sortLevel(aLevel) {
 				aLevel.sort(fnCompare);
@@ -830,10 +968,11 @@ sap.ui.define([
 		 *
 		 * @param {object[]} aFlat flat employee rows
 		 * @param {string}   sMode "name" | "hierarchy"
+		 * @param {object}   [oColumnSort] {field, descending} of a column header sort
 		 * @returns {object[]} a sorted copy
 		 */
-		_sortFlat: function (aFlat, sMode) {
-			return (aFlat || []).slice().sort(getComparator(sMode));
+		_sortFlat: function (aFlat, sMode, oColumnSort) {
+			return (aFlat || []).slice().sort(getComparator(sMode, oColumnSort));
 		},
 
 		/**
@@ -1068,7 +1207,7 @@ sap.ui.define([
 			// Same order as the table's columns. colAbsences is absent on purpose:
 			// it holds an action, not a value.
 			var aColumns = [
-				{ label: this._getText("aeColEmployeeName"), property: "employeeName" },
+				{ label: this._getText("aeColEmployeeName"), property: "employeeDisplayName" },
 				{ label: this._getText("aeColDirectManager"), property: "managerName" },
 				{ label: this._getText("aeColEmployeeNumber"), property: "employeeNumber" },
 				{ label: this._getText("aeColPopulation"), property: "populationText" },
@@ -1115,24 +1254,6 @@ sap.ui.define([
 		},
 
 		/* ================================ helpers ================================ */
-
-		/**
-		 * Every multi-select starts with all its options checked, which UI5 would
-		 * render as a row of tokens inside a 44px pill. `aeAllSelected` collapses
-		 * that back to the field's "הכל" placeholder while the selection is
-		 * complete, and lifts as soon as the user narrows it down.
-		 */
-		_syncSelectAllState: function () {
-			MULTI_FILTERS.forEach(function (oFilter) {
-				var oControl = this.byId(oFilter.controlId);
-				if (!oControl) {
-					return;
-				}
-				var iItems = oControl.getItems().length;
-				var bAll = iItems > 0 && oControl.getSelectedKeys().length === iItems;
-				oControl.toggleStyleClass("aeAllSelected", bAll);
-			}, this);
-		},
 
 		/**
 		 * @param {string}   sKey    i18n key

@@ -172,6 +172,18 @@
 					</VBox>
 
 				</FlexBox>
+
+				<!-- איפוס פילטרים - the same action, look and place as on דיווחי
+				     עובדים: the inline end (left in RTL) of the row under the bar.
+				     There is no "מסננים נוספים" toggle here, so it is the row's only
+				     child. -->
+				<HBox justifyContent="End" alignItems="Center" class="mtFilterActions aeFilterActions">
+					<Button
+						text="{i18n>aeResetFilters}"
+						icon="sap-icon://clear-filter"
+						type="Transparent"
+						press=".onResetFilters" />
+				</HBox>
 			</f:DynamicPageHeader>
 		</f:header>
 
@@ -188,6 +200,7 @@
 				rowHeight="60"
 				columnHeaderHeight="56"
 				enableColumnReordering="false"
+				columnSelect=".onColumnSelect"
 				alternateRowColors="false"
 				showNoData="true">
 
@@ -238,16 +251,14 @@
 
 						     The one that IS shown is DISABLED in the flat table, where
 						     every row is a leaf and there is nothing to open. That is
-						     the whole rule: the sort mode has NOTHING to do with it.
-						     מיון לפי שם orders siblings inside each level (see
-						     _sortNodes) - it does not flatten the tree, so a tree
-						     sorted by name has exactly as much depth to open as one
-						     sorted by hierarchy.
+						     the whole rule: the sort has NOTHING to do with it. A
+						     column sort orders siblings inside each level (see
+						     _sortNodes) - it does not flatten the tree, so a sorted
+						     tree has exactly as much depth to open as an unsorted one.
 
 						     Position: the spacer packs the actions against the (RTL) left
 						     edge and the toolbar lays them out from there in REVERSE
-						     order, so the last child ends up leftmost. This puts them
-						     between מיון and הגדרות תצוגה, as in the design. -->
+						     order, so the last child ends up leftmost. -->
 						<Button
 							id="expandAllButton"
 							text="{i18n>aeExpandAll}"
@@ -278,29 +289,8 @@
 							tooltip="{= ${view>/viewState/isHierarchy} ? ${i18n>aeViewFlatTooltip} : ${i18n>aeViewHierarchyTooltip} }"
 							press=".onToggleHierarchy" />
 
-						<!-- sap.m.MenuItem has no `key`, so the sort mode travels
-						     on CustomData. -->
-						<MenuButton
-							id="sortMenuButton"
-							type="Transparent"
-							icon="sap-icon://sort"
-							tooltip="{i18n>aeSortTooltip}"
-							text="{= ${view>/viewState/sortMode} === 'hierarchy' ? ${i18n>aeSortLabelHierarchy} : ${i18n>aeSortLabelName} }">
-							<menu>
-								<Menu itemSelected=".onToggleSort">
-									<MenuItem text="{i18n>aeSortByName}">
-										<customData>
-											<core:CustomData key="sortMode" value="name" />
-										</customData>
-									</MenuItem>
-									<MenuItem text="{i18n>aeSortByHierarchy}">
-										<customData>
-											<core:CustomData key="sortMode" value="hierarchy" />
-										</customData>
-									</MenuItem>
-								</Menu>
-							</menu>
-						</MenuButton>
+						<!-- No מיון menu: a press on a column header sorts by that
+						     column (onColumnSelect), which replaced it. -->
 					</OverflowToolbar>
 
 					<!-- Group / section header. sap.ui.table cannot span a data row
@@ -338,7 +328,7 @@
 						</t:label>
 						<t:template>
 							<Link
-								text="{view>employeeName}"
+								text="{view>employeeDisplayName}"
 								wrapping="false"
 								class="aeEmpName"
 								tooltip="{i18n>aeOpenEmployee}"

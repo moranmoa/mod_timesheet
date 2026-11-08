@@ -26,6 +26,10 @@ sap.ui.define([
 	 * Row shape expected by the screen:
 	 * {
 	 *   employeeName:       string,   // "שם עובד"        (column, searchable)
+	 *   firstName:          string,   // שם פרטי
+	 *   lastName:           string,   // שם משפחה
+	 *   employeeDisplayName: string,  // "lastName firstName" - what both
+	 *                                 // employee tables show and sort by
 	 *   employeeNumber:     string,   // "מספר עובד"      (column, searchable)
 	 *   population:         string,   // "אוכלוסייה"      (chip text)
 	 *   populationKey:      string,   // filter key: MOD | EXTERNAL | SOLDIER | NATIONAL
@@ -361,6 +365,12 @@ sap.ui.define([
 				employeeId: oEmp.employeeId,
 				employeeNumber: oEmp.employeeNumber,
 				employeeName: oEmp.employeeName,
+				// the mock holds one full name: its first word is the first name,
+				// the rest the family name - enough to show the service's split
+				firstName: oEmp.employeeName.split(" ")[0],
+				lastName: oEmp.employeeName.split(" ").slice(1).join(" "),
+				employeeDisplayName: _displayName(oEmp.employeeName.split(" ")[0],
+					oEmp.employeeName.split(" ").slice(1).join(" "), oEmp.employeeName),
 
 				population: oEmp.populationText,
 				populationKey: oEmp.populationKey,
@@ -759,6 +769,14 @@ sap.ui.define([
 		return [oEntry.FirstName, oEntry.LastName].filter(Boolean).join(" ").trim();
 	}
 
+	/**
+	 * The name as the employee tables show it: family name first, then the first
+	 * name. Falls back to the full name when the parts are missing.
+	 */
+	function _displayName(sFirst, sLast, sFull) {
+		return [sLast, sFirst].filter(Boolean).join(" ").trim() || sFull || "";
+	}
+
 	/** Delivered with a value - "" / null / undefined all read as absent. */
 	function _hasValue(vValue) {
 		return vValue !== undefined && vValue !== null && vValue !== "";
@@ -846,6 +864,12 @@ sap.ui.define([
 				employeeId: oEntry.Employee,
 				employeeNumber: _trimPernr(oEntry.Employee),
 				employeeName: _fullName(oEntry),
+				// kept apart as well: נתוני כל העובדים shows - and sorts by -
+				// the family name first, and the joined name cannot be split back
+				// reliably (a family name may be two words)
+				firstName: oEntry.FirstName || "",
+				lastName: oEntry.LastName || "",
+				employeeDisplayName: _displayName(oEntry.FirstName, oEntry.LastName, _fullName(oEntry)),
 
 				population: POPULATION_TEXT[sPopulationKey] || sPopulationKey,
 				populationKey: sPopulationKey,

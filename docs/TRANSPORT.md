@@ -39,7 +39,7 @@
 
 `SOURCE_FILES` שבראש `transport.js` היא **מקור האמת היחיד** לשאלה אילו קבצים עוברים ל־DEV.
 
-> **מ־28/10/2026 — העברה של שינויים בלבד.** האפליקציה כולה כבר הועברה ל־DEV, ולכן הרשימה מכילה רק את הקבצים שהשינוי הנוכחי נוגע בהם. בהעברה של פירוט ימי לימודים: `Home.controller.js`, `StudyDaysDialog.js` (חדש), `Home.view.xml`, `StudyDays.fragment.xml` (חדש), `i18n_menager.properties`, `style.css`. הטבלה שלהלן מתעדת את ההעברה המלאה הקודמת (20 קבצים):
+> **מ־28/10/2026 — העברה של שינויים בלבד.** האפליקציה כולה כבר הועברה ל־DEV, ולכן הרשימה מכילה רק את הקבצים שהשינוי הנוכחי נוגע בהם. בהעברה הנוכחית (מיון בלחיצה על כותרת עמודה, אפשרות "הכל" בפילטרים ארוכים, איפוס פילטרים ושם משפחה תחילה בנתוני כל העובדים — 08/11/2026): `AllEmployees.controller.js`, `ManagerReports.controller.js`, `MultiSelectAll.js` (חדש), `DataService.js`, `AllEmployees.view.xml`, `ManagerReports.view.xml`, `i18n_menager.properties`, `style.css`. ההעברה הקודמת (פירוט ימי לימודים) כללה: `Home.controller.js`, `StudyDaysDialog.js`, `Home.view.xml`, `StudyDays.fragment.xml`, `i18n_menager.properties`, `style.css`. הטבלה שלהלן מתעדת את ההעברה המלאה הקודמת (20 קבצים):
 
 | תחום | קבצים |
 |---|---|

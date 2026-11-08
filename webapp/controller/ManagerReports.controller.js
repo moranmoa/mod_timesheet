@@ -11,9 +11,11 @@ sap.ui.define([
 	"sap/m/MessageBox",
 	"sap/m/Token",
 	"modtimesheet/model/DataService",
-	"modtimesheet/model/formatter"
+	"modtimesheet/model/formatter",
+	"modtimesheet/controller/MultiSelectAll"
 ], function (Controller, Fragment, JSONModel, Filter, FilterOperator, Sorter,
-	ViewSettingsDialog, ViewSettingsItem, MessageToast, MessageBox, Token, DataService, formatter) {
+	ViewSettingsDialog, ViewSettingsItem, MessageToast, MessageBox, Token, DataService, formatter,
+	MultiSelectAll) {
 	"use strict";
 
 	// i18n keys of the labels the table title names, keyed by status. The texts
@@ -74,6 +76,49 @@ sap.ui.define([
 		{ optionsKey: "units", controlId: "unitFilter" },
 		{ optionsKey: "managers", controlId: "managerFilter" }
 	];
+
+	/**
+	 * Every multi-select that offers "הכל" once its list is long enough (see
+	 * MultiSelectAll): the period, and the four data-driven lists. נמצא בטיפול
+	 * is not here - it carries its own "כל הגורמים המאשרים" with rules of its own
+	 * (onHandledByChange).
+	 */
+	var SELECT_ALL_FILTERS = [
+		{ optionsKey: "years", controlId: "yearFilter" },
+		{ optionsKey: "months", controlId: "monthFilter" }
+	].concat(DATA_DRIVEN_FILTERS);
+
+	/**
+	 * Column header sorting: the sort key a header carries (its CustomData) -> the
+	 * column the arrow is drawn on and the row paths to sort by. The keys are the
+	 * same ones the מיון dialog uses, so both ends share one _applySort.
+	 *
+	 * חודש לאישור sorts on year, then month: its text ("01/2025") would put
+	 * January of every year ahead of February of any year.
+	 */
+	var COLUMN_SORTS = {
+		// the name as shown - family name first
+		employeeName: { columnId: "mrColEmployeeName", paths: ["employeeDisplayName"] },
+		employeeNumber: { columnId: "mrColEmployeeNumber", paths: ["employeeNumber"] },
+		population: { columnId: "mrColPopulation", paths: ["population"] },
+		branch: { columnId: "mrColBranch", paths: ["branch"] },
+		unit: { columnId: "mrColUnit", paths: ["unit"] },
+		managerName: { columnId: "mrColDirectManager", paths: ["managerName"] },
+		approvalMonthKey: { columnId: "mrColApprovalMonth", paths: ["approvalYearKey", "approvalMonthKey"] },
+		processStep: { columnId: "mrColProcess", paths: ["processStep"] }
+	};
+
+	/**
+	 * Sorter comparator: numbers as numbers, everything else as Hebrew text with
+	 * `numeric`, so "9" sorts before "10" in מספר עובד and in the month keys.
+	 */
+	function compareValues(vA, vB) {
+		if (typeof vA === "number" && typeof vB === "number") {
+			return vA - vB;
+		}
+		return String(vA === undefined || vA === null ? "" : vA)
+			.localeCompare(String(vB === undefined || vB === null ? "" : vB), "he", { numeric: true });
+	}
 
 	/**
 	 * The period the service is asked for, derived from the שנה / חודש filters.
@@ -144,8 +189,19 @@ sap.ui.define([
 			// filter defaults (שם מנהל ישיר = M1) may be applied at all
 			this._bMockData = true;
 
-			// filter drop-down options
-			this.getView().setModel(new JSONModel(DataService.getFilterOptions()), "options");
+			// filter drop-down options - "הכל" first on the long ones (חודש)
+			var oOptions = DataService.getFilterOptions();
+			SELECT_ALL_FILTERS.forEach(function (oFilter) {
+				oOptions[oFilter.optionsKey] = MultiSelectAll.withAllItem(
+					oOptions[oFilter.optionsKey], this._getText("mrFilterAll"));
+			}, this);
+			this.getView().setModel(new JSONModel(oOptions), "options");
+
+			// the column header sort, when one is active - see _onHeaderClick
+			this._oColumnSort = { key: "", descending: false };
+			// sap.m.Table (1.71) has no header press event of its own, so the
+			// table listens for clicks and works out the header cell itself
+			this.byId("reportsTable").addEventDelegate({ onclick: this._onHeaderClick }, this);
 
 			// view state (counts, title, advanced-filters toggle)
 			this.getView().setModel(new JSONModel({
@@ -262,16 +318,37 @@ sap.ui.define([
 		_applyContextOptions: function (oOptions) {
 			var oOptionsModel = this.getView().getModel("options");
 			var oView = this.getView();
+			var sAllText = this._getText("mrFilterAll");
 
 			DATA_DRIVEN_FILTERS.forEach(function (oFilter) {
-				var aItems = oOptions[oFilter.optionsKey] || [];
+				var aItems = MultiSelectAll.withAllItem(oOptions[oFilter.optionsKey], sAllText);
 				var oControl = oView.byId(oFilter.controlId);
-				var aKept = oControl.getSelectedKeys().filter(function (sKey) {
+				var aKept = MultiSelectAll.getSelectedKeys(oControl).filter(function (sKey) {
 					return aItems.some(function (oItem) { return oItem.key === sKey; });
 				});
 
 				oOptionsModel.setProperty("/" + oFilter.optionsKey, aItems);
 				oControl.setSelectedKeys(aKept);
+				// "הכל" follows what was kept - the list may have grown or shrunk
+				MultiSelectAll.sync(oControl);
+			});
+		},
+
+		/**
+		 * selectionChange of every multi-select that may offer "הכל". Only settles
+		 * "הכל" - the filtering itself still waits for selectionFinish, as before.
+		 *
+		 * @param {sap.ui.base.Event} oEvent selectionChange of a MultiComboBox
+		 */
+		onMultiSelectChange: function (oEvent) {
+			MultiSelectAll.onSelectionChange(oEvent);
+		},
+
+		/** "הכל" and the all-selected look, after a selection set from code. */
+		_syncSelectAll: function () {
+			var oView = this.getView();
+			SELECT_ALL_FILTERS.forEach(function (oFilter) {
+				MultiSelectAll.sync(oView.byId(oFilter.controlId));
 			});
 		},
 
@@ -321,6 +398,8 @@ sap.ui.define([
 			// The toggle is part of the filter state, so "איפוס פילטרים" clears it
 			// as well; the Switch follows the model through its two-way binding.
 			oView.getModel("view").setProperty("/oldReports", false);
+
+			this._syncSelectAll();
 		},
 
 		/**
@@ -359,6 +438,7 @@ sap.ui.define([
 				this._setDefaultFilters();
 				oView.byId("monthFilter").setSelectedKeys([]);
 				oView.byId("yearFilter").setSelectedKeys([String(oldReportsYear())]);
+				this._syncSelectAll();
 			}
 			oView.getModel("view").setProperty("/oldReports", bOn);
 
@@ -433,9 +513,10 @@ sap.ui.define([
 		 */
 		_loadData: function () {
 			var oView = this.getView();
+			// the real keys - "הכל" is not a year or a month
 			var oPeriod = buildPeriod(
-				oView.byId("yearFilter").getSelectedKeys(),
-				oView.byId("monthFilter").getSelectedKeys()
+				MultiSelectAll.getSelectedKeys(oView.byId("yearFilter")),
+				MultiSelectAll.getSelectedKeys(oView.byId("monthFilter"))
 			);
 
 			oView.setBusy(true);
@@ -528,13 +609,16 @@ sap.ui.define([
 		/** Reads the current UI state into a plain object. */
 		_readFilterState: function () {
 			var oView = this.getView();
+			// Everything checked - "הכל" or every option by hand - is no restriction,
+			// as nothing checked always was. See MultiSelectAll.getFilterKeys.
 			var fnKeys = function (sId) {
-				return oView.byId(sId).getSelectedKeys();
+				return MultiSelectAll.getFilterKeys(oView.byId(sId));
 			};
 
 			// On both controls "ALL" is the pseudo-key for "no restriction".
 			var sStatus = oView.byId("statusTabBar").getSelectedKey();
-			var aHandledBy = fnKeys("handledByFilter").filter(function (s) { return s !== ALL; });
+			var aHandledBy = oView.byId("handledByFilter").getSelectedKeys()
+				.filter(function (s) { return s !== ALL; });
 
 			// The tabs and the field are two views of the same dimension, so a
 			// field selection that merely mirrors the selected tab must not
@@ -591,6 +675,9 @@ sap.ui.define([
 			if (oState.search) {
 				aFilters.push(new Filter({
 					filters: [
+						// both name orders: as shown (family name first) and as
+						// people tend to type it (first name first)
+						new Filter("employeeDisplayName", FilterOperator.Contains, oState.search),
 						new Filter("employeeName", FilterOperator.Contains, oState.search),
 						new Filter("employeeNumber", FilterOperator.Contains, oState.search),
 						new Filter("branch", FilterOperator.Contains, oState.search),
@@ -660,7 +747,7 @@ sap.ui.define([
 		/** Plain-JS mirror of _buildBaseFilters, used for counting. */
 		_matchesBase: function (oItem, oState) {
 			if (oState.search) {
-				var sHay = [oItem.employeeName, oItem.employeeNumber, oItem.branch,
+				var sHay = [oItem.employeeDisplayName, oItem.employeeName, oItem.employeeNumber, oItem.branch,
 					oItem.unit, oItem.managerName].join(" ").toLowerCase();
 				if (sHay.indexOf(oState.search) === -1) {
 					return false;
@@ -718,12 +805,60 @@ sap.ui.define([
 
 		_onSortConfirm: function (oEvent) {
 			var oParams = oEvent.getParameters();
-			var oBinding = this.byId("reportsTable").getBinding("items");
-			if (oParams.sortItem) {
-				oBinding.sort(new Sorter(oParams.sortItem.getKey(), oParams.sortDescending));
-			} else {
-				oBinding.sort([]);
+			this._applySort(oParams.sortItem ? oParams.sortItem.getKey() : "", oParams.sortDescending);
+		},
+
+		/**
+		 * A click anywhere in a column's header cell - not only on its text, the
+		 * same as on נתוני כל העובדים: sorts by that column, ascending first; each
+		 * further click on the same header flips the direction.
+		 *
+		 * The cell is found from the click target, and the sort key from the
+		 * header Text inside it (its "sortKey" CustomData). A cell without one -
+		 * היעדרויות, השתלמויות - and any click outside the header row are ignored.
+		 *
+		 * @param {jQuery.Event} oEvent click, delegated from the table
+		 */
+		_onHeaderClick: function (oEvent) {
+			var oTarget = oEvent.target;
+			var oCell = oTarget && oTarget.closest && oTarget.closest(".sapMListTblHeaderCell");
+			var oHeaderDom = oCell && oCell.querySelector(".mtSortHeader");
+			var oHeader = oHeaderDom && sap.ui.getCore().byId(oHeaderDom.id);
+			var sKey = oHeader && oHeader.data("sortKey");
+			if (!COLUMN_SORTS[sKey]) {
+				return;
 			}
+			var oCurrent = this._oColumnSort;
+			this._applySort(sKey, oCurrent.key === sKey ? !oCurrent.descending : false);
+		},
+
+		/**
+		 * The one place the table is sorted - from a header and from the מיון
+		 * dialog alike, so the arrow on the headers always shows the sort that is
+		 * really applied. An empty key removes the sort.
+		 *
+		 * @param {string}  sKey        a COLUMN_SORTS key, "" for none
+		 * @param {boolean} bDescending direction
+		 */
+		_applySort: function (sKey, bDescending) {
+			var oSort = COLUMN_SORTS[sKey];
+			var oBinding = this.byId("reportsTable").getBinding("items");
+
+			this._oColumnSort = { key: oSort ? sKey : "", descending: !!oSort && !!bDescending };
+
+			if (oBinding) {
+				oBinding.sort(oSort ? oSort.paths.map(function (sPath) {
+					return new Sorter(sPath, !!bDescending, false, compareValues);
+				}) : []);
+			}
+
+			Object.keys(COLUMN_SORTS).forEach(function (sColumnKey) {
+				var oColumn = this.byId(COLUMN_SORTS[sColumnKey].columnId);
+				if (oColumn) {
+					oColumn.setSortIndicator(sColumnKey !== this._oColumnSort.key ? "None"
+						: (this._oColumnSort.descending ? "Descending" : "Ascending"));
+				}
+			}, this);
 		},
 
 		/* =============================== export =============================== */
@@ -733,7 +868,7 @@ sap.ui.define([
 			var oBinding = oTable.getBinding("items");
 
 			var aCols = [
-				{ label: this._getText("mrColEmployeeName"), property: "employeeName" },
+				{ label: this._getText("mrColEmployeeName"), property: "employeeDisplayName" },
 				{ label: this._getText("mrColEmployeeNumber"), property: "employeeNumber" },
 				{ label: this._getText("mrColPopulation"), property: "population" },
 				{ label: this._getText("mrColBranch"), property: "branch" },
@@ -974,7 +1109,7 @@ sap.ui.define([
 			var oRow = oCtx.getObject();
 			// TODO: navigate to the report detail. Placeholder for now:
 			MessageToast.show(this._getText("mrOpenReportPlaceholder",
-				[oRow.employeeName, oRow.employeeNumber]));
+				[oRow.employeeDisplayName, oRow.employeeNumber]));
 		},
 
 		/** היעדרויות - leaves for that employee's absences screen. */
@@ -1006,7 +1141,7 @@ sap.ui.define([
 		_toastRowAction: function (oEvent, sWhatKey) {
 			var oRow = oEvent.getSource().getBindingContext("reports").getObject();
 			MessageToast.show(this._getText("mrRowActionPlaceholder",
-				[this._getText(sWhatKey), oRow.employeeName, oRow.employeeNumber]));
+				[this._getText(sWhatKey), oRow.employeeDisplayName, oRow.employeeNumber]));
 		},
 
 		/**

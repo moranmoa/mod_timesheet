@@ -38,11 +38,14 @@ const MARKER = "***file";
 // always reflects the current webapp - no manual re-copying. Add a file here
 // and it gets refreshed and packed automatically.
 const SOURCE_FILES = [
-	// פירוט ימי לימודים - only the files this change touches
-	"webapp/controller/Home.controller.js",
-	"webapp/controller/StudyDaysDialog.js",
-	"webapp/view/Home.view.xml",
-	"webapp/view/StudyDays.fragment.xml",
+	// מיון בלחיצה על כותרת עמודה + "הכל" בפילטרים + איפוס פילטרים בכל העובדים
+	// - only the files this change touches
+	"webapp/controller/AllEmployees.controller.js",
+	"webapp/controller/ManagerReports.controller.js",
+	"webapp/controller/MultiSelectAll.js",
+	"webapp/model/DataService.js",
+	"webapp/view/AllEmployees.view.xml",
+	"webapp/view/ManagerReports.view.xml",
 	"webapp/i18n/i18n_menager.properties",
 	"webapp/css/style.css"
 ];

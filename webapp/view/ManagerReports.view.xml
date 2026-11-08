@@ -37,6 +37,7 @@
 							id="yearFilter"
 							width="100%"
 							placeholder="{i18n>mrFilterAll}"
+							selectionChange=".onMultiSelectChange"
 							selectionFinish=".onRequestFilterChange"
 							items="{
 								path: 'options>/years',
@@ -53,6 +54,7 @@
 							id="monthFilter"
 							width="100%"
 							placeholder="{i18n>mrFilterAll}"
+							selectionChange=".onMultiSelectChange"
 							selectionFinish=".onRequestFilterChange"
 							items="{
 								path: 'options>/months',
@@ -69,6 +71,7 @@
 							id="populationFilter"
 							width="100%"
 							placeholder="{i18n>mrFilterPopulation}"
+							selectionChange=".onMultiSelectChange"
 							selectionFinish=".onFilterChange"
 							items="{
 								path: 'options>/populations',
@@ -85,6 +88,7 @@
 							id="branchFilter"
 							width="100%"
 							placeholder="{i18n>mrFilterAll}"
+							selectionChange=".onMultiSelectChange"
 							selectionFinish=".onFilterChange"
 							items="{
 								path: 'options>/branches',
@@ -101,6 +105,7 @@
 							id="unitFilter"
 							width="100%"
 							placeholder="{i18n>mrFilterAll}"
+							selectionChange=".onMultiSelectChange"
 							selectionFinish=".onFilterChange"
 							items="{
 								path: 'options>/units',
@@ -126,6 +131,7 @@
 							id="managerFilter"
 							width="100%"
 							placeholder="{i18n>mrFilterAll}"
+							selectionChange=".onMultiSelectChange"
 							selectionFinish=".onFilterChange"
 							items="{
 								path: 'options>/managers',
@@ -332,30 +338,53 @@
 
 				<columns>
 					<!-- Widths follow the frame: employee name 230px, wizard 147px,
-					     row action 33px - each plus the 16px cell inset. -->
-					<Column width="15rem" hAlign="Begin">
-						<Text text="{i18n>mrColEmployeeName}" />
+					     row action 33px - each plus the 16px cell inset.
+
+					     Column header sorting: a press anywhere in a data column's
+					     header cell sorts by it - ascending first, the next press on
+					     the same header descending - as on נתוני כל העובדים. The
+					     sort key travels on the header Text's CustomData, which is how
+					     _onHeaderClick finds it from the cell; the column ids are what
+					     the arrow (sortIndicator) is drawn on. -->
+					<Column id="mrColEmployeeName" width="15rem" hAlign="Begin">
+						<Text text="{i18n>mrColEmployeeName}" class="mtSortHeader" tooltip="{i18n>mrSortByColumn}">
+							<customData><core:CustomData key="sortKey" value="employeeName" /></customData>
+						</Text>
 					</Column>
-					<Column width="7rem" hAlign="Begin" minScreenWidth="Tablet" demandPopin="true">
-						<Text text="{i18n>mrColEmployeeNumber}" />
+					<Column id="mrColEmployeeNumber" width="7rem" hAlign="Begin" minScreenWidth="Tablet" demandPopin="true">
+						<Text text="{i18n>mrColEmployeeNumber}" class="mtSortHeader" tooltip="{i18n>mrSortByColumn}">
+							<customData><core:CustomData key="sortKey" value="employeeNumber" /></customData>
+						</Text>
 					</Column>
-					<Column hAlign="Begin" minScreenWidth="Tablet" demandPopin="true">
-						<Text text="{i18n>mrColPopulation}" />
+					<Column id="mrColPopulation" hAlign="Begin" minScreenWidth="Tablet" demandPopin="true">
+						<Text text="{i18n>mrColPopulation}" class="mtSortHeader" tooltip="{i18n>mrSortByColumn}">
+							<customData><core:CustomData key="sortKey" value="population" /></customData>
+						</Text>
 					</Column>
-					<Column hAlign="Begin" minScreenWidth="Desktop" demandPopin="true">
-						<Text text="{i18n>mrColBranch}" />
+					<Column id="mrColBranch" hAlign="Begin" minScreenWidth="Desktop" demandPopin="true">
+						<Text text="{i18n>mrColBranch}" class="mtSortHeader" tooltip="{i18n>mrSortByColumn}">
+							<customData><core:CustomData key="sortKey" value="branch" /></customData>
+						</Text>
 					</Column>
-					<Column hAlign="Begin" minScreenWidth="Desktop" demandPopin="true">
-						<Text text="{i18n>mrColUnit}" />
+					<Column id="mrColUnit" hAlign="Begin" minScreenWidth="Desktop" demandPopin="true">
+						<Text text="{i18n>mrColUnit}" class="mtSortHeader" tooltip="{i18n>mrSortByColumn}">
+							<customData><core:CustomData key="sortKey" value="unit" /></customData>
+						</Text>
 					</Column>
-					<Column hAlign="Begin" minScreenWidth="Desktop" demandPopin="true">
-						<Text text="{i18n>mrColDirectManager}" />
+					<Column id="mrColDirectManager" hAlign="Begin" minScreenWidth="Desktop" demandPopin="true">
+						<Text text="{i18n>mrColDirectManager}" class="mtSortHeader" tooltip="{i18n>mrSortByColumn}">
+							<customData><core:CustomData key="sortKey" value="managerName" /></customData>
+						</Text>
 					</Column>
-					<Column width="8rem" hAlign="Begin" minScreenWidth="Tablet" demandPopin="true">
-						<Text text="{i18n>mrColApprovalMonth}" />
+					<Column id="mrColApprovalMonth" width="8rem" hAlign="Begin" minScreenWidth="Tablet" demandPopin="true">
+						<Text text="{i18n>mrColApprovalMonth}" class="mtSortHeader" tooltip="{i18n>mrSortByColumn}">
+							<customData><core:CustomData key="sortKey" value="approvalMonthKey" /></customData>
+						</Text>
 					</Column>
-					<Column width="11.25rem" hAlign="Center">
-						<Text text="{i18n>mrColProcess}" />
+					<Column id="mrColProcess" width="11.25rem" hAlign="Center">
+						<Text text="{i18n>mrColProcess}" class="mtSortHeader" tooltip="{i18n>mrSortByColumn}">
+							<customData><core:CustomData key="sortKey" value="processStep" /></customData>
+						</Text>
 					</Column>
 
 					<!-- היעדרויות / השתלמויות. Action columns, not data: each holds a
@@ -384,7 +413,7 @@
 							<!-- שם עובד - opens the report (replaces the row's
 							     former expand button) -->
 							<Link
-								text="{reports>employeeName}"
+								text="{reports>employeeDisplayName}"
 								class="mtEmpName"
 								press=".onOpenReport" />
 

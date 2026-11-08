@@ -357,12 +357,23 @@
    row (§3a), so no z-index is involved - the placeholder simply should not have
    been drawn.
 
-   :not(.aeAllSelected) keeps נתוני כל העובדים working the other way round:
-   there every option starts checked, §8b hides the tokenizer while the
-   selection is complete, and the placeholder is then the only thing left to say
-   "הכל" - the tokens still exist, they are just not drawn. */
-.mtFilterField .sapMMultiComboBoxHasToken:not(.aeAllSelected) .sapMInputBaseInner::placeholder {
+   :not(.mtAllSelected) keeps a fully checked field working the other way round:
+   §3c hides the tokenizer while the selection is complete, and the placeholder
+   is then the only thing left to say "הכל" - the tokens still exist, they are
+   just not drawn. */
+.mtFilterField .sapMMultiComboBoxHasToken:not(.mtAllSelected) .sapMInputBaseInner::placeholder {
 	color: transparent;
+}
+
+/* 3c. A fully checked multi-select.
+   ------------------------------------------------------------------------
+   Every option checked - on entry to נתוני כל העובדים, or through the "הכל"
+   option either screen offers on a long list (controller/MultiSelectAll.js) -
+   means "no restriction", and as up to hundreds of tokens in a 44px pill it
+   carries no information. The tokenizer is collapsed and the field falls back
+   to its "הכל" placeholder. MultiSelectAll.sync adds/removes .mtAllSelected. */
+.mtFilterField .sapMMultiComboBox.mtAllSelected .sapMTokenizer {
+	display: none;
 }
 
 /* Tokens get the room before the typing area does.
@@ -1107,6 +1118,30 @@
 	color: var(--mt-text-primary);
 }
 
+/* A click anywhere in a sortable header cell sorts by it (_onHeaderClick in
+   ManagerReports.controller.js), so the whole cell takes the pointer - the
+   cells of the action columns, which carry no .mtSortHeader, do not. The arrow
+   comes from the column's sortIndicator. */
+.mtTable .sapMListTblHeaderCell:has(.mtSortHeader) {
+	cursor: pointer;
+}
+
+.mtTable .sapMListTblHeaderCell:has(.mtSortHeader):hover {
+	background-color: var(--mt-color-brand-tint);
+}
+
+/* The arrow in the header's colour - the same rule נתוני כל העובדים gives its
+   own (8c), so both screens draw one and the same arrow. */
+.mtTable [aria-sort] > .sapMColumnHeader::after {
+	color: var(--mt-text-primary);
+}
+
+/* sap.ui.table draws its own header cells: the pointer says a press there
+   sorts (onColumnSelect). */
+.aeTable .sapUiTableHeaderCell {
+	cursor: pointer;
+}
+
 /* --- rows ------------------------------------------------------------- */
 .mtTable .sapMListTblRow,
 .mtRow {
@@ -1767,12 +1802,11 @@
 	flex-basis: 320px;
 }
 
-/* Every multi-select starts fully checked, which UI5 renders as a row of tokens
-   inside a 44px pill. While the selection is complete it carries no
-   information, so the tokenizer is collapsed and the field falls back to its
-   "הכל" placeholder. The controller adds/removes .aeAllSelected. */
-.aeFilterField .sapMMultiComboBox.aeAllSelected .sapMTokenizer {
-	display: none;
+/* איפוס פילטרים is the footer row's only child here, so it must not pick up
+   the centring §3b gives the first child (the "מסננים נוספים" toggle there).
+   It sits at the inline end, as on דיווחי עובדים. */
+.mtFilterActions.aeFilterActions > .sapMFlexItem:first-child {
+	margin-inline: auto 0;
 }
 
 /* ---------------------------------------------------------------------------
@@ -1877,6 +1911,32 @@
 
 .aeTable .sapUiTableHeaderCell .sapMText {
 	font: var(--mt-text-column-header);
+	color: var(--mt-text-primary);
+}
+
+/* Sort arrow right beside the header text, as on דיווחי עובדים.
+   ------------------------------------------------------------------------
+   sap.ui.table draws the arrow as the inner cell's ::after, after a wrapper
+   div that the theme lets grow (flex: 1 1 auto) - so the arrow was pushed to
+   the far (left, in RTL) edge of the cell, while sap.m.Table puts it next to
+   the text. The wrapper now only takes the text's width.
+
+   The wrapper also carried the column's hAlign (an inline justify-content), so
+   that moves to the inner cell: a centred column renders it with an inline
+   `text-align: center`, which is what the attribute selector picks up. Begin
+   columns need nothing - the row already starts at the inline start.
+
+   Size and colour follow sap.m's arrow, so the two screens match. */
+.aeTable .sapUiTableHeaderDataCell > .sapUiTableCellInner > div:first-child {
+	flex: 0 1 auto;
+}
+
+.aeTable .sapUiTableHeaderDataCell > .sapUiTableCellInner[style*="center"] {
+	justify-content: center;
+}
+
+.aeTable .sapUiTableColSorted.sapUiTableHeaderDataCell > .sapUiTableCellInner::after {
+	font-size: 0.875rem;
 	color: var(--mt-text-primary);
 }
 
