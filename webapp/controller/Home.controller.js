@@ -150,6 +150,16 @@ sap.ui.define([
 			var oModel = this.getView().getModel("home");
 			var oData = this._toViewData(oRaw);
 
+			// אוכלוסיה: the service narrows populationOptions to the population it
+			// was asked for, so taking them as-is would leave only that one in the
+			// Select and force a detour through "הכל" to pick another. The list is
+			// therefore refreshed only from an unfiltered (ALL) response and kept
+			// as it is while a single population is selected.
+			if (this._oRequest.populationKey === "ALL" || !this._aPopulationOptions) {
+				this._aPopulationOptions = oData.populationOptions;
+			}
+			oData.populationOptions = this._aPopulationOptions;
+
 			Object.keys(oData).forEach(function (sKey) {
 				oModel.setProperty("/" + sKey, oData[sKey]);
 			});

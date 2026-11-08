@@ -59,7 +59,7 @@
 					     alignItems here rather than in CSS: the switch is narrower than
 					     its column, and sap.m.FlexBox carries its own alignment class
 					     that a stylesheet rule of equal specificity would only race. -->
-					<VBox class="mtFilterField aeFilterField aeFilterFieldSwitch" alignItems="Center">
+					<VBox class="mtFilterField mtFilterFieldSwitch aeFilterField aeFilterFieldSwitch" alignItems="Center">
 						<Label
 							text="{i18n>aeFilterInactive}"
 							labelFor="aeInactiveSwitch"
@@ -297,9 +297,11 @@
 					     across all columns, so the design's full-width grey band is
 					     rendered as the table's own extension strip, flush against
 					     the column header. The count is live: it follows the current
-					     filter and search. -->
+					     filter and search.
+
+					     Only the count is shown - no "עובדים תחת ניהולי" caption - set
+					     bold like the count line on דוחות מנהל. -->
 					<HBox class="aeGroupHeader" alignItems="Center">
-						<Text text="{i18n>aeGroupUnderMyManagement}" class="aeGroupHeaderText" />
 						<Text
 							class="aeGroupHeaderCount"
 							text="{

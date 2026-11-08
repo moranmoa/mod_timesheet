@@ -1,0 +1,142 @@
+<core:FragmentDefinition
+	xmlns="sap.m"
+	xmlns:core="sap.ui.core">
+
+	<!-- ============================================================================
+	     פירוט ימי לימודים : a popup, opened from דף הבית.
+	     ============================================================================
+	     Everything this dialog needs lives in three places and nowhere else:
+
+	       view/StudyDays.fragment.xml      this file
+	       controller/StudyDaysDialog.js    open / close / data / formatting
+	       css/style.css §14                .sdDialog
+
+	     The fragment is loaded with StudyDaysDialog as its controller, and the
+	     dialog carries its own "sd" model, so the screen that opens it only has to
+	     call open() - it holds none of the dialog's state.
+
+	     A custom header and not `title`: the frame puts the date field beside the
+	     title and the close glyph opposite it, and Dialog's own header is a title
+	     only. Bar's contentLeft is the INLINE START, so in RTL it is the right.
+
+	     The total row is the table's column footers (<tfoot>), not a last item:
+	     it is not a row of data, and it must not be sorted or selected as one.
+	     ========================================================================= -->
+
+	<Dialog
+		id="studyDaysDialog"
+		contentWidth="82rem"
+		draggable="true"
+		class="sdDialog">
+
+		<customHeader>
+			<Bar class="sdHeader">
+				<contentLeft>
+					<Title text="{i18n>sdTitle}" level="H2" class="sdTitle" />
+					<DatePicker
+						id="studyDaysDate"
+						class="sdDate"
+						width="9.5rem"
+						displayFormat="dd/MM/yyyy"
+						valueFormat="yyyy-MM-dd"
+						value="{sd>/date}"
+						change=".onDateChange" />
+				</contentLeft>
+				<contentRight>
+					<Button
+						icon="sap-icon://decline"
+						type="Transparent"
+						class="sdClose"
+						tooltip="{i18n>sdClose}"
+						press=".onClose" />
+				</contentRight>
+			</Bar>
+		</customHeader>
+
+		<Table
+			id="studyDaysTable"
+			class="sdTable"
+			fixedLayout="true"
+			showSeparators="All"
+			noDataText="{i18n>sdNoData}"
+			items="{path: 'sd>/rows', templateShareable: false}">
+
+			<columns>
+				<Column width="16%">
+					<Text text="{i18n>sdColDescription}" />
+					<footer><Text text="{i18n>sdTotalMonth}" class="sdStrong" /></footer>
+				</Column>
+				<Column width="8%" hAlign="Center">
+					<Text text="{i18n>sdColFrom}" />
+				</Column>
+				<Column width="4%" hAlign="Center">
+					<Text text="{i18n>sdColDay}" />
+				</Column>
+				<Column width="8%" hAlign="Center">
+					<Text text="{i18n>sdColTo}" />
+				</Column>
+				<Column width="4%" hAlign="Center">
+					<Text text="{i18n>sdColDay}" />
+				</Column>
+				<Column width="7%" hAlign="Center">
+					<Text text="{i18n>sdColQuota}" />
+					<footer><Text text="{sd>/total/quotaText}" /></footer>
+				</Column>
+				<Column width="7%" hAlign="Center">
+					<Text text="{i18n>sdColUsed}" />
+					<footer><Text text="{sd>/total/usedText}" /></footer>
+				</Column>
+				<Column width="11%" hAlign="Center">
+					<Text text="{i18n>sdColPercent}" />
+				</Column>
+				<Column width="16%">
+					<Text text="{i18n>sdColAbsenceType}" />
+				</Column>
+				<Column width="19%">
+					<Text text="{i18n>sdColNote}" />
+					<!-- The month summary: the frame spans it under the last two
+					     columns; it sits in the last one, which is the wider. -->
+					<footer>
+						<VBox renderType="Bare" class="sdSummary">
+							<FormattedText htmlText="{sd>/total/summaryHtml}" class="sdSummaryText" />
+							<HBox renderType="Bare" class="sdSummaryTrack">
+								<HBox renderType="Bare" class="sdSummaryFill" width="{sd>/total/percentWidth}" />
+							</HBox>
+						</VBox>
+					</footer>
+				</Column>
+			</columns>
+
+			<items>
+				<ColumnListItem>
+					<Text text="{sd>description}" wrapping="false" tooltip="{sd>description}" class="sdStrong" />
+					<Text text="{sd>fromText}" />
+					<Text text="{sd>fromDay}" />
+					<Text text="{sd>toText}" />
+					<Text text="{sd>toDay}" />
+					<Text text="{sd>quotaText}" />
+					<Text text="{sd>usedText}" />
+					<!-- Track + fill, the percentage inside the fill at its far
+					     end - the same build as the Home metric bar (§11h), since a
+					     div's width is the one thing a binding can drive. -->
+					<HBox renderType="Bare" class="sdBar">
+						<HBox renderType="Bare" class="sdBarFill" width="{sd>percentWidth}">
+							<Text text="{sd>percentText}" class="sdBarText" />
+						</HBox>
+					</HBox>
+					<Text text="{sd>absenceType}" wrapping="false" tooltip="{sd>absenceType}" />
+					<Text text="{sd>note}" wrapping="false" tooltip="{sd>note}" />
+				</ColumnListItem>
+			</items>
+		</Table>
+
+		<beginButton>
+			<Button
+				text="{i18n>sdConfirm}"
+				type="Emphasized"
+				class="mtButtonPrimary"
+				press=".onConfirm" />
+		</beginButton>
+
+	</Dialog>
+</core:FragmentDefinition>

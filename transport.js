@@ -38,14 +38,19 @@ const MARKER = "***file";
 // always reflects the current webapp - no manual re-copying. Add a file here
 // and it gets refreshed and packed automatically.
 const SOURCE_FILES = [
-	// מיון בלחיצה על כותרת עמודה + "הכל" בפילטרים + איפוס פילטרים בכל העובדים
-	// - only the files this change touches
+	// כל הקבצים שהשתנו ב-08/11/2026: ימי לימוד, מיון/"הכל"/איפוס פילטרים,
+	// ותמונת המשתמש בכותרת (HCMFAB_COMMON_SRV)
+	"webapp/Component.js",
 	"webapp/controller/AllEmployees.controller.js",
+	"webapp/controller/Home.controller.js",
 	"webapp/controller/ManagerReports.controller.js",
 	"webapp/controller/MultiSelectAll.js",
+	"webapp/controller/StudyDaysDialog.js",
 	"webapp/model/DataService.js",
 	"webapp/view/AllEmployees.view.xml",
+	"webapp/view/Home.view.xml",
 	"webapp/view/ManagerReports.view.xml",
+	"webapp/view/StudyDays.fragment.xml",
 	"webapp/i18n/i18n_menager.properties",
 	"webapp/css/style.css"
 ];

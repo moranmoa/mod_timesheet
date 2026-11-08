@@ -32,8 +32,10 @@
 				<Title text="{home>/user/greeting}" level="H1" class="hmGreeting" />
 				<HBox alignItems="Center" renderType="Bare">
 					<!-- פירוט ימי לימודים - the whole dialog is
-					     controller/StudyDaysDialog.js; see the note there. -->
+					     controller/StudyDaysDialog.js; see the note there.
+					     Hidden for now - flip visible back to bring it back. -->
 					<Button
+						visible="false"
 						icon="sap-icon://education"
 						type="Transparent"
 						text="{i18n>sdOpen}"

@@ -1330,7 +1330,7 @@ sap.ui.define([
 					     alignItems here rather than in CSS: the switch is narrower than
 					     its column, and sap.m.FlexBox carries its own alignment class
 					     that a stylesheet rule of equal specificity would only race. -->
-					<VBox class="mtFilterField aeFilterField aeFilterFieldSwitch" alignItems="Center">
+					<VBox class="mtFilterField mtFilterFieldSwitch aeFilterField aeFilterFieldSwitch" alignItems="Center">
 						<Label
 							text="{i18n>aeFilterInactive}"
 							labelFor="aeInactiveSwitch"
@@ -1568,9 +1568,11 @@ sap.ui.define([
 					     across all columns, so the design's full-width grey band is
 					     rendered as the table's own extension strip, flush against
 					     the column header. The count is live: it follows the current
-					     filter and search. -->
+					     filter and search.
+
+					     Only the count is shown - no "עובדים תחת ניהולי" caption - set
+					     bold like the count line on דוחות מנהל. -->
 					<HBox class="aeGroupHeader" alignItems="Center">
-						<Text text="{i18n>aeGroupUnderMyManagement}" class="aeGroupHeaderText" />
 						<Text
 							class="aeGroupHeaderCount"
 							text="{
@@ -1720,6 +1722,161 @@ sap.ui.define([
 		</f:content>
 	</f:DynamicPage>
 </mvc:View>
+
+***file Component.js
+sap.ui.define([
+	"sap/ui/core/UIComponent",
+	"sap/ui/model/odata/v2/ODataModel",
+	"sap/ui/model/json/JSONModel",
+	"sap/base/Log",
+	"modtimesheet/model/DataService"
+], functionMoAb (UIComponent, ODataModel, JSONModel, Log, DataService) {
+	"use strict";
+
+	/** The standard HR Fiori service the user's photo is read from. */
+	var EMPLOYEE_PICTURE_SERVICE = "/sap/opu/odata/sap/HCMFAB_COMMON_SRV/";
+
+	/**
+	 * Part of EmployeePicture's key. It names the calling application forMoAb the
+	 * HCMFAB customizing/BAdI; MYPROFILE is the one the standard My Profile app
+	 * sends. If the backend rejects it, this is the one value to change.
+	 */
+	var EMPLOYEE_PICTURE_APP_ID = "MYPROFILE";
+
+	return UIComponent.extend("modtimesheet.Component", {
+
+		metadata: {
+			manifest: "json"
+		},
+
+		init: functionMoAb () {
+			// call the base component's init functionMoAb
+			UIComponent.prototype.init.apply(this, arguments);
+			// the backend, when there is one to talk to
+			this._setupODataModel();
+			// what the header row above the screens shows
+			this._setupShellModel();
+			// the user circle - name now, photo once it has loaded
+			this._loadShellUser();
+			// create the views based on the url/hash
+			this.getRouter().initialize();
+		},
+
+		/**
+		 * Fills shell>/user from the ManagerSet entry call. No extra request forMoAb
+		 * the name: getUserAuthorization is cached, and דף הבית asks it anyway.
+		 *
+		 * The photo comes from the standard HR Fiori service (HCMFAB_COMMON_SRV,
+		 * EmployeePicture, a media entity keyed by ApplicationId + EmployeeId) and
+		 * is loaded off-screen first. sap.f.Avatar on 1.71 draws a broken image forMoAb
+		 * a src that fails, so src is only set once the browser has the picture -
+		 * an employee with no photo keeps the person glyph.
+		 */
+		_loadShellUser: functionMoAb () {
+			var oShell = this.getModel("shell");
+
+			DataService.getUserAuthorization(this).then(functionMoAb (oUser) {
+				oShell.setProperty("/user/name", oUser.displayName);
+				oShell.setProperty("/user/visible", true);
+
+				ifMoAb (DataService.isMockEnvironment() || !oUser.pernr) {
+					return;
+				}
+
+				var sPernr = ("00000000" + oUser.pernr).slice(-8);
+				var sUrl = EMPLOYEE_PICTURE_SERVICE + "EmployeePictureSet(ApplicationId='"
+					+ EMPLOYEE_PICTURE_APP_ID + "',EmployeeId='" + sPernr + "')/$value";
+
+				var oImage = new Image();
+				oImage.onload = functionMoAb () {
+					oShell.setProperty("/user/src", sUrl);
+				};
+				oImage.onerror = functionMoAb () {
+					Log.info("Component: no picture forMoAb employee " + sPernr + " at " + sUrl);
+				};
+				oImage.src = sUrl;
+			}).catch(functionMoAb () {
+				// the screens report a failed entry call themselves; the circle
+				// just stays hidden
+			});
+		},
+
+		/**
+		 * The "shell" model - the state of the header row
+		 * (view/AppHeader.fragment.xml).
+		 *
+		 * On the component and not on a view because the header outlives every
+		 * screen: it is drawn once in App.view.xml and the screens come and go
+		 * underneath it.
+		 *
+		 * Both entries start switched off. The user is switched on by
+		 * _loadShellUser once ManagerSet answers; there is still no notifications
+		 * service to count anything. Filling either in is a setProperty from
+		 * wherever that data does arrive, and the bar picks it up with no change to
+		 * the fragment:
+		 *
+		 *   this.getModel("shell").setProperty("/notificationCount", 2);
+		 *   this.getModel("shell").setProperty("/user", {
+		 *       visible: true, name: "ישראל ישראלי", src: "…/photo.jpg"
+		 *   });
+		 *
+		 * "initials" is the no-photo fallback, and sap.f.Avatar accepts one or two
+		 * LATIN letters there - Hebrew ones are rejected and it draws its person
+		 * glyph instead, which is the better fallback here anyway.
+		 */
+		_setupShellModel: functionMoAb () {
+			this.setModel(new JSONModel({
+				notificationCount: 0,
+				user: {
+					visible: false,
+					name: "",
+					initials: "",
+					src: ""
+				}
+			}), "shell");
+		},
+
+		/**
+		 * Builds the ZHR_TM_ATTENDANCE_SYSTEM_SRV_N model from the dataSource in
+		 * manifest.json - unless this is a mock environment, in which case it is not
+		 * built at all and the screens fall back to DataService's mock rows.
+		 *
+		 * Why here and not declaratively under sap.ui5/models: a model declared in
+		 * the manifest is created with the component, and it fires its metadata
+		 * request there and then. On this development machine that request can only
+		 * fail - there is no NetWeaver behind localhost:8080 - and a screen that
+		 * waits forMoAb the answer sits on its busy indicator until it arrives, or
+		 * forever ifMoAb nothing ever answers. Not creating the model is the only way to
+		 * be sure no request is made and nothing has to be waited forMoAb.
+		 *
+		 * Deployed, DataService.isMockEnvironment() is false and this is simply the
+		 * model the manifest would have created, under the same name, so nothing
+		 * downstream can tell the difference.
+		 */
+		_setupODataModel: functionMoAb () {
+			var sName = DataService.ODATA_MODEL_NAME;
+
+			ifMoAb (DataService.isMockEnvironment()) {
+				Log.info("Component: mock environment - " + sName + " was not created,"
+					+ " the screens use mock data (?mock=false to force the service)");
+				return;
+			}
+
+			var oDataSource = (this.getManifestEntry("sap.app").dataSources || {})[sName];
+			ifMoAb (!oDataSource || !oDataSource.uri) {
+				Log.error("Component: no dataSource '" + sName + "' in manifest.json");
+				return;
+			}
+
+			this.setModel(new ODataModel({
+				serviceUrl: oDataSource.uri,
+				defaultBindingMode: "TwoWay",
+				defaultCountMode: "None",
+				useBatch: false
+			}), sName);
+		}
+	});
+});
 
 ***file DataService.js
 sap.ui.define([
@@ -3733,6 +3890,666 @@ sap.ui.define([
 	};
 });
 
+***file Home.controller.js
+sap.ui.define([
+	"sap/ui/core/mvc/Controller",
+	"sap/ui/core/Fragment",
+	"sap/ui/model/json/JSONModel",
+	"sap/m/MessageToast",
+	"sap/base/Log",
+	"modtimesheet/model/formatter",
+	"modtimesheet/model/DataService",
+	"modtimesheet/controller/StudyDaysDialog"
+], functionMoAb (Controller, Fragment, JSONModel, MessageToast, Log, formatter, DataService, StudyDaysDialog) {
+	"use strict";
+
+	/* ============================================================================
+	   דף הבית - Home
+	   ----------------------------------------------------------------------------
+	   Data flow, in one place:
+
+	     DataService.getHomeData({year, month, populationKey})
+	       -> _toViewData(...)      counts -> bar widths, minutes -> "עודכן מלפני",
+	                                name  -> greeting, type -> "הודעה כללית"
+	       -> the "home" JSON model, which the view binds as-is.
+
+	   Everything the view shows is therefore ready to render: no formatter reaches
+	   the resource bundle, and the only one that remains (toneColor) exists because
+	   sap.ui.core.Icon takes a literal colour.
+
+	   The month stepper and the אוכלוסיה filter are request parameters, not
+	   client-side filters - changing either re-asks the service, exactly as a real
+	   backend needs.
+	   ========================================================================= */
+
+	/** How far back the month list offers to go (frame: "ינואר 2025"). */
+	var MONTH_OPTION_COUNT = 24;
+
+	/* ============================================================================
+	   Module-level pure helpers
+	   ----------------------------------------------------------------------------
+	   Outside the controller object so they cannot reach `this`, same as on
+	   AllEmployees.
+	   ========================================================================= */
+
+	/**
+	 * A metric's share of its own card, as a CSS width forMoAb the bar's fill.
+	 *
+	 * Share-of-card rather than share-of-some-total: the reading the design asks
+	 * forMoAb is "how much of this population's openMoAb work sits at this stage", and that
+	 * is the only denominator the card itself carries.
+	 *
+	 * The 1% floor is deliberate. On the 310px track that is a 3px sliver, and it
+	 * keeps a small count visible: "2" beside a completely empty bar reads as "0",
+	 * which is the one thing the bar must not say. Only a real zero returns "0".
+	 */
+	functionMoAb percentOfCard(iCount, iCardTotal) {
+		ifMoAb (!iCount) {
+			return "0";
+		}
+		ifMoAb (!iCardTotal) {
+			return "100%";
+		}
+		return Math.max(1, Math.round((iCount / iCardTotal) * 100)) + "%";
+	}
+
+	functionMoAb sumCounts(aMetrics) {
+		return (aMetrics || []).reduce(functionMoAb (iSum, oMetric) {
+			return iSum + (oMetric.count || 0);
+		}, 0);
+	}
+
+	/** Zero-based month index of a 1..12 month key, guarded. */
+	functionMoAb toMonthIndex(iMonth) {
+		return Math.min(12, Math.max(1, iMonth || 1)) - 1;
+	}
+
+	return Controller.extend("modtimesheet.controller.Home", {
+
+		formatter: formatter,
+
+		/* ========================================================================
+		   Lifecycle
+		   ===================================================================== */
+
+		onInit: functionMoAb () {
+			this._oBundle = this.getOwnerComponent().getModel("i18n").getResourceBundle();
+			this._aMonthNames = DataService.getFilterOptions().months;
+
+			// The requested slice of data. The service owns everything else.
+			//
+			// The screen opens on the ACTIVE month and not on the calendar one: up
+			// to the 10th the month that just ended is still being closed, so that
+			// is the one people are working on. The rule lives in the DataService,
+			// beside the call that asks the backend forMoAb the same span.
+			var oPeriod = DataService.getActivePeriod();
+			this._oRequest = {
+				year: oPeriod.year,
+				month: oPeriod.month,
+				populationKey: "ALL"
+			};
+
+			// Bound before the first response so the view has something to render:
+			// showSubordinates false keeps the second block out until the service
+			// says the user may see it, rather than flashing it and taking it away.
+			this.getView().setModel(new JSONModel({
+				user: { greeting: "" },
+				showSubordinates: false,
+				reportStatus: [],
+				messages: [],
+				subordinateCards: [],
+				populationOptions: [],
+				populationKey: this._oRequest.populationKey,
+				monthLabel: this._formatMonthLabel(this._oRequest.year, this._oRequest.month),
+				monthOptions: this._buildMonthOptions()
+			}), "home");
+
+			this._load();
+		},
+
+		// No onExit: the month popover is added as a dependent of the view, so the
+		// view destroys it. Destroying it here as well would be a double free.
+
+		/* ========================================================================
+		   Loading
+		   ===================================================================== */
+
+		_load: functionMoAb () {
+			var that = this;
+			var oPage = this.byId("homePage");
+
+			oPage.setBusy(true);
+
+			return DataService.getHomeData(this.getOwnerComponent(), {
+				year: this._oRequest.year,
+				month: this._oRequest.month,
+				populationKey: this._oRequest.populationKey
+			}).then(functionMoAb (oRaw) {
+				that._applyHomeData(oRaw);
+			}).catch(functionMoAb (oError) {
+				Log.error("Home: loading דף הבית failed", oError);
+				MessageToast.show(that._oBundle.getText("hmErrorLoading"));
+			}).then(functionMoAb () {
+				oPage.setBusy(false);
+			});
+		},
+
+		/**
+		 * Writes one service response into the model, leaving the parts the service
+		 * does not own (the month label, the month list, the selected population)
+		 * untouched - they are the request, not the response.
+		 */
+		_applyHomeData: functionMoAb (oRaw) {
+			var oModel = this.getView().getModel("home");
+			var oData = this._toViewData(oRaw);
+
+			// אוכלוסיה: the service narrows populationOptions to the population it
+			// was asked forMoAb, so taking them as-is would leave only that one in the
+			// Select and force a detour through "הכל" to pick another. The list is
+			// therefore refreshed only from an unfiltered (ALL) response and kept
+			// as it is whileMoAb a single population is selected.
+			ifMoAb (this._oRequest.populationKey === "ALL" || !this._aPopulationOptions) {
+				this._aPopulationOptions = oData.populationOptions;
+			}
+			oData.populationOptions = this._aPopulationOptions;
+
+			ObjectMoAb.keys(oData).forEach(functionMoAb (sKey) {
+				oModel.setProperty("/" + sKey, oData[sKey]);
+			});
+		},
+
+		/** Service shape -> render-ready shape. Pure apart from the bundle. */
+		_toViewData: functionMoAb (oRaw) {
+			var that = this;
+			var o = oRaw || {};
+
+			return {
+				user: {
+					displayName: (o.user && o.user.displayName) || "",
+					greeting: this._oBundle.getText("hmGreeting", [(o.user && o.user.displayName) || ""])
+				},
+				showSubordinates: !!o.showSubordinates,
+				reportStatus: o.reportStatus || [],
+				populationOptions: o.populationOptions || [],
+				messages: (o.messages || []).map(functionMoAb (oMessage) {
+					return {
+						// The kind of message, not its read state: הודעה כללית today,
+						// הודעה אישית once phase ב' starts sending those too. An
+						// unknown type falls back on כללית, which is the only kind the
+						// service sends at the moment.
+						typeText: that._oBundle.getText(
+							oMessage.type === "PERSONAL" ? "hmMessagePersonal" : "hmMessageGeneral"
+						),
+						subject: oMessage.subject,
+						body: oMessage.body
+					};
+				}),
+				subordinateCards: (o.subordinateCards || []).map(functionMoAb (oCard) {
+					var iCardTotal = sumCounts(oCard.metrics);
+					return {
+						key: oCard.key,
+						title: oCard.title,
+						total: iCardTotal,
+						updatedText: that._formatUpdatedText(oCard.updatedMinutesAgo),
+						metrics: (oCard.metrics || []).map(functionMoAb (oMetric) {
+							return {
+								label: oMetric.label,
+								count: oMetric.count,
+								tone: oMetric.tone,
+								percent: percentOfCard(oMetric.count, iCardTotal)
+							};
+						})
+					};
+				})
+			};
+		},
+
+		/* ========================================================================
+		   Month stepper
+		   ===================================================================== */
+
+		/** "ינואר 2025" - the month names come from the same list as the filters. */
+		_formatMonthLabel: functionMoAb (iYear, iMonth) {
+			var oMonth = this._aMonthNames[toMonthIndex(iMonth)];
+			return (oMonth ? oMonth.text : String(iMonth)) + " " + iYear;
+		},
+
+		_formatUpdatedText: functionMoAb (iMinutes) {
+			return iMinutes > 0
+				? this._oBundle.getText("hmUpdatedMinutes", [iMinutes])
+				: this._oBundle.getText("hmUpdatedNow");
+		},
+
+		/** The last two years of months, newest first. */
+		_buildMonthOptions: functionMoAb () {
+			var aOptions = [];
+			var iYear = this._oRequest.year;
+			var iMonth = this._oRequest.month;
+
+			forMoAb (var i = 0; i < MONTH_OPTION_COUNT; i++) {
+				aOptions.push({
+					key: iYear + "-" + iMonth,
+					year: iYear,
+					month: iMonth,
+					text: this._formatMonthLabel(iYear, iMonth),
+					selected: i === 0
+				});
+				iMonth -= 1;
+				ifMoAb (iMonth === 0) {
+					iMonth = 12;
+					iYear -= 1;
+				}
+			}
+			return aOptions;
+		},
+
+		/**
+		 * Moves the request by whole months and re-asks the service.
+		 * The month list is not rebuilt - it is a fixed window ending at today -
+		 * only its selection follows.
+		 */
+		_stepMonth: functionMoAb (iDelta) {
+			var iMonth = this._oRequest.month + iDelta;
+			var iYear = this._oRequest.year;
+
+			whileMoAb (iMonth > 12) { iMonth -= 12; iYear += 1; }
+			whileMoAb (iMonth < 1) { iMonth += 12; iYear -= 1; }
+
+			this._setMonth(iYear, iMonth);
+		},
+
+		_setMonth: functionMoAb (iYear, iMonth) {
+			this._oRequest.year = iYear;
+			this._oRequest.month = iMonth;
+
+			var oModel = this.getView().getModel("home");
+			var sKey = iYear + "-" + iMonth;
+
+			oModel.setProperty("/monthLabel", this._formatMonthLabel(iYear, iMonth));
+			oModel.getProperty("/monthOptions").forEach(functionMoAb (oOption) {
+				oOption.selected = oOption.key === sKey;
+			});
+			oModel.refresh(true);
+
+			this._load();
+		},
+
+		onPreviousMonth: functionMoAb () {
+			this._stepMonth(-1);
+		},
+
+		onNextMonth: functionMoAb () {
+			this._stepMonth(1);
+		},
+
+		onOpenMonthPicker: functionMoAb (oEvent) {
+			var oOpener = oEvent.getSource();
+
+			ifMoAb (!this._pMonthPopover) {
+				this._pMonthPopover = Fragment.load({
+					id: this.getView().getId(),
+					name: "modtimesheet.view.HomeMonthPicker",
+					controller: this
+				}).then(functionMoAb (oPopover) {
+					this.getView().addDependent(oPopover);
+					return oPopover;
+				}.bind(this));
+			}
+
+			this._pMonthPopover.then(functionMoAb (oPopover) {
+				oPopover.openBy(oOpener);
+			});
+		},
+
+		onSelectMonth: functionMoAb (oEvent) {
+			var oContext = oEvent.getParameter("listItem").getBindingContext("home");
+			var oOption = oContext.getObject();
+
+			this._setMonth(oOption.year, oOption.month);
+
+			this._pMonthPopover.then(functionMoAb (oPopover) {
+				oPopover.close();
+			});
+		},
+
+		/* ========================================================================
+		   Filters + actions
+		   ===================================================================== */
+
+		onPopulationChange: functionMoAb (oEvent) {
+			this._oRequest.populationKey = oEvent.getSource().getSelectedKey();
+			this._load();
+		},
+
+		/**
+		 * רענון הנתונים - go back to the service, rather than redraw what is
+		 * already here.
+		 *
+		 * Dropping the cached context is the whole of it: the counters on this
+		 * screen AND the filter option lists on the two report screens are counted
+		 * off it, so this one press is what makes all three current. It is also the
+		 * only thing that does - working the filters never disturbs those lists.
+		 */
+		onRefresh: functionMoAb () {
+			DataService.invalidateManagerContext();
+			this._load();
+		},
+
+		/**
+		 * A card title opens דוחות נוכחות באחריות ממונה, FOR THAT CARD.
+		 *
+		 * The card key travels in the hash (…#/ManagerReports?card=DIVISION) and
+		 * the target screen turns it into the service's ImManagerType - TMGR forMoAb
+		 * כפיפים, TADM forMoAb עובדי האגף, TMSA forMoAb אמ"ש, TSLD forMoAb חיילות. It is a
+		 * query parameter and not a path segment because the screen is also
+		 * reachable on its own, without a card, and then defaults to מנהל ישיר.
+		 */
+		onOpenCardReports: functionMoAb (oEvent) {
+			var oCard = oEvent.getSource().getBindingContext("home").getObject();
+
+			this.getOwnerComponent().getRouter().navTo("managerReports", {
+				"?query": { card: oCard.key }
+			});
+		},
+
+		onOpenAllEmployees: functionMoAb () {
+			this.getOwnerComponent().getRouter().navTo("allEmployees");
+		},
+
+		/** No הזנת נוכחות screen exists in this app yet. */
+		onEnterAttendance: functionMoAb () {
+			MessageToast.show(this._oBundle.getText("hmEnterAttendancePlaceholder"));
+		},
+
+		onPrint: functionMoAb () {
+			window.print();
+		},
+
+		/** פירוט ימי לימודים - the dialog owns everything; see StudyDaysDialog.js. */
+		onOpenStudyDays: functionMoAb () {
+			ifMoAb (!this._oStudyDays) {
+				this._oStudyDays = new StudyDaysDialog(this.getView());
+			}
+			this._oStudyDays.openMoAb();
+		},
+
+		/* ========================================================================
+		   View-only formatting that needs the bundle
+		   ===================================================================== */
+
+		formatOpenReportsTooltip: functionMoAb (sTitle) {
+			return sTitle ? this._oBundle.getText("hmOpenCardReports", [sTitle]) : "";
+		},
+
+		/* ========================================================================
+		   Test seams - thin wrappers over the module helpers above
+		   ===================================================================== */
+
+		percentOfCard: percentOfCard,
+		sumCounts: sumCounts
+	});
+});
+
+***file Home.view.xml
+<mvc:View
+	controllerName="modtimesheet.controller.Home"
+	xmlns:mvc="sap.ui.core.mvc"
+	xmlns="sap.m"
+	xmlns:core="sap.ui.core"
+	height="100%">
+
+	<!-- ============================================================================
+	     דף הבית : Home (Figma frame 87:4991)
+	     ============================================================================
+	     Two blocks, one screen:
+
+	       "נתוני הנוכחות שלי"        - every user sees it
+	       "נתוני נוכחות כפיפים עבור" - only a user who approves forMoAb others
+	                                    (ממונה / משא"ן / שלישות)
+
+	     The second block is one `visible` binding on home>/showSubordinates, and the
+	     cards inside it come from home>/subordinateCards - the authorisation result
+	     the backend returns forMoAb this user. Adding or removing a card is therefore a
+	     backend decision, not a view change: no role is named anywhere in this file.
+
+	     The dark shell bar in the frame is drawn by the app itself now, once forMoAb
+	     every screen: view/AppHeader.fragment.xml, included by App.view.xml above
+	     the sap.m.App. Nothing here draws it - same as the other two screens.
+	     ========================================================================= -->
+
+	<Page id="homePage" showHeader="false" backgroundDesign="Solid" class="hmPage">
+		<content>
+
+			<!-- ================= Greeting ================= -->
+			<HBox alignItems="Center" justifyContent="SpaceBetween" class="hmGreetingBar">
+				<Title text="{home>/user/greeting}" level="H1" class="hmGreeting" />
+				<HBox alignItems="Center" renderType="Bare">
+					<!-- פירוט ימי לימודים - the whole dialog is
+					     controller/StudyDaysDialog.js; see the note there.
+					     Hidden forMoAb now - flip visible back to bring it back. -->
+					<Button
+						visible="false"
+						icon="sap-icon://education"
+						type="Transparent"
+						text="{i18n>sdOpen}"
+						press=".onOpenStudyDays"
+						class="sdOpenButton" />
+					<Button
+						icon="sap-icon://print"
+						type="Transparent"
+						tooltip="{i18n>hmPrint}"
+						press=".onPrint"
+						class="hmPrintButton" />
+				</HBox>
+			</HBox>
+
+			<!-- ================= נתוני הנוכחות שלי ================= -->
+			<Title
+				text="{i18n>hmMySectionTitle}"
+				level="H2"
+				class="hmSectionTitle hmSectionTitleBlock" />
+
+			<!-- alignItems="Stretch": the frame draws all three cards at the same
+			     283px, so the shortest one grows to the tallest rather than leaving a
+			     ragged bottom edge. -->
+			<FlexBox wrap="Wrap" alignItems="Stretch" renderType="Bare" class="hmCardRow hmMyCardRow">
+
+				<!-- הזנת נוכחות - a launcher card.
+				     Rendered as a Button, not a styled div: the whole card is the
+				     click target in the frame (cursor-pointer), and a Button is the
+				     one control that comes with the keyboard, focus and ARIA
+				     behaviour that implies.
+
+				     No iconFirst here: sap.m.Button always renders the icon before
+				     the content in the DOM and only re-places it with a class, so
+				     the property would change nothing in the column layout that
+				     css/style.css §11 puts on the inner span. That layout is
+				     ordered explicitly by `order`, which is what lifts the title to
+				     the top of the card and drops the 64px glyph to the bottom.
+
+				     On the glyph: see the note above HOME_REPORT_STATUS in
+				     model/DataService.js forMoAb why the frame's code points cannot be
+				     taken at face value. This one is the case where 1.71 draws
+				     nothing resembling the frame's clock-with-a-plus, so it falls
+				     back on the two things that do agree - U+E084 in the export
+				     resolves to create-entry-time here, and "create a time entry" is
+				     what הזנת נוכחות means. -->
+				<Button
+					class="hmCard hmLauncherCard"
+					type="Transparent"
+					text="{i18n>hmEnterAttendance}"
+					icon="sap-icon://create-entry-time"
+					press=".onEnterAttendance" />
+
+				<!-- סטטוס הדו"ח -->
+				<VBox class="hmCard hmCardWide hmStatusCard">
+					<Title text="{i18n>hmReportStatus}" level="H3" class="hmCardTitle" />
+
+					<!-- Model order is inline-start first, i.e. right-to-left on
+					     screen: דיווחים חסרים, אישורים חסרים, חריגות. There is no
+					     כל השגיאות total in front of them any more, and with it went the
+					     "error" tone and the rule that separated it from the rest - the
+					     three counters are now peers on one line. -->
+					<HBox renderType="Bare" class="hmKpiRow" items="{path: 'home>/reportStatus', templateShareable: false}">
+						<VBox class="hmKpi">
+							<customData>
+								<!-- writeToDom puts data-tone on the cell so the CSS can
+								     key off it; the Icon below takes the same tone as a
+								     literal colour, because sap.ui.core.Icon cannot read
+								     a CSS custom property. -->
+								<core:CustomData key="tone" value="{home>tone}" writeToDom="true" />
+							</customData>
+							<HBox alignItems="Center" renderType="Bare" class="hmKpiValueRow">
+								<core:Icon
+									src="{home>icon}"
+									class="hmKpiIcon"
+									color="{path: 'home>tone', formatter: '.formatter.toneColor'}" />
+								<Text text="{home>count}" class="hmKpiValue" />
+							</HBox>
+							<Text text="{home>label}" class="hmKpiLabel" />
+						</VBox>
+					</HBox>
+				</VBox>
+
+				<!-- הודעות - scrolls inside the card (frame: overflow-y auto).
+				     כלליות only in this phase; הודעות אישיות arrive in phase ב'.
+				     The line above each message names its kind and nothing else: there
+				     is no read / unread state on this card, so the dot in front of it
+				     is a bullet and takes its one colour from the CSS. -->
+				<VBox class="hmCard hmCardWide hmMessagesCard">
+					<Title text="{i18n>hmMessages}" level="H3" class="hmCardTitle" />
+					<VBox renderType="Bare" class="hmMessageList" items="{path: 'home>/messages', templateShareable: false}">
+						<VBox class="hmMessage">
+							<HBox alignItems="Center" renderType="Bare" class="hmMessageStatus">
+								<core:Icon src="sap-icon://record" class="hmMessageDot" />
+								<Text text="{home>typeText}" class="hmMessageStatusText" />
+							</HBox>
+							<Text text="{home>subject}" class="hmMessageSubject" />
+							<Text text="{home>body}" class="hmMessageBody" />
+						</VBox>
+					</VBox>
+				</VBox>
+
+			</FlexBox>
+
+			<!-- ================= נתוני נוכחות כפיפים עבור ================= -->
+			<VBox class="hmSubordinates" visible="{home>/showSubordinates}">
+
+				<!-- Block label + month stepper.
+				     The arrows read correctly in both directions without a special
+				     case, and it is worth knowing why, because the naming looks
+				     backwards: both glyphs carry sapUiIconMirrorInRTL, so the font
+				     flips them, and the flex row flips the buttons. In RTL, "back"
+				     is the first child (at the right) drawing a mirrored
+				     slim-arrow-left, which points right; in LTR the same child is at
+				     the left and the same glyph is not mirrored, so it points left.
+				     Both compositions land on "back". -->
+				<HBox alignItems="Center" wrap="Wrap" class="hmSubHeader">
+					<Title text="{i18n>hmSubordinatesTitle}" level="H2" class="hmSectionTitle" />
+					<HBox alignItems="Center" renderType="Bare" class="hmMonthStepper">
+						<Button
+							icon="sap-icon://slim-arrow-left"
+							type="Transparent"
+							class="hmMonthArrow"
+							tooltip="{i18n>hmPreviousMonth}"
+							press=".onPreviousMonth" />
+						<Button
+							id="hmMonthField"
+							class="hmMonthField"
+							type="Transparent"
+							icon="sap-icon://appointment-2"
+							iconFirst="false"
+							text="{home>/monthLabel}"
+							tooltip="{i18n>hmMonthPickerTitle}"
+							press=".onOpenMonthPicker" />
+						<Button
+							icon="sap-icon://slim-arrow-right"
+							type="Transparent"
+							class="hmMonthArrow"
+							tooltip="{i18n>hmNextMonth}"
+							press=".onNextMonth" />
+					</HBox>
+				</HBox>
+
+				<!-- אוכלוסיה. The pill itself is .mtFilterField from §3a - the same
+				     component as on the two report screens - so only the horizontal
+				     label placement and the frame's 195px width are new. -->
+				<HBox alignItems="Center" class="mtFilterField hmPopulationField">
+					<Label text="{i18n>hmPopulation}" class="hmPopulationLabel" />
+					<Select
+						id="hmPopulationSelect"
+						selectedKey="{home>/populationKey}"
+						change=".onPopulationChange"
+						items="{path: 'home>/populationOptions', templateShareable: false}">
+						<core:Item key="{home>key}" text="{home>text}" />
+					</Select>
+				</HBox>
+
+				<FlexBox wrap="Wrap" alignItems="Start" renderType="Bare" class="hmCardRow hmSubCardRow">
+
+					<!-- The bound cards and the static launcher have to share one row.
+					     .hmCardGroup is `display: contents` (css §11), which drops this
+					     binding container out of the box tree and hands its cards
+					     straight to .hmSubCardRow as flex items. -->
+					<FlexBox renderType="Bare" class="hmCardGroup" items="{path: 'home>/subordinateCards', templateShareable: false}">
+						<VBox class="hmCard hmMetricCard">
+
+							<!-- The title is a Link: it renders exactly as the frame's
+							     card title (navy 700/20, no underline at rest) and opens
+							     דוחות נוכחות באחריות ממונה, so the card is a way in and
+							     not only a number. -->
+							<Link
+								text="{home>title}"
+								class="hmCardTitle hmCardTitleLink"
+								tooltip="{path: 'home>title', formatter: '.formatOpenReportsTooltip'}"
+								press=".onOpenCardReports" />
+
+							<VBox renderType="Bare" class="hmMetricList" items="{path: 'home>metrics', templateShareable: false}">
+								<VBox class="hmMetric">
+									<HBox justifyContent="SpaceBetween" alignItems="Center" renderType="Bare" class="hmMetricHead">
+										<Text text="{home>label}" class="hmMetricLabel" />
+										<Text text="{home>count}" class="hmMetricCount" />
+									</HBox>
+									<!-- Track + fill. The fill's width is a percentage
+									     string on the control (an HBox takes `width`),
+									     and its colour comes from data-tone, because a
+									     div's background cannot be bound. -->
+									<HBox renderType="Bare" class="hmMetricTrack">
+										<HBox renderType="Bare" class="hmMetricFill" width="{home>percent}">
+											<customData>
+												<core:CustomData key="tone" value="{home>tone}" writeToDom="true" />
+											</customData>
+										</HBox>
+									</HBox>
+								</VBox>
+							</VBox>
+
+							<Button
+								type="Transparent"
+								class="hmCardFooter"
+								icon="sap-icon://refresh"
+								text="{home>updatedText}"
+								tooltip="{i18n>hmRefresh}"
+								press=".onRefresh" />
+						</VBox>
+					</FlexBox>
+
+					<!-- צפייה בכל העובדים - the second launcher card, last in the row
+					     and therefore leftmost in RTL, exactly as in the frame. -->
+					<Button
+						class="hmCard hmLauncherCard"
+						type="Transparent"
+						text="{i18n>hmAllEmployeesCard}"
+						icon="sap-icon://group"
+						press=".onOpenAllEmployees" />
+
+				</FlexBox>
+			</VBox>
+
+		</content>
+	</Page>
+</mvc:View>
+
 ***file ManagerReports.controller.js
 sap.ui.define([
 	"sap/ui/core/mvc/Controller",
@@ -5541,6 +6358,353 @@ sap.ui.define([], functionMoAb () {
 	return MultiSelectAll;
 });
 
+***file StudyDays.fragment.xml
+<core:FragmentDefinition
+	xmlns="sap.m"
+	xmlns:core="sap.ui.core">
+
+	<!-- ============================================================================
+	     פירוט ימי לימודים : a popup, opened from דף הבית.
+	     ============================================================================
+	     Everything this dialog needs lives in three places and nowhere else:
+
+	       view/StudyDays.fragment.xml      this file
+	       controller/StudyDaysDialog.js    openMoAb / close / data / formatting
+	       css/style.css §14                .sdDialog
+
+	     The fragment is loaded with StudyDaysDialog as its controller, and the
+	     dialog carries its own "sd" model, so the screen that opens it only has to
+	     call openMoAb() - it holds none of the dialog's state.
+
+	     A custom header and not `title`: the frame puts the date field beside the
+	     title and the close glyph opposite it, and Dialog's own header is a title
+	     only. Bar's contentLeft is the INLINE START, so in RTL it is the right.
+
+	     The total row is the table's column footers (<tfoot>), not a last item:
+	     it is not a row of data, and it must not be sorted or selected as one.
+	     ========================================================================= -->
+
+	<Dialog
+		id="studyDaysDialog"
+		contentWidth="82rem"
+		draggable="true"
+		class="sdDialog">
+
+		<customHeader>
+			<Bar class="sdHeader">
+				<contentLeft>
+					<Title text="{i18n>sdTitle}" level="H2" class="sdTitle" />
+					<DatePicker
+						id="studyDaysDate"
+						class="sdDate"
+						width="9.5rem"
+						displayFormat="dd/MM/yyyy"
+						valueFormat="yyyy-MM-dd"
+						value="{sd>/date}"
+						change=".onDateChange" />
+				</contentLeft>
+				<contentRight>
+					<Button
+						icon="sap-icon://decline"
+						type="Transparent"
+						class="sdClose"
+						tooltip="{i18n>sdClose}"
+						press=".onClose" />
+				</contentRight>
+			</Bar>
+		</customHeader>
+
+		<Table
+			id="studyDaysTable"
+			class="sdTable"
+			fixedLayout="true"
+			showSeparators="All"
+			noDataText="{i18n>sdNoData}"
+			items="{path: 'sd>/rows', templateShareable: false}">
+
+			<columns>
+				<Column width="16%">
+					<Text text="{i18n>sdColDescription}" />
+					<footer><Text text="{i18n>sdTotalMonth}" class="sdStrong" /></footer>
+				</Column>
+				<Column width="8%" hAlign="Center">
+					<Text text="{i18n>sdColFrom}" />
+				</Column>
+				<Column width="4%" hAlign="Center">
+					<Text text="{i18n>sdColDay}" />
+				</Column>
+				<Column width="8%" hAlign="Center">
+					<Text text="{i18n>sdColTo}" />
+				</Column>
+				<Column width="4%" hAlign="Center">
+					<Text text="{i18n>sdColDay}" />
+				</Column>
+				<Column width="7%" hAlign="Center">
+					<Text text="{i18n>sdColQuota}" />
+					<footer><Text text="{sd>/total/quotaText}" /></footer>
+				</Column>
+				<Column width="7%" hAlign="Center">
+					<Text text="{i18n>sdColUsed}" />
+					<footer><Text text="{sd>/total/usedText}" /></footer>
+				</Column>
+				<Column width="11%" hAlign="Center">
+					<Text text="{i18n>sdColPercent}" />
+				</Column>
+				<Column width="16%">
+					<Text text="{i18n>sdColAbsenceType}" />
+				</Column>
+				<Column width="19%">
+					<Text text="{i18n>sdColNote}" />
+					<!-- The month summary: the frame spans it under the last two
+					     columns; it sits in the last one, which is the wider. -->
+					<footer>
+						<VBox renderType="Bare" class="sdSummary">
+							<FormattedText htmlText="{sd>/total/summaryHtml}" class="sdSummaryText" />
+							<HBox renderType="Bare" class="sdSummaryTrack">
+								<HBox renderType="Bare" class="sdSummaryFill" width="{sd>/total/percentWidth}" />
+							</HBox>
+						</VBox>
+					</footer>
+				</Column>
+			</columns>
+
+			<items>
+				<ColumnListItem>
+					<Text text="{sd>description}" wrapping="false" tooltip="{sd>description}" class="sdStrong" />
+					<Text text="{sd>fromText}" />
+					<Text text="{sd>fromDay}" />
+					<Text text="{sd>toText}" />
+					<Text text="{sd>toDay}" />
+					<Text text="{sd>quotaText}" />
+					<Text text="{sd>usedText}" />
+					<!-- Track + fill, the percentage inside the fill at its far
+					     end - the same build as the Home metric bar (§11h), since a
+					     div's width is the one thing a binding can drive. -->
+					<HBox renderType="Bare" class="sdBar">
+						<HBox renderType="Bare" class="sdBarFill" width="{sd>percentWidth}">
+							<Text text="{sd>percentText}" class="sdBarText" />
+						</HBox>
+					</HBox>
+					<Text text="{sd>absenceType}" wrapping="false" tooltip="{sd>absenceType}" />
+					<Text text="{sd>note}" wrapping="false" tooltip="{sd>note}" />
+				</ColumnListItem>
+			</items>
+		</Table>
+
+		<beginButton>
+			<Button
+				text="{i18n>sdConfirm}"
+				type="Emphasized"
+				class="mtButtonPrimary"
+				press=".onConfirm" />
+		</beginButton>
+
+	</Dialog>
+</core:FragmentDefinition>
+
+***file StudyDaysDialog.js
+sap.ui.define([
+	"sap/ui/base/ObjectMoAb",
+	"sap/ui/core/Fragment",
+	"sap/ui/model/json/JSONModel"
+], functionMoAb (BaseObject, Fragment, JSONModel) {
+	"use strict";
+
+	/* ============================================================================
+	   פירוט ימי לימודים - the dialog's whole logic
+	   ----------------------------------------------------------------------------
+	   Self-contained on purpose: the screen that opens it creates one instance and
+	   calls openMoAb(), and that is the entire contract.
+
+	     new StudyDaysDialog(oView).openMoAb()
+
+	   The fragment (view/StudyDays.fragment.xml) is loaded with this object as its
+	   controller, added as a dependent of the opener's view - so the view destroys
+	   it, and i18n reaches it by propagation - and given its own "sd" model.
+
+	   Data: _fetch() is the one seam. It answers from MOCK_ROWS today; when the
+	   backend entity exists, only its body changes - _toViewData() already takes
+	   the raw shape (dates as Date, numbers as numbers) and does all formatting.
+	   ========================================================================= */
+
+	/** Day-of-week letters, Sunday first, as Date#getDay() counts. */
+	var DAY_LETTERS = ["א", "ב", "ג", "ד", "ה", "ו", "ש"];
+
+	var MOCK_ROWS = [
+		{ description: "לימודי תואר שני במנהל עסקים", from: [2025, 1, 6], to: [2025, 1, 6], quota: 6, used: 5, absenceType: "בחינות תואר שני", note: "הערה הערה הערה" },
+		{ description: "לימודי תואר שני במנהל עסקים", from: [2025, 1, 13], to: [2025, 1, 13], quota: 1, used: 1, absenceType: "בחינות תואר שני", note: "הערה הערה הערה" },
+		{ description: "לימודי תואר שני במנהל עסקים", from: [2025, 1, 20], to: [2025, 1, 20], quota: 1, used: 1, absenceType: "בחינות תואר שני", note: "הערה הערה הערה" },
+		{ description: "לימודי תואר שני במנהל עסקים", from: [2025, 1, 27], to: [2025, 1, 27], quota: 1, used: 1, absenceType: "בחינות תואר שני", note: "הערה הערה הערה" },
+		{ description: "לימודי תואר שני במנהל עסקים", from: [2025, 1, 27], to: [2025, 1, 27], quota: 6, used: 3, absenceType: "בחינות תואר שני", note: "הערה הערה הערה" }
+	];
+
+	/* ---- module-level pure helpers ---------------------------------------- */
+
+	functionMoAb pad2(i) {
+		return (i < 10 ? "0" : "") + i;
+	}
+
+	/** Date -> "01/01/2025" */
+	functionMoAb formatDate(oDate) {
+		return oDate ? pad2(oDate.getDate()) + "/" + pad2(oDate.getMonth() + 1) + "/" + oDate.getFullYear() : "";
+	}
+
+	/** Date -> "2025-01-01", the DatePicker's valueFormat. */
+	functionMoAb toIsoDate(oDate) {
+		return oDate.getFullYear() + "-" + pad2(oDate.getMonth() + 1) + "-" + pad2(oDate.getDate());
+	}
+
+	functionMoAb dayLetter(oDate) {
+		return oDate ? DAY_LETTERS[oDate.getDay()] : "";
+	}
+
+	/** Whole percent of used out of quota, clamped to 0..100. */
+	functionMoAb percentOf(nUsed, nQuota) {
+		ifMoAb (!nQuota) {
+			return 0;
+		}
+		return Math.max(0, Math.min(100, Math.round((nUsed / nQuota) * 100)));
+	}
+
+	var StudyDaysDialog = BaseObject.extend("modtimesheet.controller.StudyDaysDialog", {
+
+		constructor: functionMoAb (oView) {
+			BaseObject.call(this);
+			this._oView = oView;
+			this._oModel = new JSONModel({
+				date: toIsoDate(new Date()),
+				rows: [],
+				total: {}
+			});
+		},
+
+		/** Loads the fragment once, refreshes the data, then opens. */
+		openMoAb: functionMoAb () {
+			var that = this;
+
+			ifMoAb (!this._pDialog) {
+				this._pDialog = Fragment.load({
+					id: this._oView.getId() + "--sd",
+					name: "modtimesheet.view.StudyDays",
+					controller: this
+				}).then(functionMoAb (oDialog) {
+					that._oView.addDependent(oDialog);
+					oDialog.setModel(that._oModel, "sd");
+					return oDialog;
+				});
+			}
+
+			return this._pDialog.then(functionMoAb (oDialog) {
+				// filled first, opened second - never shows the previous openMoAb's rows
+				return that._load(oDialog).then(functionMoAb () {
+					oDialog.openMoAb();
+				});
+			});
+		},
+
+		/* ---- data ---------------------------------------------------------- */
+
+		_load: functionMoAb (oDialog) {
+			var that = this;
+
+			oDialog.setBusy(true);
+
+			return this._fetch(this._oModel.getProperty("/date")).then(functionMoAb (aRaw) {
+				var oData = that._toViewData(aRaw);
+				that._oModel.setProperty("/rows", oData.rows);
+				that._oModel.setProperty("/total", oData.total);
+			}).catch(functionMoAb (oErr) {
+				window.console && window.console.error("StudyDaysDialog: load failed", oErr);
+				that._oModel.setProperty("/rows", []);
+				that._oModel.setProperty("/total", that._toViewData([]).total);
+			}).then(functionMoAb () {
+				oDialog.setBusy(false);
+			});
+		},
+
+		/**
+		 * The backend seam. sIsoDate is the date in the header field ("2025-01-01").
+		 * Resolves to [{ description, from: Date, to: Date, quota, used,
+		 * absenceType, note }].
+		 */
+		_fetch: functionMoAb (/* sIsoDate */) {
+			return Promise.resolve(MOCK_ROWS.map(functionMoAb (o) {
+				return {
+					description: o.description,
+					from: new Date(o.from[0], o.from[1] - 1, o.from[2]),
+					to: new Date(o.to[0], o.to[1] - 1, o.to[2]),
+					quota: o.quota,
+					used: o.used,
+					absenceType: o.absenceType,
+					note: o.note
+				};
+			}));
+		},
+
+		/** Raw rows -> render-ready rows + the סה"כ לחודש footer. */
+		_toViewData: functionMoAb (aRaw) {
+			var oBundle = this._oView.getModel("i18n").getResourceBundle();
+			var nQuota = 0;
+			var nUsed = 0;
+
+			var aRows = (aRaw || []).map(functionMoAb (o) {
+				var iPercent = percentOf(o.used, o.quota);
+				nQuota += o.quota || 0;
+				nUsed += o.used || 0;
+				return {
+					description: o.description,
+					fromText: formatDate(o.from),
+					fromDay: dayLetter(o.from),
+					toText: formatDate(o.to),
+					toDay: dayLetter(o.to),
+					quotaText: (o.quota || 0).toFixed(1),
+					usedText: (o.used || 0).toFixed(1),
+					percentText: iPercent + "%",
+					percentWidth: iPercent + "%",
+					absenceType: o.absenceType,
+					note: o.note
+				};
+			});
+
+			var iTotalPercent = percentOf(nUsed, nQuota);
+
+			return {
+				rows: aRows,
+				total: {
+					quotaText: nQuota.toFixed(1),
+					usedText: nUsed.toFixed(1),
+					percentWidth: iTotalPercent + "%",
+					summaryHtml: oBundle.getText("sdSummary", [String(iTotalPercent), nQuota.toFixed(2)])
+				}
+			};
+		},
+
+		/* ---- fragment event handlers --------------------------------------- */
+
+		onDateChange: functionMoAb (oEvent) {
+			ifMoAb (oEvent.getParameter("valid") !== false) {
+				this._pDialog.then(this._load.bind(this));
+			}
+		},
+
+		onClose: functionMoAb () {
+			this._pDialog.then(functionMoAb (oDialog) { oDialog.close(); });
+		},
+
+		/** אישור והמשך - nothing to submit yet; it acknowledges and closes. */
+		onConfirm: functionMoAb () {
+			this.onClose();
+		}
+	});
+
+	// test seams
+	StudyDaysDialog.percentOf = percentOf;
+	StudyDaysDialog.formatDate = formatDate;
+	StudyDaysDialog.dayLetter = dayLetter;
+
+	return StudyDaysDialog;
+});
+
 ***file i18n_menager.properties
 # App texts.
 #
@@ -5930,6 +7094,23 @@ sdSummary=<strong>{0}%</strong> ניצול ימי לימודים מתוך מכס
    instead of taking a 198px field slot it would only leave half empty. */
 .mtFilterFieldSwitch {
 	flex: 0 0 auto;
+}
+
+/* The switch's slot is exactly as tall as a pill, with the switch centred in
+   it. The row is bottom-aligned (alignItems="End"), so a column shorter than a
+   pill column would start - label and all - lower than its neighbours; with
+   the slot at pill height every label sits on one line and the switch on the
+   pills' centre line.
+
+   Targets the VBox's own item wrapper rather than the switch: in UI5 1.71 the
+   custom class lands on the outer .sapMSwtCont and the visible track is an
+   inner .sapMSwt, so a rule keyed on the switch's markup does not survive a
+   version change. */
+.mtFilterFieldSwitch > .sapMFlexItem:last-child {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	height: var(--mt-field-height);
 }
 
 /* A label centred over its control rather than aligned to the start of it -
@@ -7628,14 +8809,11 @@ sdSummary=<strong>{0}%</strong> ניצול ימי לימודים מתוך מכס
 	border-start-end-radius: var(--mt-radius-md);
 }
 
-.aeGroupHeaderText {
-	font: var(--mt-text-cell);
-	color: var(--mt-text-primary);
-}
-
+/* The band carries only the row count, in the same type as the count line on
+   דוחות מנהל (.mtTableToolbar .sapMTitle). */
 .aeGroupHeaderCount {
-	font: var(--mt-text-body);
-	color: var(--mt-text-secondary);
+	font: var(--mt-text-card-title);
+	color: var(--mt-text-primary);
 }
 
 /* ---------------------------------------------------------------------------

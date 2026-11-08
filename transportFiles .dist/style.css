@@ -139,6 +139,23 @@
 	flex: 0 0 auto;
 }
 
+/* The switch's slot is exactly as tall as a pill, with the switch centred in
+   it. The row is bottom-aligned (alignItems="End"), so a column shorter than a
+   pill column would start - label and all - lower than its neighbours; with
+   the slot at pill height every label sits on one line and the switch on the
+   pills' centre line.
+
+   Targets the VBox's own item wrapper rather than the switch: in UI5 1.71 the
+   custom class lands on the outer .sapMSwtCont and the visible track is an
+   inner .sapMSwt, so a rule keyed on the switch's markup does not survive a
+   version change. */
+.mtFilterFieldSwitch > .sapMFlexItem:last-child {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	height: var(--mt-field-height);
+}
+
 /* A label centred over its control rather than aligned to the start of it -
    the switches are far narrower than the text above them. */
 .mtFilterLabelCentered {
@@ -1835,14 +1852,11 @@
 	border-start-end-radius: var(--mt-radius-md);
 }
 
-.aeGroupHeaderText {
-	font: var(--mt-text-cell);
-	color: var(--mt-text-primary);
-}
-
+/* The band carries only the row count, in the same type as the count line on
+   דוחות מנהל (.mtTableToolbar .sapMTitle). */
 .aeGroupHeaderCount {
-	font: var(--mt-text-body);
-	color: var(--mt-text-secondary);
+	font: var(--mt-text-card-title);
+	color: var(--mt-text-primary);
 }
 
 /* ---------------------------------------------------------------------------
