@@ -181,6 +181,8 @@ sap.ui.define([
 			role: sRole,
 			// one role in the mock, where the service can return several
 			roles: [sRole],
+			// no FunctionCaller in the mock - one role, nothing to rank
+			functionCallers: {},
 			homeCards: (ROLE_CARDS[sRole] || []).slice(),
 			email: "",
 			department: "",
@@ -1316,6 +1318,7 @@ sap.ui.define([
 			var oBounds = _periodBounds(oPeriod.year, oPeriod.month);
 
 			return getManagerReports(oComponent, {
+				// the strongest role - the one with the highest FunctionCaller
 				managerType: oUser.role,
 				managerUser: oUser.userId,
 				employee: oUser.pernr,
@@ -1508,6 +1511,7 @@ sap.ui.define([
 	function _toAuthorization(oEntry) {
 		var o = oEntry || {};
 		var aRoles = _distinctRoleTypes(o);
+		var mCallers = _functionCallers(o);
 		var aCards = [];
 
 		aRoles.forEach(function (sRole) {
@@ -1524,8 +1528,11 @@ sap.ui.define([
 			// Name is empty on some entries; the user name is a poor greeting but
 			// an honest one, and better than greeting nobody.
 			displayName: o.Name || o.UserName || "",
-			role: _primaryRole(aRoles),
+			role: _primaryRole(aRoles, mCallers),
 			roles: aRoles,
+			// ManagerType -> its FunctionCaller. Kept with the role it came with and
+			// used ONLY to rank the roles (see _primaryRole) - never sent anywhere.
+			functionCallers: mCallers,
 			homeCards: aCards,
 			email: o.Email || "",
 			department: o.Department || "",
@@ -1557,13 +1564,49 @@ sap.ui.define([
 		}, []);
 	}
 
-	/** The one role the single-valued callers get - see ROLE_PRECEDENCE. */
-	function _primaryRole(aRoles) {
-		var sWinner = ROLE_PRECEDENCE.filter(function (sRole) {
-			return aRoles.indexOf(sRole) !== -1;
-		})[0];
+	/**
+	 * ManagerType -> FunctionCaller, off an entry's expanded Roles. Should one
+	 * type appear twice, the higher caller is kept.
+	 */
+	function _functionCallers(oEntry) {
+		var aResults = (oEntry && oEntry.Roles && oEntry.Roles.results) || [];
 
-		return sWinner || ROLE.EMPLOYEE;
+		return aResults.reduce(function (mCallers, oRole) {
+			var sType = oRole && oRole.ManagerType;
+			var sCaller = oRole && oRole.FunctionCaller != null
+				? String(oRole.FunctionCaller).trim() : "";
+			if (sType && sCaller
+					&& (!mCallers[sType] || _callerRank(sCaller) > _callerRank(mCallers[sType]))) {
+				mCallers[sType] = sCaller;
+			}
+			return mCallers;
+		}, {});
+	}
+
+	/** FunctionCaller as a number, for comparing; -1 when it is not one. */
+	function _callerRank(sCaller) {
+		var i = parseInt(sCaller, 10);
+		return isNaN(i) ? -1 : i;
+	}
+
+	/**
+	 * The one role the single-valued callers get: the role with the HIGHEST
+	 * FunctionCaller. ROLE_PRECEDENCE only decides when the service sent no
+	 * (numeric) FunctionCaller at all, or to break a tie.
+	 */
+	function _primaryRole(aRoles, mCallers) {
+		var m = mCallers || {};
+		var aRanked = aRoles.slice().sort(function (a, b) {
+			var iDiff = _callerRank(m[b]) - _callerRank(m[a]);
+			if (iDiff) {
+				return iDiff;
+			}
+			var iA = ROLE_PRECEDENCE.indexOf(a);
+			var iB = ROLE_PRECEDENCE.indexOf(b);
+			return (iA === -1 ? 99 : iA) - (iB === -1 ? 99 : iB);
+		});
+
+		return aRanked[0] || ROLE.EMPLOYEE;
 	}
 
 	var pUserAuthorization = null;

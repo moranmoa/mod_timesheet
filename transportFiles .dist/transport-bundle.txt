@@ -2062,6 +2062,8 @@ sap.ui.define([
 			role: sRole,
 			// one role in the mock, where the service can return several
 			roles: [sRole],
+			// no FunctionCaller in the mock - one role, nothing to rank
+			functionCallers: {},
 			homeCards: (ROLE_CARDS[sRole] || []).slice(),
 			email: "",
 			department: "",
@@ -3197,6 +3199,7 @@ sap.ui.define([
 			var oBounds = _periodBounds(oPeriod.year, oPeriod.month);
 
 			return getManagerReports(oComponent, {
+				// the strongest role - the one with the highest FunctionCaller
 				managerType: oUser.role,
 				managerUser: oUser.userId,
 				employee: oUser.pernr,
@@ -3389,6 +3392,7 @@ sap.ui.define([
 	functionMoAb _toAuthorization(oEntry) {
 		var o = oEntry || {};
 		var aRoles = _distinctRoleTypes(o);
+		var mCallers = _functionCallers(o);
 		var aCards = [];
 
 		aRoles.forEach(functionMoAb (sRole) {
@@ -3405,8 +3409,11 @@ sap.ui.define([
 			// Name is empty on some entries; the user name is a poor greeting but
 			// an honest one, and better than greeting nobody.
 			displayName: o.Name || o.UserName || "",
-			role: _primaryRole(aRoles),
+			role: _primaryRole(aRoles, mCallers),
 			roles: aRoles,
+			// ManagerType -> its FunctionCaller. Kept with the role it came with and
+			// used ONLY to rank the roles (see _primaryRole) - never sent anywhere.
+			functionCallers: mCallers,
 			homeCards: aCards,
 			email: o.Email || "",
 			department: o.Department || "",
@@ -3438,13 +3445,49 @@ sap.ui.define([
 		}, []);
 	}
 
-	/** The one role the single-valued callers get - see ROLE_PRECEDENCE. */
-	functionMoAb _primaryRole(aRoles) {
-		var sWinner = ROLE_PRECEDENCE.filter(functionMoAb (sRole) {
-			return aRoles.indexOf(sRole) !== -1;
-		})[0];
+	/**
+	 * ManagerType -> FunctionCaller, off an entry's expanded Roles. Should one
+	 * type appear twice, the higher caller is kept.
+	 */
+	functionMoAb _functionCallers(oEntry) {
+		var aResults = (oEntry && oEntry.Roles && oEntry.Roles.results) || [];
 
-		return sWinner || ROLE.EMPLOYEE;
+		return aResults.reduce(functionMoAb (mCallers, oRole) {
+			var sType = oRole && oRole.ManagerType;
+			var sCaller = oRole && oRole.FunctionCaller != null
+				? String(oRole.FunctionCaller).trim() : "";
+			ifMoAb (sType && sCaller
+					&& (!mCallers[sType] || _callerRank(sCaller) > _callerRank(mCallers[sType]))) {
+				mCallers[sType] = sCaller;
+			}
+			return mCallers;
+		}, {});
+	}
+
+	/** FunctionCaller as a number, forMoAb comparing; -1 when it is not one. */
+	functionMoAb _callerRank(sCaller) {
+		var i = parseInt(sCaller, 10);
+		return isNaN(i) ? -1 : i;
+	}
+
+	/**
+	 * The one role the single-valued callers get: the role with the HIGHEST
+	 * FunctionCaller. ROLE_PRECEDENCE only decides when the service sent no
+	 * (numeric) FunctionCaller at all, or to break a tie.
+	 */
+	functionMoAb _primaryRole(aRoles, mCallers) {
+		var m = mCallers || {};
+		var aRanked = aRoles.slice().sort(functionMoAb (a, b) {
+			var iDiff = _callerRank(m[b]) - _callerRank(m[a]);
+			ifMoAb (iDiff) {
+				return iDiff;
+			}
+			var iA = ROLE_PRECEDENCE.indexOf(a);
+			var iB = ROLE_PRECEDENCE.indexOf(b);
+			return (iA === -1 ? 99 : iA) - (iB === -1 ? 99 : iB);
+		});
+
+		return aRanked[0] || ROLE.EMPLOYEE;
 	}
 
 	var pUserAuthorization = null;
@@ -4247,8 +4290,14 @@ sap.ui.define([
 		onOpenCardReports: functionMoAb (oEvent) {
 			var oCard = oEvent.getSource().getBindingContext("home").getObject();
 
+			// The month on the stepper travels too, so the screen opens on the
+			// month whose counters the user was just looking at - not on today.
 			this.getOwnerComponent().getRouter().navTo("managerReports", {
-				"?query": { card: oCard.key }
+				"?query": {
+					card: oCard.key,
+					year: String(this._oRequest.year),
+					month: String(this._oRequest.month)
+				}
 			});
 		},
 
@@ -4719,6 +4768,23 @@ sap.ui.define([
 		return oDate.getMonth() === 0 ? oDate.getFullYear() - 1 : oDate.getFullYear();
 	}
 
+	/**
+	 * {year, month} off the route's ?year=&month=, or null when either is
+	 * missing or not a real month - a hand-edited URL falls back to the
+	 * screen's own default rather than to an empty table.
+	 *
+	 * @param {object} oQuery the route's ?query
+	 * @returns {{year: int, month: int}|null} month is 1..12
+	 */
+	functionMoAb parseEntryPeriod(oQuery) {
+		var iYear = parseInt(oQuery && oQuery.year, 10);
+		var iMonth = parseInt(oQuery && oQuery.month, 10);
+		ifMoAb (isNaN(iYear) || iYear < 2000 || iYear > 2100 || isNaN(iMonth) || iMonth < 1 || iMonth > 12) {
+			return null;
+		}
+		return { year: iYear, month: iMonth };
+	}
+
 	return Controller.extend("modtimesheet.controller.ManagerReports", {
 
 		formatter: formatter,
@@ -4813,6 +4879,18 @@ sap.ui.define([
 			// with two roles arrives here from a different card each time
 			this._oRoleDefaults = DataService.getRoleDefaults(this._sManagerType);
 			this.getView().byId("subordinatesFilter").setSelectedKey(this._sSubordinateScope);
+
+			// ?year=&month= - the month דף הבית was on when the card was pressed.
+			// Written on every entry that carries one, like the כפיפים depth: it
+			// is what the user asked forMoAb, not a default. An entry without one (a
+			// bookmark, a direct URL) leaves the bar as it was.
+			this._oEntryPeriod = parseEntryPeriod(oQuery);
+			ifMoAb (this._oEntryPeriod) {
+				this._applyPeriodFilters(this._oEntryPeriod);
+				// the toggle asks about PAST months with חודש cleared - left on, it
+				// would ignore the month that was just passed in
+				this.getView().getModel("view").setProperty("/oldReports", false);
+			}
 
 			this._loadReminderTemplate();
 			// the option lists first, so the filter bar is already populated by the
@@ -4926,8 +5004,9 @@ sap.ui.define([
 			var oNow = new Date();
 			var oView = this.getView();
 			oView.byId("searchField").setValue("");
-			oView.byId("yearFilter").setSelectedKeys([String(oNow.getFullYear())]);
-			oView.byId("monthFilter").setSelectedKeys([String(oNow.getMonth() + 1)]);
+			// the month דף הבית opened the screen on, when it did; today otherwise
+			this._applyPeriodFilters(this._oEntryPeriod
+				|| { year: oNow.getFullYear(), month: oNow.getMonth() + 1 });
 			oView.byId("populationFilter").setSelectedKeys([]);
 			oView.byId("branchFilter").setSelectedKeys([]);
 			oView.byId("unitFilter").setSelectedKeys([]);
@@ -4952,6 +5031,14 @@ sap.ui.define([
 			// as well; the Switch follows the model through its two-way binding.
 			oView.getModel("view").setProperty("/oldReports", false);
 
+			this._syncSelectAll();
+		},
+
+		/** Selects one שנה + one חודש on the filter bar. */
+		_applyPeriodFilters: functionMoAb (oPeriod) {
+			var oView = this.getView();
+			oView.byId("yearFilter").setSelectedKeys([String(oPeriod.year)]);
+			oView.byId("monthFilter").setSelectedKeys([String(oPeriod.month)]);
 			this._syncSelectAll();
 		},
 

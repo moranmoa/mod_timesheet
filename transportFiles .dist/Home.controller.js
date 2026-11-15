@@ -354,8 +354,14 @@ sap.ui.define([
 		onOpenCardReports: function (oEvent) {
 			var oCard = oEvent.getSource().getBindingContext("home").getObject();
 
+			// The month on the stepper travels too, so the screen opens on the
+			// month whose counters the user was just looking at - not on today.
 			this.getOwnerComponent().getRouter().navTo("managerReports", {
-				"?query": { card: oCard.key }
+				"?query": {
+					card: oCard.key,
+					year: String(this._oRequest.year),
+					month: String(this._oRequest.month)
+				}
 			});
 		},
 

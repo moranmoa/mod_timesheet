@@ -166,6 +166,23 @@ sap.ui.define([
 		return oDate.getMonth() === 0 ? oDate.getFullYear() - 1 : oDate.getFullYear();
 	}
 
+	/**
+	 * {year, month} off the route's ?year=&month=, or null when either is
+	 * missing or not a real month - a hand-edited URL falls back to the
+	 * screen's own default rather than to an empty table.
+	 *
+	 * @param {object} oQuery the route's ?query
+	 * @returns {{year: int, month: int}|null} month is 1..12
+	 */
+	function parseEntryPeriod(oQuery) {
+		var iYear = parseInt(oQuery && oQuery.year, 10);
+		var iMonth = parseInt(oQuery && oQuery.month, 10);
+		if (isNaN(iYear) || iYear < 2000 || iYear > 2100 || isNaN(iMonth) || iMonth < 1 || iMonth > 12) {
+			return null;
+		}
+		return { year: iYear, month: iMonth };
+	}
+
 	return Controller.extend("modtimesheet.controller.ManagerReports", {
 
 		formatter: formatter,
@@ -260,6 +277,18 @@ sap.ui.define([
 			// with two roles arrives here from a different card each time
 			this._oRoleDefaults = DataService.getRoleDefaults(this._sManagerType);
 			this.getView().byId("subordinatesFilter").setSelectedKey(this._sSubordinateScope);
+
+			// ?year=&month= - the month דף הבית was on when the card was pressed.
+			// Written on every entry that carries one, like the כפיפים depth: it
+			// is what the user asked for, not a default. An entry without one (a
+			// bookmark, a direct URL) leaves the bar as it was.
+			this._oEntryPeriod = parseEntryPeriod(oQuery);
+			if (this._oEntryPeriod) {
+				this._applyPeriodFilters(this._oEntryPeriod);
+				// the toggle asks about PAST months with חודש cleared - left on, it
+				// would ignore the month that was just passed in
+				this.getView().getModel("view").setProperty("/oldReports", false);
+			}
 
 			this._loadReminderTemplate();
 			// the option lists first, so the filter bar is already populated by the
@@ -373,8 +402,9 @@ sap.ui.define([
 			var oNow = new Date();
 			var oView = this.getView();
 			oView.byId("searchField").setValue("");
-			oView.byId("yearFilter").setSelectedKeys([String(oNow.getFullYear())]);
-			oView.byId("monthFilter").setSelectedKeys([String(oNow.getMonth() + 1)]);
+			// the month דף הבית opened the screen on, when it did; today otherwise
+			this._applyPeriodFilters(this._oEntryPeriod
+				|| { year: oNow.getFullYear(), month: oNow.getMonth() + 1 });
 			oView.byId("populationFilter").setSelectedKeys([]);
 			oView.byId("branchFilter").setSelectedKeys([]);
 			oView.byId("unitFilter").setSelectedKeys([]);
@@ -399,6 +429,14 @@ sap.ui.define([
 			// as well; the Switch follows the model through its two-way binding.
 			oView.getModel("view").setProperty("/oldReports", false);
 
+			this._syncSelectAll();
+		},
+
+		/** Selects one שנה + one חודש on the filter bar. */
+		_applyPeriodFilters: function (oPeriod) {
+			var oView = this.getView();
+			oView.byId("yearFilter").setSelectedKeys([String(oPeriod.year)]);
+			oView.byId("monthFilter").setSelectedKeys([String(oPeriod.month)]);
 			this._syncSelectAll();
 		},
 
