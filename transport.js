@@ -22,7 +22,14 @@ const fs = require("fs");
 const path = require("path");
 
 // Add a keyword here and both pack and unpack pick it up automatically.
-const KEYWORDS = ["function", "if", "open", "replace", "while" ,"Object" ,"for", "typeof"];
+//
+// A NEW keyword must be written split ("type" + "of"), never as one string:
+// this file travels in the bundle too, and the copy on the other side that
+// unpacks it is still the OLD one, which does not know the new word yet and
+// would leave it with SUFFIX still on, inside this very list. Split, the
+// encoder never sees the whole word, so it arrives intact. After unpacking
+// with the old copy, unpack once more with the new one to decode the rest.
+const KEYWORDS = ["function", "if", "open", "replace", "while" ,"Object" ,"for", "type" + "of"];
 const SUFFIX = "MoAb";
 
 // Match whole words only, so "notify" does not become "notifMoAby".
@@ -38,21 +45,29 @@ const MARKER = "***file";
 // always reflects the current webapp - no manual re-copying. Add a file here
 // and it gets refreshed and packed automatically.
 const SOURCE_FILES = [
-	// כל הקבצים שהשתנו ב-08/11/2026: ימי לימוד, מיון/"הכל"/איפוס פילטרים,
-	// ותמונת המשתמש בכותרת (HCMFAB_COMMON_SRV)
+	// 19/11/2026: יישור למבנה הסביבה הפנימית (com.mln.ui5.emp_timesheet,
+	// controllers/, views/, מודל i18n_manager) - מעכשיו הקבצים עוברים כמו שהם.
+	// ImManagerType לפי הכרטיס, ניווט ל-Clock / AbsenceDeatails בטאב חדש,
+	// ו"דף הבית" שמנקה את empNum / caller.
 	"webapp/Component.js",
-	"webapp/controller/AllEmployees.controller.js",
-	"webapp/controller/Home.controller.js",
-	"webapp/controller/ManagerReports.controller.js",
-	"webapp/controller/MultiSelectAll.js",
-	"webapp/controller/StudyDaysDialog.js",
+	"webapp/controllers/AllEmployees.controller.js",
+	"webapp/controllers/App.controller.js",
+	"webapp/controllers/Home.controller.js",
+	"webapp/controllers/ManagerReports.controller.js",
+	"webapp/controllers/StudyDaysDialog.js",
 	"webapp/model/DataService.js",
-	"webapp/view/AllEmployees.view.xml",
-	"webapp/view/Home.view.xml",
-	"webapp/view/ManagerReports.view.xml",
-	"webapp/view/StudyDays.fragment.xml",
+	"webapp/views/AllEmployees.view.xml",
+	"webapp/views/AllEmployeesViewSettings.fragment.xml",
+	"webapp/views/App.view.xml",
+	"webapp/views/AppHeader.fragment.xml",
+	"webapp/views/Home.view.xml",
+	"webapp/views/ManagerReports.view.xml",
+	"webapp/views/ManagerReportsReminder.fragment.xml",
+	"webapp/views/StudyDays.fragment.xml",
 	"webapp/i18n/i18n_menager.properties",
-	"webapp/css/style.css"
+	"webapp/css/style.css",
+	// the tool itself - it carries the new "typeof" keyword (see KEYWORDS)
+	"transport.js"
 ];
 
 function escapeRegExp(s) {

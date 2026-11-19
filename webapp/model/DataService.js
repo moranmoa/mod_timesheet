@@ -2,7 +2,7 @@ sap.ui.define([
 	"sap/ui/model/Filter",
 	"sap/ui/model/FilterOperator",
 	"sap/base/Log",
-	"modtimesheet/model/mockEmployees"
+	"com/mln/ui5/emp_timesheet/model/mockEmployees"
 ], function (Filter, FilterOperator, Log, mockEmployees) {
 	"use strict";
 
@@ -181,8 +181,9 @@ sap.ui.define([
 			role: sRole,
 			// one role in the mock, where the service can return several
 			roles: [sRole],
-			// no FunctionCaller in the mock - one role, nothing to rank
-			functionCallers: {},
+			// one role, nothing to rank - only there for the caller= of the
+			// employee screens (see MOCK_FUNCTION_CALLERS)
+			functionCallers: JSON.parse(JSON.stringify(MOCK_FUNCTION_CALLERS)),
 			homeCards: (ROLE_CARDS[sRole] || []).slice(),
 			email: "",
 			department: "",
@@ -532,6 +533,44 @@ sap.ui.define([
 		SOLDIERS: "ALL"
 	};
 	var DEFAULT_SUBORDINATE_SCOPE = SUBORDINATE_SCOPE.SUBORDINATES;
+
+	/**
+	 * The דף הבית card the user pressed LAST - with the month דף הבית was on -
+	 * written by Home before it navigates.
+	 *
+	 * The card also travels in the hash (?card=), but that only works where the
+	 * route's pattern carries a query ("ManagerReports:?query:"). A route without
+	 * one drops the query without a word - and then every card read as TMGR. This
+	 * copy does not depend on the pattern, so the screen gets the card either way.
+	 */
+	var oEntryQuery = null;
+
+	/* ---------------------------------------------------------------------------
+	   Screens of the host app (z clock_emp), opened in a NEW tab for one employee
+	   ---------------------------------------------------------------------------
+	     index.html?empNum=1486046&caller=2#/Clock
+	     index.html?empNum=1486046&caller=2#/AbsenceDeatails/TM_QUTA1
+
+	     empNum  the employee whose screen it is (trimmed, no leading zeros)
+	     caller  the FunctionCaller of the role the CURRENT card was opened for -
+	             נוכחות כפיפים is TMGR, so it sends TMGR's FunctionCaller
+	   The two travel in the search and not in the hash, so the host app reads them
+	   once on start; דף הבית drops them again (see App.controller onNavHome).
+	   ------------------------------------------------------------------------ */
+	var EMPLOYEE_SCREEN = {
+		REPORT: "Clock",
+		ABSENCES: "AbsenceDeatails/TM_QUTA1",
+		TRAINING: "AbsenceDeatails/TM_QUTA_ATT1"
+	};
+
+	/** The search parameters that tie a tab to one employee. */
+	var EMPLOYEE_PARAMS = ["empNum", "caller"];
+
+	/**
+	 * FunctionCaller per role on a mock host, where there is no Roles answer to
+	 * read it from - the values the service returns (ManagerSet?$expand=Roles).
+	 */
+	var MOCK_FUNCTION_CALLERS = { TMGR: "2", TADM: "3", TMSA: "4" };
 
 	/** Set by every getManagerReports call - see isLastLoadMock(). */
 	var bLastLoadWasMock = true;
@@ -1857,6 +1896,91 @@ sap.ui.define([
 		 */
 		getSubordinateScope: function (sCardKey) {
 			return SUBORDINATE_SCOPE[sCardKey] || DEFAULT_SUBORDINATE_SCOPE;
+		},
+
+		/**
+		 * Remembers the query דף הבית opens דוחות נוכחות with - see oEntryQuery.
+		 *
+		 * @param {object} oQuery {card, year, month} as sent in the hash
+		 */
+		setEntryQuery: function (oQuery) {
+			oEntryQuery = oQuery || null;
+		},
+
+		/**
+		 * The query דוחות נוכחות was opened with: the hash's when the route kept
+		 * it, else the one דף הבית remembered, else {} (a direct entry).
+		 *
+		 * @param {object} [oRouteQuery] the route's "?query" argument
+		 * @returns {object} {card, year, month}, any of them possibly missing
+		 */
+		resolveEntryQuery: function (oRouteQuery) {
+			if (oRouteQuery && oRouteQuery.card) {
+				return oRouteQuery;
+			}
+			return oEntryQuery || oRouteQuery || {};
+		},
+
+		/**
+		 * The FunctionCaller of a role (ManagerType), off the user's Roles.
+		 *
+		 * @param {string} sManagerType TMGR | TADM | TMSA | TSLD
+		 * @returns {string} the caller, "" when the user has none for that role
+		 */
+		getFunctionCaller: function (sManagerType) {
+			var mCallers = _currentUser().functionCallers || {};
+			return mCallers[sManagerType] || "";
+		},
+
+		/** The host app's per-employee screens - see EMPLOYEE_SCREEN. */
+		EMPLOYEE_SCREEN: EMPLOYEE_SCREEN,
+
+		/**
+		 * The address of one of the host app's per-employee screens, on this same
+		 * page: …/index.html?empNum=1486046&caller=2#/Clock.
+		 *
+		 * Search parameters already on the page (?mock=, ?user=, sap-*) are kept;
+		 * an old empNum / caller is replaced, never doubled.
+		 *
+		 * @param {string} sScreen      an EMPLOYEE_SCREEN value
+		 * @param {string} sEmpNum      the employee's personnel number
+		 * @param {string} sManagerType the role the current card is for; its
+		 *                              FunctionCaller is sent as caller=
+		 * @returns {string} the URL
+		 */
+		buildEmployeeScreenUrl: function (sScreen, sEmpNum, sManagerType) {
+			var aParams = this.stripEmployeeParams(window.location.search)
+				.replace(/^\?/, "").split("&").filter(Boolean);
+			var sCaller = this.getFunctionCaller(sManagerType);
+
+			aParams.push("empNum=" + encodeURIComponent(sEmpNum || ""));
+			if (sCaller) {
+				aParams.push("caller=" + encodeURIComponent(sCaller));
+			} else {
+				Log.warning("DataService: no FunctionCaller for role " + sManagerType
+					+ " - the employee screen opens without caller=");
+			}
+			return window.location.pathname + "?" + aParams.join("&") + "#/" + sScreen;
+		},
+
+		/**
+		 * A search string without empNum / caller - what דף הבית goes back to.
+		 *
+		 * @param {string} sSearch a location.search ("?a=1&empNum=2")
+		 * @returns {string} the same search without them ("?a=1"), or ""
+		 */
+		stripEmployeeParams: function (sSearch) {
+			var aKept = String(sSearch || "").replace(/^\?/, "").split("&")
+				.filter(function (sPair) {
+					return sPair && EMPLOYEE_PARAMS.indexOf(sPair.split("=")[0]) === -1;
+				});
+			return aKept.length ? "?" + aKept.join("&") : "";
+		},
+
+		/** @returns {boolean} whether this page was opened for one employee */
+		hasEmployeeParams: function () {
+			return this.stripEmployeeParams(window.location.search)
+				!== (window.location.search || "").replace(/^\?$/, "");
 		},
 
 		/**

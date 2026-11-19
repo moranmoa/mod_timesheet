@@ -32,7 +32,7 @@
 
 	<Dialog
 		id="reminderDialog"
-		title="{i18n>mrReminderTitle}"
+		title="{i18n_manager>mrReminderTitle}"
 		contentWidth="46rem"
 		draggable="true"
 		class="mtReminderDialog">
@@ -40,16 +40,16 @@
 		<VBox class="mtReminderForm">
 
 			<VBox class="mtReminderField mtFilterField mtReminderFieldTo">
-				<Label text="{i18n>mrReminderTo}" labelFor="reminderTo" class="mtReminderLabel" />
+				<Label text="{i18n_manager>mrReminderTo}" labelFor="reminderTo" class="mtReminderLabel" />
 				<MultiInput
 					id="reminderTo"
 					width="100%"
 					showValueHelp="false"
-					placeholder="{i18n>mrReminderToPlaceholder}" />
+					placeholder="{i18n_manager>mrReminderToPlaceholder}" />
 			</VBox>
 
 			<VBox class="mtReminderField mtFilterField">
-				<Label text="{i18n>mrReminderSubject}" labelFor="reminderSubject" class="mtReminderLabel" />
+				<Label text="{i18n_manager>mrReminderSubject}" labelFor="reminderSubject" class="mtReminderLabel" />
 				<Input
 					id="reminderSubject"
 					width="100%"
@@ -59,7 +59,7 @@
 			<!-- תוכן keeps the field's border and fill but not .mtFilterField: that
 			     class pins every control it holds to one 44px line. -->
 			<VBox class="mtReminderField mtReminderFieldBody">
-				<Label text="{i18n>mrReminderBody}" labelFor="reminderBody" class="mtReminderLabel" />
+				<Label text="{i18n_manager>mrReminderBody}" labelFor="reminderBody" class="mtReminderLabel" />
 				<TextArea
 					id="reminderBody"
 					width="100%"
@@ -71,7 +71,7 @@
 
 		<beginButton>
 			<Button
-				text="{i18n>mrReminderSend}"
+				text="{i18n_manager>mrReminderSend}"
 				type="Emphasized"
 				icon="sap-icon://email"
 				class="mtButtonPrimary"
@@ -80,7 +80,7 @@
 
 		<endButton>
 			<Button
-				text="{i18n>mrReminderCancel}"
+				text="{i18n_manager>mrReminderCancel}"
 				class="mtButtonSecondary"
 				press=".onCancelReminder" />
 		</endButton>

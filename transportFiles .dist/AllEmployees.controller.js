@@ -4,9 +4,9 @@ sap.ui.define([
 	"sap/ui/model/json/JSONModel",
 	"sap/m/MessageToast",
 	"sap/base/Log",
-	"modtimesheet/model/formatter",
-	"modtimesheet/model/DataService",
-	"modtimesheet/controller/MultiSelectAll"
+	"com/mln/ui5/emp_timesheet/model/formatter",
+	"com/mln/ui5/emp_timesheet/model/DataService",
+	"com/mln/ui5/emp_timesheet/controllers/MultiSelectAll"
 ], function (Controller, Fragment, JSONModel, MessageToast, Log, formatter, DataService, MultiSelectAll) {
 	"use strict";
 
@@ -286,7 +286,7 @@ sap.ui.define([
 		return false;
 	}
 
-	return Controller.extend("modtimesheet.controller.AllEmployees", {
+	return Controller.extend("com.mln.ui5.emp_timesheet.controllers.AllEmployees", {
 
 		formatter: formatter,
 
@@ -1082,44 +1082,36 @@ sap.ui.define([
 		},
 
 		/**
-		 * Pressing the היעדרויות icon leaves for that employee's absences screen.
+		 * היעדרויות - AbsenceDeatails/TM_QUTA1 for that employee, in a new tab.
 		 *
 		 * @param {sap.ui.base.Event} oEvent press event of the icon Button
 		 */
 		onOpenAbsences: function (oEvent) {
-			// TODO: wire up once the absences screen exists:
-			// this.getOwnerComponent().getRouter().navTo("employeeAbsences", {
-			//     employeeId: oRow.employeeId
-			// });
-			this._toastRowAction(oEvent, "aeOpenAbsencesPlaceholder");
+			this._openEmployeeScreen(oEvent, DataService.EMPLOYEE_SCREEN.ABSENCES);
 		},
 
 		/**
-		 * Pressing the השתלמויות icon leaves for that employee's training screen.
+		 * השתלמויות - AbsenceDeatails/TM_QUTA_ATT1 for that employee, in a new tab.
 		 *
 		 * @param {sap.ui.base.Event} oEvent press event of the icon Button
 		 */
 		onOpenTraining: function (oEvent) {
-			// TODO: wire up once the training screen exists:
-			// this.getOwnerComponent().getRouter().navTo("employeeTraining", {
-			//     employeeId: oRow.employeeId
-			// });
-			this._toastRowAction(oEvent, "aeOpenTrainingPlaceholder");
+			this._openEmployeeScreen(oEvent, DataService.EMPLOYEE_SCREEN.TRAINING);
 		},
 
 		/**
-		 * Placeholder for the row-action icons until their screens exist: names the
-		 * employee whose row was pressed, so it is visible that the press reached the
-		 * right record and not just the right column.
+		 * Opens one of the host app's per-employee screens in a NEW tab - see
+		 * DataService.buildEmployeeScreenUrl. This screen is not opened from a
+		 * card, so caller= is the FunctionCaller of the user's own (widest) role,
+		 * the same role the shared ManagerEmployees call behind it was made with.
 		 *
-		 * @param {sap.ui.base.Event} oEvent press event of a row-action Button
-		 * @param {string}            sKey   i18n key taking name + number
+		 * @param {sap.ui.base.Event} oEvent  press event of a row-action Button
+		 * @param {string}            sScreen a DataService.EMPLOYEE_SCREEN value
 		 */
-		_toastRowAction: function (oEvent, sKey) {
+		_openEmployeeScreen: function (oEvent, sScreen) {
 			var oRow = oEvent.getSource().getBindingContext("view").getObject();
-			MessageToast.show(this._getText(sKey, [
-				oRow.employeeName, oRow.employeeNumber
-			]));
+			window.open(DataService.buildEmployeeScreenUrl(
+				sScreen, oRow.employeeNumber, DataService.getCurrentUser().role), "_blank");
 		},
 
 		// Per-row expand / collapse needs no handler of its own: the TreeTable's
@@ -1171,7 +1163,7 @@ sap.ui.define([
 			if (!this._pViewSettingsDialog) {
 				this._pViewSettingsDialog = Fragment.load({
 					id: this.getView().getId(),
-					name: "modtimesheet.view.AllEmployeesViewSettings",
+					name: "com.mln.ui5.emp_timesheet.views.AllEmployeesViewSettings",
 					controller: this
 				}).then(function (oDialog) {
 					this.getView().addDependent(oDialog);
@@ -1261,7 +1253,7 @@ sap.ui.define([
 		 * @returns {string} the translated text
 		 */
 		_getText: function (sKey, aArgs) {
-			return this.getOwnerComponent().getModel("i18n")
+			return this.getOwnerComponent().getModel("i18n_manager")
 				.getResourceBundle().getText(sKey, aArgs);
 		}
 	});

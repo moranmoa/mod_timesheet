@@ -20,7 +20,7 @@
 		data-sap-ui-language="he"
 		data-sap-ui-compatVersion="edge"
 		data-sap-ui-async="true"
-		data-sap-ui-resourceroots='{ "modtimesheet": "../../" }'
+		data-sap-ui-resourceroots='{ "com.mln.ui5.emp_timesheet": "../../" }'
 		data-sap-ui-libs="sap.m, sap.ui.core">
 	</script>
 
@@ -32,7 +32,7 @@
 
 		sap.ui.getCore().attachInit(function () {
 			sap.ui.require([
-				"modtimesheet/test/unit/AllEmployees.controller.qunit"
+				"com/mln/ui5/emp_timesheet/test/unit/AllEmployees.controller.qunit"
 			], function () {
 				QUnit.start();
 			});

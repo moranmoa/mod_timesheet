@@ -7,8 +7,8 @@
 	     ============================================================================
 	     Everything this dialog needs lives in three places and nowhere else:
 
-	       view/StudyDays.fragment.xml      this file
-	       controller/StudyDaysDialog.js    open / close / data / formatting
+	       views/StudyDays.fragment.xml      this file
+	       controllers/StudyDaysDialog.js    open / close / data / formatting
 	       css/style.css §14                .sdDialog
 
 	     The fragment is loaded with StudyDaysDialog as its controller, and the
@@ -32,7 +32,7 @@
 		<customHeader>
 			<Bar class="sdHeader">
 				<contentLeft>
-					<Title text="{i18n>sdTitle}" level="H2" class="sdTitle" />
+					<Title text="{i18n_manager>sdTitle}" level="H2" class="sdTitle" />
 					<DatePicker
 						id="studyDaysDate"
 						class="sdDate"
@@ -47,7 +47,7 @@
 						icon="sap-icon://decline"
 						type="Transparent"
 						class="sdClose"
-						tooltip="{i18n>sdClose}"
+						tooltip="{i18n_manager>sdClose}"
 						press=".onClose" />
 				</contentRight>
 			</Bar>
@@ -58,42 +58,42 @@
 			class="sdTable"
 			fixedLayout="true"
 			showSeparators="All"
-			noDataText="{i18n>sdNoData}"
+			noDataText="{i18n_manager>sdNoData}"
 			items="{path: 'sd>/rows', templateShareable: false}">
 
 			<columns>
 				<Column width="16%">
-					<Text text="{i18n>sdColDescription}" />
-					<footer><Text text="{i18n>sdTotalMonth}" class="sdStrong" /></footer>
+					<Text text="{i18n_manager>sdColDescription}" />
+					<footer><Text text="{i18n_manager>sdTotalMonth}" class="sdStrong" /></footer>
 				</Column>
 				<Column width="8%" hAlign="Center">
-					<Text text="{i18n>sdColFrom}" />
+					<Text text="{i18n_manager>sdColFrom}" />
 				</Column>
 				<Column width="4%" hAlign="Center">
-					<Text text="{i18n>sdColDay}" />
+					<Text text="{i18n_manager>sdColDay}" />
 				</Column>
 				<Column width="8%" hAlign="Center">
-					<Text text="{i18n>sdColTo}" />
+					<Text text="{i18n_manager>sdColTo}" />
 				</Column>
 				<Column width="4%" hAlign="Center">
-					<Text text="{i18n>sdColDay}" />
+					<Text text="{i18n_manager>sdColDay}" />
 				</Column>
 				<Column width="7%" hAlign="Center">
-					<Text text="{i18n>sdColQuota}" />
+					<Text text="{i18n_manager>sdColQuota}" />
 					<footer><Text text="{sd>/total/quotaText}" /></footer>
 				</Column>
 				<Column width="7%" hAlign="Center">
-					<Text text="{i18n>sdColUsed}" />
+					<Text text="{i18n_manager>sdColUsed}" />
 					<footer><Text text="{sd>/total/usedText}" /></footer>
 				</Column>
 				<Column width="11%" hAlign="Center">
-					<Text text="{i18n>sdColPercent}" />
+					<Text text="{i18n_manager>sdColPercent}" />
 				</Column>
 				<Column width="16%">
-					<Text text="{i18n>sdColAbsenceType}" />
+					<Text text="{i18n_manager>sdColAbsenceType}" />
 				</Column>
 				<Column width="19%">
-					<Text text="{i18n>sdColNote}" />
+					<Text text="{i18n_manager>sdColNote}" />
 					<!-- The month summary: the frame spans it under the last two
 					     columns; it sits in the last one, which is the wider. -->
 					<footer>
@@ -132,7 +132,7 @@
 
 		<beginButton>
 			<Button
-				text="{i18n>sdConfirm}"
+				text="{i18n_manager>sdConfirm}"
 				type="Emphasized"
 				class="mtButtonPrimary"
 				press=".onConfirm" />

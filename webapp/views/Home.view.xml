@@ -1,5 +1,5 @@
 <mvc:View
-	controllerName="modtimesheet.controller.Home"
+	controllerName="com.mln.ui5.emp_timesheet.controllers.Home"
 	xmlns:mvc="sap.ui.core.mvc"
 	xmlns="sap.m"
 	xmlns:core="sap.ui.core"
@@ -20,7 +20,7 @@
 	     backend decision, not a view change: no role is named anywhere in this file.
 
 	     The dark shell bar in the frame is drawn by the app itself now, once for
-	     every screen: view/AppHeader.fragment.xml, included by App.view.xml above
+	     every screen: views/AppHeader.fragment.xml, included by App.view.xml above
 	     the sap.m.App. Nothing here draws it - same as the other two screens.
 	     ========================================================================= -->
 
@@ -32,19 +32,19 @@
 				<Title text="{home>/user/greeting}" level="H1" class="hmGreeting" />
 				<HBox alignItems="Center" renderType="Bare">
 					<!-- פירוט ימי לימודים - the whole dialog is
-					     controller/StudyDaysDialog.js; see the note there.
+					     controllers/StudyDaysDialog.js; see the note there.
 					     Hidden for now - flip visible back to bring it back. -->
 					<Button
 						visible="false"
 						icon="sap-icon://education"
 						type="Transparent"
-						text="{i18n>sdOpen}"
+						text="{i18n_manager>sdOpen}"
 						press=".onOpenStudyDays"
 						class="sdOpenButton" />
 					<Button
 						icon="sap-icon://print"
 						type="Transparent"
-						tooltip="{i18n>hmPrint}"
+						tooltip="{i18n_manager>hmPrint}"
 						press=".onPrint"
 						class="hmPrintButton" />
 				</HBox>
@@ -52,7 +52,7 @@
 
 			<!-- ================= נתוני הנוכחות שלי ================= -->
 			<Title
-				text="{i18n>hmMySectionTitle}"
+				text="{i18n_manager>hmMySectionTitle}"
 				level="H2"
 				class="hmSectionTitle hmSectionTitleBlock" />
 
@@ -84,13 +84,13 @@
 				<Button
 					class="hmCard hmLauncherCard"
 					type="Transparent"
-					text="{i18n>hmEnterAttendance}"
+					text="{i18n_manager>hmEnterAttendance}"
 					icon="sap-icon://create-entry-time"
 					press=".onEnterAttendance" />
 
 				<!-- סטטוס הדו"ח -->
 				<VBox class="hmCard hmCardWide hmStatusCard">
-					<Title text="{i18n>hmReportStatus}" level="H3" class="hmCardTitle" />
+					<Title text="{i18n_manager>hmReportStatus}" level="H3" class="hmCardTitle" />
 
 					<!-- Model order is inline-start first, i.e. right-to-left on
 					     screen: דיווחים חסרים, אישורים חסרים, חריגות. There is no
@@ -124,7 +124,7 @@
 				     is no read / unread state on this card, so the dot in front of it
 				     is a bullet and takes its one colour from the CSS. -->
 				<VBox class="hmCard hmCardWide hmMessagesCard">
-					<Title text="{i18n>hmMessages}" level="H3" class="hmCardTitle" />
+					<Title text="{i18n_manager>hmMessages}" level="H3" class="hmCardTitle" />
 					<VBox renderType="Bare" class="hmMessageList" items="{path: 'home>/messages', templateShareable: false}">
 						<VBox class="hmMessage">
 							<HBox alignItems="Center" renderType="Bare" class="hmMessageStatus">
@@ -152,13 +152,13 @@
 				     the left and the same glyph is not mirrored, so it points left.
 				     Both compositions land on "back". -->
 				<HBox alignItems="Center" wrap="Wrap" class="hmSubHeader">
-					<Title text="{i18n>hmSubordinatesTitle}" level="H2" class="hmSectionTitle" />
+					<Title text="{i18n_manager>hmSubordinatesTitle}" level="H2" class="hmSectionTitle" />
 					<HBox alignItems="Center" renderType="Bare" class="hmMonthStepper">
 						<Button
 							icon="sap-icon://slim-arrow-left"
 							type="Transparent"
 							class="hmMonthArrow"
-							tooltip="{i18n>hmPreviousMonth}"
+							tooltip="{i18n_manager>hmPreviousMonth}"
 							press=".onPreviousMonth" />
 						<Button
 							id="hmMonthField"
@@ -167,13 +167,13 @@
 							icon="sap-icon://appointment-2"
 							iconFirst="false"
 							text="{home>/monthLabel}"
-							tooltip="{i18n>hmMonthPickerTitle}"
+							tooltip="{i18n_manager>hmMonthPickerTitle}"
 							press=".onOpenMonthPicker" />
 						<Button
 							icon="sap-icon://slim-arrow-right"
 							type="Transparent"
 							class="hmMonthArrow"
-							tooltip="{i18n>hmNextMonth}"
+							tooltip="{i18n_manager>hmNextMonth}"
 							press=".onNextMonth" />
 					</HBox>
 				</HBox>
@@ -182,7 +182,7 @@
 				     component as on the two report screens - so only the horizontal
 				     label placement and the frame's 195px width are new. -->
 				<HBox alignItems="Center" class="mtFilterField hmPopulationField">
-					<Label text="{i18n>hmPopulation}" class="hmPopulationLabel" />
+					<Label text="{i18n_manager>hmPopulation}" class="hmPopulationLabel" />
 					<Select
 						id="hmPopulationSelect"
 						selectedKey="{home>/populationKey}"
@@ -236,7 +236,7 @@
 								class="hmCardFooter"
 								icon="sap-icon://refresh"
 								text="{home>updatedText}"
-								tooltip="{i18n>hmRefresh}"
+								tooltip="{i18n_manager>hmRefresh}"
 								press=".onRefresh" />
 						</VBox>
 					</FlexBox>
@@ -246,7 +246,7 @@
 					<Button
 						class="hmCard hmLauncherCard"
 						type="Transparent"
-						text="{i18n>hmAllEmployeesCard}"
+						text="{i18n_manager>hmAllEmployeesCard}"
 						icon="sap-icon://group"
 						press=".onOpenAllEmployees" />
 

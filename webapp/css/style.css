@@ -385,7 +385,7 @@
 /* 3c. A fully checked multi-select.
    ------------------------------------------------------------------------
    Every option checked - on entry to נתוני כל העובדים, or through the "הכל"
-   option either screen offers on a long list (controller/MultiSelectAll.js) -
+   option either screen offers on a long list (controllers/MultiSelectAll.js) -
    means "no restriction", and as up to hundreds of tokens in a 44px pill it
    carries no information. The tokenizer is collapsed and the field falls back
    to its "הכל" placeholder. MultiSelectAll.sync adds/removes .mtAllSelected. */
@@ -3308,7 +3308,7 @@
 /* ============================================================================
    13. שורת ה-header של האפליקציה - the shell bar
    ----------------------------------------------------------------------------
-   view/AppHeader.fragment.xml, included once by App.view.xml above the
+   views/AppHeader.fragment.xml, included once by App.view.xml above the
    sap.m.App. Navy strip, the system name and the way home at the start (right,
    in RTL), the bell and the user circle at the end.
 
@@ -3486,8 +3486,8 @@
    14. פירוט ימי לימודים - the StudyDays dialog
    ----------------------------------------------------------------------------
    Opened from דף הבית (.sdOpenButton, beside the print glyph). The dialog's
-   markup is view/StudyDays.fragment.xml and its logic
-   controller/StudyDaysDialog.js; this section is the third and last place it
+   markup is views/StudyDays.fragment.xml and its logic
+   controllers/StudyDaysDialog.js; this section is the third and last place it
    lives. Nothing here touches another screen's classes - the one thing it
    borrows is the footer pill, .mtButtonPrimary from §6b, put on the button in
    the fragment.

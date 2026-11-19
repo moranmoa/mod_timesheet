@@ -1,5 +1,5 @@
 <mvc:View
-	controllerName="modtimesheet.controller.AllEmployees"
+	controllerName="com.mln.ui5.emp_timesheet.controllers.AllEmployees"
 	xmlns:mvc="sap.ui.core.mvc"
 	xmlns="sap.m"
 	xmlns:core="sap.ui.core"
@@ -29,7 +29,7 @@
 		<f:title>
 			<f:DynamicPageTitle areaShrinkRatio="1:0:0">
 				<f:heading>
-					<Title text="{i18n>aeTitle}" level="H2" class="aePageTitle" />
+					<Title text="{i18n_manager>aeTitle}" level="H2" class="aePageTitle" />
 				</f:heading>
 			</f:DynamicPageTitle>
 		</f:title>
@@ -61,16 +61,16 @@
 					     that a stylesheet rule of equal specificity would only race. -->
 					<VBox class="mtFilterField mtFilterFieldSwitch aeFilterField aeFilterFieldSwitch" alignItems="Center">
 						<Label
-							text="{i18n>aeFilterInactive}"
+							text="{i18n_manager>aeFilterInactive}"
 							labelFor="aeInactiveSwitch"
 							class="mtFilterLabel mtFilterLabelCentered" />
 						<Switch
 							id="aeInactiveSwitch"
 							class="mtStateSwitch"
 							state="{view>/viewState/showInactive}"
-							customTextOn="{i18n>aeSwitchOn}"
-							customTextOff="{i18n>aeSwitchOff}"
-							tooltip="{i18n>aeFilterInactiveTooltip}"
+							customTextOn="{i18n_manager>aeSwitchOn}"
+							customTextOff="{i18n_manager>aeSwitchOff}"
+							tooltip="{i18n_manager>aeFilterInactiveTooltip}"
 							change=".onToggleInactive" />
 					</VBox>
 
@@ -81,10 +81,10 @@
 					     "עובד/ת לא פעיל/ה" note, so it is never mistaken for a current
 					     employee. -->
 					<VBox class="mtFilterField aeFilterField aeFilterFieldSearch">
-						<Label text="{i18n>aeSearchLabel}" class="mtFilterLabel" />
+						<Label text="{i18n_manager>aeSearchLabel}" class="mtFilterLabel" />
 						<SearchField
 							id="aeSearchField"
-							placeholder="{i18n>aeSearchPlaceholder}"
+							placeholder="{i18n_manager>aeSearchPlaceholder}"
 							search=".onSearch"
 							liveChange=".onSearch"
 							enableSuggestions="true"
@@ -112,11 +112,11 @@
 					     managers themselves stay on screen as the matches' ancestors
 					     (_collectWithAncestors), so the branch is still reachable. -->
 					<VBox class="mtFilterField aeFilterField">
-						<Label text="{i18n>aeFilterDirectManager}" class="mtFilterLabel mtFilterLabelCentered" />
+						<Label text="{i18n_manager>aeFilterDirectManager}" class="mtFilterLabel mtFilterLabelCentered" />
 						<MultiComboBox
 							id="aeManagerFilter"
 							width="100%"
-							placeholder="{i18n>aeFilterAll}"
+							placeholder="{i18n_manager>aeFilterAll}"
 							selectionChange=".onFilterChange"
 							items="{
 								path: 'view>/filters/managers',
@@ -127,11 +127,11 @@
 					</VBox>
 
 					<VBox class="mtFilterField aeFilterField">
-						<Label text="{i18n>aeFilterPopulation}" class="mtFilterLabel mtFilterLabelCentered" />
+						<Label text="{i18n_manager>aeFilterPopulation}" class="mtFilterLabel mtFilterLabelCentered" />
 						<MultiComboBox
 							id="aePopulationFilter"
 							width="100%"
-							placeholder="{i18n>aeFilterAll}"
+							placeholder="{i18n_manager>aeFilterAll}"
 							selectionChange=".onFilterChange"
 							items="{
 								path: 'view>/filters/populations',
@@ -142,11 +142,11 @@
 					</VBox>
 
 					<VBox class="mtFilterField aeFilterField">
-						<Label text="{i18n>aeFilterDivision}" class="mtFilterLabel mtFilterLabelCentered" />
+						<Label text="{i18n_manager>aeFilterDivision}" class="mtFilterLabel mtFilterLabelCentered" />
 						<MultiComboBox
 							id="aeDivisionFilter"
 							width="100%"
-							placeholder="{i18n>aeFilterAll}"
+							placeholder="{i18n_manager>aeFilterAll}"
 							selectionChange=".onFilterChange"
 							items="{
 								path: 'view>/filters/divisions',
@@ -157,11 +157,11 @@
 					</VBox>
 
 					<VBox class="mtFilterField aeFilterField">
-						<Label text="{i18n>aeFilterUnit}" class="mtFilterLabel mtFilterLabelCentered" />
+						<Label text="{i18n_manager>aeFilterUnit}" class="mtFilterLabel mtFilterLabelCentered" />
 						<MultiComboBox
 							id="aeUnitFilter"
 							width="100%"
-							placeholder="{i18n>aeFilterAll}"
+							placeholder="{i18n_manager>aeFilterAll}"
 							selectionChange=".onFilterChange"
 							items="{
 								path: 'view>/filters/units',
@@ -179,7 +179,7 @@
 				     child. -->
 				<HBox justifyContent="End" alignItems="Center" class="mtFilterActions aeFilterActions">
 					<Button
-						text="{i18n>aeResetFilters}"
+						text="{i18n_manager>aeResetFilters}"
 						icon="sap-icon://clear-filter"
 						type="Transparent"
 						press=".onResetFilters" />
@@ -209,7 +209,7 @@
 					     left edge, as in the design. Styling is inherited from the
 					     kit's .mtTableActions button rules. -->
 					<OverflowToolbar class="mtTableActions aeTableToolbar">
-						<core:InvisibleText id="employeesTableLabel" text="{i18n>aeTableAriaLabel}" />
+						<core:InvisibleText id="employeesTableLabel" text="{i18n_manager>aeTableAriaLabel}" />
 						<ToolbarSpacer />
 
 						<!-- No רענון button here. The handler is still on the
@@ -218,20 +218,20 @@
 						     back is one element - but the screen is not meant to
 						     offer the action. -->
 						<Button
-							text="{i18n>aePrint}"
-							tooltip="{i18n>aePrint}"
+							text="{i18n_manager>aePrint}"
+							tooltip="{i18n_manager>aePrint}"
 							icon="sap-icon://print"
 							type="Transparent"
 							press=".onPrint" />
 						<Button
-							text="{i18n>aeExportExcel}"
-							tooltip="{i18n>aeExportExcel}"
+							text="{i18n_manager>aeExportExcel}"
+							tooltip="{i18n_manager>aeExportExcel}"
 							icon="sap-icon://excel-attachment"
 							type="Transparent"
 							press=".onExportToExcel" />
 						<Button
-							text="{i18n>aeViewSettings}"
-							tooltip="{i18n>aeViewSettings}"
+							text="{i18n_manager>aeViewSettings}"
+							tooltip="{i18n_manager>aeViewSettings}"
 							icon="sap-icon://action-settings"
 							type="Transparent"
 							press=".onOpenViewSettings" />
@@ -261,8 +261,8 @@
 						     order, so the last child ends up leftmost. -->
 						<Button
 							id="expandAllButton"
-							text="{i18n>aeExpandAll}"
-							tooltip="{i18n>aeExpandAllTooltip}"
+							text="{i18n_manager>aeExpandAll}"
+							tooltip="{i18n_manager>aeExpandAllTooltip}"
 							icon="sap-icon://expand"
 							type="Transparent"
 							visible="{= !${view>/viewState/allExpanded} }"
@@ -270,8 +270,8 @@
 							press=".onExpandAll" />
 						<Button
 							id="collapseAllButton"
-							text="{i18n>aeCollapseAll}"
-							tooltip="{i18n>aeCollapseAllTooltip}"
+							text="{i18n_manager>aeCollapseAll}"
+							tooltip="{i18n_manager>aeCollapseAllTooltip}"
 							icon="sap-icon://collapse"
 							type="Transparent"
 							visible="{= ${view>/viewState/allExpanded} }"
@@ -285,8 +285,8 @@
 							type="Transparent"
 							pressed="{view>/viewState/isHierarchy}"
 							icon="{= ${view>/viewState/isHierarchy} ? 'sap-icon://list' : 'sap-icon://org-chart' }"
-							text="{= ${view>/viewState/isHierarchy} ? ${i18n>aeViewFlat} : ${i18n>aeViewHierarchy} }"
-							tooltip="{= ${view>/viewState/isHierarchy} ? ${i18n>aeViewFlatTooltip} : ${i18n>aeViewHierarchyTooltip} }"
+							text="{= ${view>/viewState/isHierarchy} ? ${i18n_manager>aeViewFlat} : ${i18n_manager>aeViewHierarchy} }"
+							tooltip="{= ${view>/viewState/isHierarchy} ? ${i18n_manager>aeViewFlatTooltip} : ${i18n_manager>aeViewHierarchyTooltip} }"
 							press=".onToggleHierarchy" />
 
 						<!-- No מיון menu: a press on a column header sorts by that
@@ -326,14 +326,14 @@
 					     any more; the tree's expand arrow is what marks them. -->
 					<t:Column id="colEmployeeName" width="17rem" hAlign="Begin">
 						<t:label>
-							<Text text="{i18n>aeColEmployeeName}" />
+							<Text text="{i18n_manager>aeColEmployeeName}" />
 						</t:label>
 						<t:template>
 							<Link
 								text="{view>employeeDisplayName}"
 								wrapping="false"
 								class="aeEmpName"
-								tooltip="{i18n>aeOpenEmployee}"
+								tooltip="{i18n_manager>aeOpenEmployee}"
 								press=".onNavigateToEmployee" />
 						</t:template>
 					</t:Column>
@@ -347,7 +347,7 @@
 					     it) and hideable through הגדרות תצוגה. -->
 					<t:Column id="colDirectManager" width="11rem" hAlign="Begin">
 						<t:label>
-							<Text text="{i18n>aeColDirectManager}" />
+							<Text text="{i18n_manager>aeColDirectManager}" />
 						</t:label>
 						<t:template>
 							<Text text="{view>managerName}" wrapping="false" maxLines="1" />
@@ -356,7 +356,7 @@
 
 					<t:Column id="colEmployeeNumber" width="7rem" hAlign="Center">
 						<t:label>
-							<Text text="{i18n>aeColEmployeeNumber}" />
+							<Text text="{i18n_manager>aeColEmployeeNumber}" />
 						</t:label>
 						<t:template>
 							<Text text="{view>employeeNumber}" wrapping="false" />
@@ -366,7 +366,7 @@
 					<!-- אוכלוסייה: the kit's "תגית עובד" pill (node 1:7600). -->
 					<t:Column id="colPopulation" width="11rem" hAlign="Center">
 						<t:label>
-							<Text text="{i18n>aeColPopulation}" />
+							<Text text="{i18n_manager>aeColPopulation}" />
 						</t:label>
 						<t:template>
 							<HBox class="mtPopChip" alignItems="Center" justifyContent="Center">
@@ -380,7 +380,7 @@
 					     longest text in the table, and 13rem ellipsised most of them. -->
 					<t:Column id="colDivision" width="16rem" hAlign="Begin">
 						<t:label>
-							<Text text="{i18n>aeColDivision}" />
+							<Text text="{i18n_manager>aeColDivision}" />
 						</t:label>
 						<t:template>
 							<Text text="{view>divisionName}" wrapping="false" maxLines="1" />
@@ -392,7 +392,7 @@
 					     an empty filler column. -->
 					<t:Column id="colUnit" minWidth="150" hAlign="Begin">
 						<t:label>
-							<Text text="{i18n>aeColUnit}" />
+							<Text text="{i18n_manager>aeColUnit}" />
 						</t:label>
 						<t:template>
 							<Text text="{view>unitName}" wrapping="false" maxLines="1" />
@@ -408,13 +408,13 @@
 					     value to export, only a way in. Same for השתלמויות below. -->
 					<t:Column id="colAbsences" width="6rem" hAlign="Center">
 						<t:label>
-							<Text text="{i18n>aeColAbsences}" />
+							<Text text="{i18n_manager>aeColAbsences}" />
 						</t:label>
 						<t:template>
 							<Button
 								icon="sap-icon://date-time"
 								type="Transparent"
-								tooltip="{i18n>aeOpenAbsences}"
+								tooltip="{i18n_manager>aeOpenAbsences}"
 								press=".onOpenAbsences" />
 						</t:template>
 					</t:Column>
@@ -426,13 +426,13 @@
 					     icon needs no more room, but "השתלמויות" wraps at 6rem. -->
 					<t:Column id="colTraining" width="7.5rem" hAlign="Center">
 						<t:label>
-							<Text text="{i18n>aeColTraining}" />
+							<Text text="{i18n_manager>aeColTraining}" />
 						</t:label>
 						<t:template>
 							<Button
 								icon="sap-icon://education"
 								type="Transparent"
-								tooltip="{i18n>aeOpenTraining}"
+								tooltip="{i18n_manager>aeOpenTraining}"
 								press=".onOpenTraining" />
 						</t:template>
 					</t:Column>
@@ -443,7 +443,7 @@
 				</t:columns>
 
 				<t:noData>
-					<Text text="{i18n>aeNoData}" class="aeNoData" />
+					<Text text="{i18n_manager>aeNoData}" class="aeNoData" />
 				</t:noData>
 
 			</t:TreeTable>

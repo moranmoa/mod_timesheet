@@ -2,7 +2,7 @@ sap.ui.define([
 	"sap/ui/base/Object",
 	"sap/ui/core/Fragment",
 	"sap/ui/model/json/JSONModel"
-], function (BaseObject, Fragment, JSONModel) {
+], function (ManagedBase, Fragment, JSONModel) {
 	"use strict";
 
 	/* ============================================================================
@@ -13,7 +13,7 @@ sap.ui.define([
 
 	     new StudyDaysDialog(oView).open()
 
-	   The fragment (view/StudyDays.fragment.xml) is loaded with this object as its
+	   The fragment (views/StudyDays.fragment.xml) is loaded with this object as its
 	   controller, added as a dependent of the opener's view - so the view destroys
 	   it, and i18n reaches it by propagation - and given its own "sd" model.
 
@@ -61,10 +61,10 @@ sap.ui.define([
 		return Math.max(0, Math.min(100, Math.round((nUsed / nQuota) * 100)));
 	}
 
-	var StudyDaysDialog = BaseObject.extend("modtimesheet.controller.StudyDaysDialog", {
+	var StudyDaysDialog = ManagedBase.extend("com.mln.ui5.emp_timesheet.controllers.StudyDaysDialog", {
 
 		constructor: function (oView) {
-			BaseObject.call(this);
+			ManagedBase.call(this);
 			this._oView = oView;
 			this._oModel = new JSONModel({
 				date: toIsoDate(new Date()),
@@ -80,7 +80,7 @@ sap.ui.define([
 			if (!this._pDialog) {
 				this._pDialog = Fragment.load({
 					id: this._oView.getId() + "--sd",
-					name: "modtimesheet.view.StudyDays",
+					name: "com.mln.ui5.emp_timesheet.views.StudyDays",
 					controller: this
 				}).then(function (oDialog) {
 					that._oView.addDependent(oDialog);
@@ -138,7 +138,7 @@ sap.ui.define([
 
 		/** Raw rows -> render-ready rows + the סה"כ לחודש footer. */
 		_toViewData: function (aRaw) {
-			var oBundle = this._oView.getModel("i18n").getResourceBundle();
+			var oBundle = this._oView.getModel("i18n_manager").getResourceBundle();
 			var nQuota = 0;
 			var nUsed = 0;
 

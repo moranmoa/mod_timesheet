@@ -1,5 +1,5 @@
 <mvc:View
-	controllerName="modtimesheet.controller.App"
+	controllerName="com.mln.ui5.emp_timesheet.controllers.App"
 	xmlns:mvc="sap.ui.core.mvc"
 	xmlns="sap.m"
 	xmlns:core="sap.ui.core"
@@ -21,7 +21,7 @@
 	     ========================================================================= -->
 
 	<VBox fitContainer="true" renderType="Bare" class="shShell">
-		<core:Fragment fragmentName="modtimesheet.view.AppHeader" type="XML" />
+		<core:Fragment fragmentName="com.mln.ui5.emp_timesheet.views.AppHeader" type="XML" />
 		<App id="app" class="shContent" />
 	</VBox>
 

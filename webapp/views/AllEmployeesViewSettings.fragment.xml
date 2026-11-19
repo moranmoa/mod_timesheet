@@ -13,7 +13,7 @@
 	-->
 	<Dialog
 		id="viewSettingsDialog"
-		title="{i18n>aeViewSettingsTitle}"
+		title="{i18n_manager>aeViewSettingsTitle}"
 		contentWidth="22rem"
 		draggable="true"
 		class="aeViewSettingsDialog">
@@ -22,7 +22,7 @@
 			id="viewSettingsColumnList"
 			mode="MultiSelect"
 			includeItemInSelection="true"
-			headerText="{i18n>aeViewSettingsColumns}"
+			headerText="{i18n_manager>aeViewSettingsColumns}"
 			selectionChange=".onColumnVisibilityChange"
 			items="{
 				path: 'view>/viewSettings/columns',
@@ -32,7 +32,7 @@
 		</List>
 
 		<endButton>
-			<Button text="{i18n>aeClose}" press=".onCloseViewSettings" />
+			<Button text="{i18n_manager>aeClose}" press=".onCloseViewSettings" />
 		</endButton>
 
 	</Dialog>

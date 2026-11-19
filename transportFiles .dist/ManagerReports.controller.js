@@ -10,9 +10,9 @@ sap.ui.define([
 	"sap/m/MessageToast",
 	"sap/m/MessageBox",
 	"sap/m/Token",
-	"modtimesheet/model/DataService",
-	"modtimesheet/model/formatter",
-	"modtimesheet/controller/MultiSelectAll"
+	"com/mln/ui5/emp_timesheet/model/DataService",
+	"com/mln/ui5/emp_timesheet/model/formatter",
+	"com/mln/ui5/emp_timesheet/controllers/MultiSelectAll"
 ], function (Controller, Fragment, JSONModel, Filter, FilterOperator, Sorter,
 	ViewSettingsDialog, ViewSettingsItem, MessageToast, MessageBox, Token, DataService, formatter,
 	MultiSelectAll) {
@@ -183,7 +183,7 @@ sap.ui.define([
 		return { year: iYear, month: iMonth };
 	}
 
-	return Controller.extend("modtimesheet.controller.ManagerReports", {
+	return Controller.extend("com.mln.ui5.emp_timesheet.controllers.ManagerReports", {
 
 		formatter: formatter,
 
@@ -269,7 +269,10 @@ sap.ui.define([
 		 * though the user has been on this screen before.
 		 */
 		_onRouteMatched: function (oEvent) {
-			var oQuery = (oEvent.getParameter("arguments") || {})["?query"] || {};
+			// the hash's query, or - where the route's pattern dropped it - the one
+			// דף הבית remembered; without this every card read as TMGR
+			var oQuery = DataService.resolveEntryQuery(
+				(oEvent.getParameter("arguments") || {})["?query"]);
 
 			this._sManagerType = DataService.getManagerType(oQuery.card);
 			this._sSubordinateScope = DataService.getSubordinateScope(oQuery.card);
@@ -965,7 +968,7 @@ sap.ui.define([
 			if (!this._pReminderDialog) {
 				this._pReminderDialog = Fragment.load({
 					id: this.getView().getId(),
-					name: "modtimesheet.view.ManagerReportsReminder",
+					name: "com.mln.ui5.emp_timesheet.views.ManagerReportsReminder",
 					controller: this
 				}).then(function (oDialog) {
 					this.getView().addDependent(oDialog);
@@ -1142,44 +1145,37 @@ sap.ui.define([
 
 		/* =============================== navigation =============================== */
 
+		/** The דוח נוכחות of that employee - the host app's Clock screen. */
 		onOpenReport: function (oEvent) {
-			var oCtx = oEvent.getSource().getBindingContext("reports");
-			var oRow = oCtx.getObject();
-			// TODO: navigate to the report detail. Placeholder for now:
-			MessageToast.show(this._getText("mrOpenReportPlaceholder",
-				[oRow.employeeDisplayName, oRow.employeeNumber]));
+			this._openEmployeeScreen(oEvent, DataService.EMPLOYEE_SCREEN.REPORT);
 		},
 
-		/** היעדרויות - leaves for that employee's absences screen. */
+		/** היעדרויות - AbsenceDeatails/TM_QUTA1 for that employee. */
 		onOpenAbsences: function (oEvent) {
-			// TODO: wire up once the absences screen exists:
-			// this.getOwnerComponent().getRouter().navTo("employeeAbsences", {
-			//     employeeId: oRow.employeeId
-			// });
-			this._toastRowAction(oEvent, "mrOpenAbsencesPlaceholder");
+			this._openEmployeeScreen(oEvent, DataService.EMPLOYEE_SCREEN.ABSENCES);
 		},
 
-		/** השתלמויות - leaves for that employee's training screen. */
+		/** השתלמויות - AbsenceDeatails/TM_QUTA_ATT1 for that employee. */
 		onOpenTraining: function (oEvent) {
-			// TODO: wire up once the training screen exists:
-			// this.getOwnerComponent().getRouter().navTo("employeeTraining", {
-			//     employeeId: oRow.employeeId
-			// });
-			this._toastRowAction(oEvent, "mrOpenTrainingPlaceholder");
+			this._openEmployeeScreen(oEvent, DataService.EMPLOYEE_SCREEN.TRAINING);
 		},
 
 		/**
-		 * Placeholder for the row-action icons until their screens exist: names the
-		 * employee whose row was pressed, so it is visible that the press reached the
-		 * right record and not just the right column.
+		 * Opens one of the host app's per-employee screens in a NEW tab, for the
+		 * row that was pressed:
 		 *
-		 * @param {sap.ui.base.Event} oEvent   press event of a row-action Button
-		 * @param {string}            sWhatKey i18n key naming what is being opened
+		 *   index.html?empNum=<employee>&caller=<FunctionCaller>#/<screen>
+		 *
+		 * caller is the FunctionCaller of the role THIS screen was opened for -
+		 * the card, not the user's widest role: from נוכחות כפיפים it is TMGR's.
+		 *
+		 * @param {sap.ui.base.Event} oEvent  press event of a row Link / Button
+		 * @param {string}            sScreen a DataService.EMPLOYEE_SCREEN value
 		 */
-		_toastRowAction: function (oEvent, sWhatKey) {
+		_openEmployeeScreen: function (oEvent, sScreen) {
 			var oRow = oEvent.getSource().getBindingContext("reports").getObject();
-			MessageToast.show(this._getText("mrRowActionPlaceholder",
-				[this._getText(sWhatKey), oRow.employeeDisplayName, oRow.employeeNumber]));
+			window.open(DataService.buildEmployeeScreenUrl(
+				sScreen, oRow.employeeNumber, this._sManagerType), "_blank");
 		},
 
 		/**
@@ -1188,7 +1184,7 @@ sap.ui.define([
 		 * @returns {string} the translated text
 		 */
 		_getText: function (sKey, aArgs) {
-			return this.getOwnerComponent().getModel("i18n")
+			return this.getOwnerComponent().getModel("i18n_manager")
 				.getResourceBundle().getText(sKey, aArgs);
 		}
 	});

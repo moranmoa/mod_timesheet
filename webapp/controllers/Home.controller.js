@@ -4,9 +4,9 @@ sap.ui.define([
 	"sap/ui/model/json/JSONModel",
 	"sap/m/MessageToast",
 	"sap/base/Log",
-	"modtimesheet/model/formatter",
-	"modtimesheet/model/DataService",
-	"modtimesheet/controller/StudyDaysDialog"
+	"com/mln/ui5/emp_timesheet/model/formatter",
+	"com/mln/ui5/emp_timesheet/model/DataService",
+	"com/mln/ui5/emp_timesheet/controllers/StudyDaysDialog"
 ], function (Controller, Fragment, JSONModel, MessageToast, Log, formatter, DataService, StudyDaysDialog) {
 	"use strict";
 
@@ -71,7 +71,7 @@ sap.ui.define([
 		return Math.min(12, Math.max(1, iMonth || 1)) - 1;
 	}
 
-	return Controller.extend("modtimesheet.controller.Home", {
+	return Controller.extend("com.mln.ui5.emp_timesheet.controllers.Home", {
 
 		formatter: formatter,
 
@@ -80,7 +80,7 @@ sap.ui.define([
 		   ===================================================================== */
 
 		onInit: function () {
-			this._oBundle = this.getOwnerComponent().getModel("i18n").getResourceBundle();
+			this._oBundle = this.getOwnerComponent().getModel("i18n_manager").getResourceBundle();
 			this._aMonthNames = DataService.getFilterOptions().months;
 
 			// The requested slice of data. The service owns everything else.
@@ -295,7 +295,7 @@ sap.ui.define([
 			if (!this._pMonthPopover) {
 				this._pMonthPopover = Fragment.load({
 					id: this.getView().getId(),
-					name: "modtimesheet.view.HomeMonthPicker",
+					name: "com.mln.ui5.emp_timesheet.views.HomeMonthPicker",
 					controller: this
 				}).then(function (oPopover) {
 					this.getView().addDependent(oPopover);
@@ -356,12 +356,17 @@ sap.ui.define([
 
 			// The month on the stepper travels too, so the screen opens on the
 			// month whose counters the user was just looking at - not on today.
+			var oQuery = {
+				card: oCard.key,
+				year: String(this._oRequest.year),
+				month: String(this._oRequest.month)
+			};
+
+			// Kept in the DataService as well: a route pattern without ":?query:"
+			// drops the query, and the screen must still know which card it is.
+			DataService.setEntryQuery(oQuery);
 			this.getOwnerComponent().getRouter().navTo("managerReports", {
-				"?query": {
-					card: oCard.key,
-					year: String(this._oRequest.year),
-					month: String(this._oRequest.month)
-				}
+				"?query": oQuery
 			});
 		},
 

@@ -26,9 +26,9 @@
 	                                     (shell>/user/visible).
 
 	     Reusing it elsewhere: drop
-	         <core:Fragment fragmentName="modtimesheet.view.AppHeader" type="XML" />
+	         <core:Fragment fragmentName="com.mln.ui5.emp_timesheet.views.AppHeader" type="XML" />
 	     into a view whose controller has onNavHome + onOpenNotifications (see
-	     controller/App.controller.js), with the "shell" JSON model on the component
+	     controllers/App.controller.js), with the "shell" JSON model on the component
 	     (Component.js _setupShellModel) and the sh* keys in i18n.
 
 	     Note for the Fiori launchpad: the FLP draws a shell bar of its own, so
@@ -44,11 +44,11 @@
 
 		<!-- ================= Right: system name + way home ================= -->
 		<HBox class="shBrand" renderType="Bare" alignItems="Center">
-			<Text text="{i18n>shSystemTitle}" class="shSystemTitle" />
+			<Text text="{i18n_manager>shSystemTitle}" class="shSystemTitle" />
 			<Text text="-" class="shTitleSeparator" />
 			<Link
-				text="{i18n>shHome}"
-				tooltip="{i18n>shHomeTooltip}"
+				text="{i18n_manager>shHome}"
+				tooltip="{i18n_manager>shHomeTooltip}"
 				press=".onNavHome"
 				class="shHomeLink" />
 		</HBox>
@@ -62,7 +62,7 @@
 				<Button
 					icon="sap-icon://bell"
 					type="Transparent"
-					tooltip="{i18n>shNotifications}"
+					tooltip="{i18n_manager>shNotifications}"
 					press=".onOpenNotifications"
 					class="shIconButton" />
 				<Text

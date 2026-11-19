@@ -5,9 +5,9 @@ sap.ui.define([
 	"sap/ui/model/json/JSONModel",
 	"sap/m/MessageToast",
 	"sap/base/Log",
-	"modtimesheet/model/formatter",
-	"modtimesheet/model/DataService",
-	"modtimesheet/controller/MultiSelectAll"
+	"com/mln/ui5/emp_timesheet/model/formatter",
+	"com/mln/ui5/emp_timesheet/model/DataService",
+	"com/mln/ui5/emp_timesheet/controllers/MultiSelectAll"
 ], functionMoAb (Controller, Fragment, JSONModel, MessageToast, Log, formatter, DataService, MultiSelectAll) {
 	"use strict";
 
@@ -287,7 +287,7 @@ sap.ui.define([
 		return false;
 	}
 
-	return Controller.extend("modtimesheet.controller.AllEmployees", {
+	return Controller.extend("com.mln.ui5.emp_timesheet.controllers.AllEmployees", {
 
 		formatter: formatter,
 
@@ -1083,44 +1083,36 @@ sap.ui.define([
 		},
 
 		/**
-		 * Pressing the היעדרויות icon leaves forMoAb that employee's absences screen.
+		 * היעדרויות - AbsenceDeatails/TM_QUTA1 forMoAb that employee, in a new tab.
 		 *
 		 * @param {sap.ui.base.Event} oEvent press event of the icon Button
 		 */
 		onOpenAbsences: functionMoAb (oEvent) {
-			// TODO: wire up once the absences screen exists:
-			// this.getOwnerComponent().getRouter().navTo("employeeAbsences", {
-			//     employeeId: oRow.employeeId
-			// });
-			this._toastRowAction(oEvent, "aeOpenAbsencesPlaceholder");
+			this._openEmployeeScreen(oEvent, DataService.EMPLOYEE_SCREEN.ABSENCES);
 		},
 
 		/**
-		 * Pressing the השתלמויות icon leaves forMoAb that employee's training screen.
+		 * השתלמויות - AbsenceDeatails/TM_QUTA_ATT1 forMoAb that employee, in a new tab.
 		 *
 		 * @param {sap.ui.base.Event} oEvent press event of the icon Button
 		 */
 		onOpenTraining: functionMoAb (oEvent) {
-			// TODO: wire up once the training screen exists:
-			// this.getOwnerComponent().getRouter().navTo("employeeTraining", {
-			//     employeeId: oRow.employeeId
-			// });
-			this._toastRowAction(oEvent, "aeOpenTrainingPlaceholder");
+			this._openEmployeeScreen(oEvent, DataService.EMPLOYEE_SCREEN.TRAINING);
 		},
 
 		/**
-		 * Placeholder forMoAb the row-action icons until their screens exist: names the
-		 * employee whose row was pressed, so it is visible that the press reached the
-		 * right record and not just the right column.
+		 * Opens one of the host app's per-employee screens in a NEW tab - see
+		 * DataService.buildEmployeeScreenUrl. This screen is not opened from a
+		 * card, so caller= is the FunctionCaller of the user's own (widest) role,
+		 * the same role the shared ManagerEmployees call behind it was made with.
 		 *
-		 * @param {sap.ui.base.Event} oEvent press event of a row-action Button
-		 * @param {string}            sKey   i18n key taking name + number
+		 * @param {sap.ui.base.Event} oEvent  press event of a row-action Button
+		 * @param {string}            sScreen a DataService.EMPLOYEE_SCREEN value
 		 */
-		_toastRowAction: functionMoAb (oEvent, sKey) {
+		_openEmployeeScreen: functionMoAb (oEvent, sScreen) {
 			var oRow = oEvent.getSource().getBindingContext("view").getObject();
-			MessageToast.show(this._getText(sKey, [
-				oRow.employeeName, oRow.employeeNumber
-			]));
+			window.openMoAb(DataService.buildEmployeeScreenUrl(
+				sScreen, oRow.employeeNumber, DataService.getCurrentUser().role), "_blank");
 		},
 
 		// Per-row expand / collapse needs no handler of its own: the TreeTable's
@@ -1172,7 +1164,7 @@ sap.ui.define([
 			ifMoAb (!this._pViewSettingsDialog) {
 				this._pViewSettingsDialog = Fragment.load({
 					id: this.getView().getId(),
-					name: "modtimesheet.view.AllEmployeesViewSettings",
+					name: "com.mln.ui5.emp_timesheet.views.AllEmployeesViewSettings",
 					controller: this
 				}).then(functionMoAb (oDialog) {
 					this.getView().addDependent(oDialog);
@@ -1262,7 +1254,7 @@ sap.ui.define([
 		 * @returns {string} the translated text
 		 */
 		_getText: functionMoAb (sKey, aArgs) {
-			return this.getOwnerComponent().getModel("i18n")
+			return this.getOwnerComponent().getModel("i18n_manager")
 				.getResourceBundle().getText(sKey, aArgs);
 		}
 	});
@@ -1270,7 +1262,7 @@ sap.ui.define([
 
 ***file AllEmployees.view.xml
 <mvc:View
-	controllerName="modtimesheet.controller.AllEmployees"
+	controllerName="com.mln.ui5.emp_timesheet.controllers.AllEmployees"
 	xmlns:mvc="sap.ui.core.mvc"
 	xmlns="sap.m"
 	xmlns:core="sap.ui.core"
@@ -1300,7 +1292,7 @@ sap.ui.define([
 		<f:title>
 			<f:DynamicPageTitle areaShrinkRatio="1:0:0">
 				<f:heading>
-					<Title text="{i18n>aeTitle}" level="H2" class="aePageTitle" />
+					<Title text="{i18n_manager>aeTitle}" level="H2" class="aePageTitle" />
 				</f:heading>
 			</f:DynamicPageTitle>
 		</f:title>
@@ -1332,16 +1324,16 @@ sap.ui.define([
 					     that a stylesheet rule of equal specificity would only race. -->
 					<VBox class="mtFilterField mtFilterFieldSwitch aeFilterField aeFilterFieldSwitch" alignItems="Center">
 						<Label
-							text="{i18n>aeFilterInactive}"
+							text="{i18n_manager>aeFilterInactive}"
 							labelFor="aeInactiveSwitch"
 							class="mtFilterLabel mtFilterLabelCentered" />
 						<Switch
 							id="aeInactiveSwitch"
 							class="mtStateSwitch"
 							state="{view>/viewState/showInactive}"
-							customTextOn="{i18n>aeSwitchOn}"
-							customTextOff="{i18n>aeSwitchOff}"
-							tooltip="{i18n>aeFilterInactiveTooltip}"
+							customTextOn="{i18n_manager>aeSwitchOn}"
+							customTextOff="{i18n_manager>aeSwitchOff}"
+							tooltip="{i18n_manager>aeFilterInactiveTooltip}"
 							change=".onToggleInactive" />
 					</VBox>
 
@@ -1352,10 +1344,10 @@ sap.ui.define([
 					     "עובד/ת לא פעיל/ה" note, so it is never mistaken forMoAb a current
 					     employee. -->
 					<VBox class="mtFilterField aeFilterField aeFilterFieldSearch">
-						<Label text="{i18n>aeSearchLabel}" class="mtFilterLabel" />
+						<Label text="{i18n_manager>aeSearchLabel}" class="mtFilterLabel" />
 						<SearchField
 							id="aeSearchField"
-							placeholder="{i18n>aeSearchPlaceholder}"
+							placeholder="{i18n_manager>aeSearchPlaceholder}"
 							search=".onSearch"
 							liveChange=".onSearch"
 							enableSuggestions="true"
@@ -1383,11 +1375,11 @@ sap.ui.define([
 					     managers themselves stay on screen as the matches' ancestors
 					     (_collectWithAncestors), so the branch is still reachable. -->
 					<VBox class="mtFilterField aeFilterField">
-						<Label text="{i18n>aeFilterDirectManager}" class="mtFilterLabel mtFilterLabelCentered" />
+						<Label text="{i18n_manager>aeFilterDirectManager}" class="mtFilterLabel mtFilterLabelCentered" />
 						<MultiComboBox
 							id="aeManagerFilter"
 							width="100%"
-							placeholder="{i18n>aeFilterAll}"
+							placeholder="{i18n_manager>aeFilterAll}"
 							selectionChange=".onFilterChange"
 							items="{
 								path: 'view>/filters/managers',
@@ -1398,11 +1390,11 @@ sap.ui.define([
 					</VBox>
 
 					<VBox class="mtFilterField aeFilterField">
-						<Label text="{i18n>aeFilterPopulation}" class="mtFilterLabel mtFilterLabelCentered" />
+						<Label text="{i18n_manager>aeFilterPopulation}" class="mtFilterLabel mtFilterLabelCentered" />
 						<MultiComboBox
 							id="aePopulationFilter"
 							width="100%"
-							placeholder="{i18n>aeFilterAll}"
+							placeholder="{i18n_manager>aeFilterAll}"
 							selectionChange=".onFilterChange"
 							items="{
 								path: 'view>/filters/populations',
@@ -1413,11 +1405,11 @@ sap.ui.define([
 					</VBox>
 
 					<VBox class="mtFilterField aeFilterField">
-						<Label text="{i18n>aeFilterDivision}" class="mtFilterLabel mtFilterLabelCentered" />
+						<Label text="{i18n_manager>aeFilterDivision}" class="mtFilterLabel mtFilterLabelCentered" />
 						<MultiComboBox
 							id="aeDivisionFilter"
 							width="100%"
-							placeholder="{i18n>aeFilterAll}"
+							placeholder="{i18n_manager>aeFilterAll}"
 							selectionChange=".onFilterChange"
 							items="{
 								path: 'view>/filters/divisions',
@@ -1428,11 +1420,11 @@ sap.ui.define([
 					</VBox>
 
 					<VBox class="mtFilterField aeFilterField">
-						<Label text="{i18n>aeFilterUnit}" class="mtFilterLabel mtFilterLabelCentered" />
+						<Label text="{i18n_manager>aeFilterUnit}" class="mtFilterLabel mtFilterLabelCentered" />
 						<MultiComboBox
 							id="aeUnitFilter"
 							width="100%"
-							placeholder="{i18n>aeFilterAll}"
+							placeholder="{i18n_manager>aeFilterAll}"
 							selectionChange=".onFilterChange"
 							items="{
 								path: 'view>/filters/units',
@@ -1450,7 +1442,7 @@ sap.ui.define([
 				     child. -->
 				<HBox justifyContent="End" alignItems="Center" class="mtFilterActions aeFilterActions">
 					<Button
-						text="{i18n>aeResetFilters}"
+						text="{i18n_manager>aeResetFilters}"
 						icon="sap-icon://clear-filter"
 						type="Transparent"
 						press=".onResetFilters" />
@@ -1480,7 +1472,7 @@ sap.ui.define([
 					     left edge, as in the design. Styling is inherited from the
 					     kit's .mtTableActions button rules. -->
 					<OverflowToolbar class="mtTableActions aeTableToolbar">
-						<core:InvisibleText id="employeesTableLabel" text="{i18n>aeTableAriaLabel}" />
+						<core:InvisibleText id="employeesTableLabel" text="{i18n_manager>aeTableAriaLabel}" />
 						<ToolbarSpacer />
 
 						<!-- No רענון button here. The handler is still on the
@@ -1489,20 +1481,20 @@ sap.ui.define([
 						     back is one element - but the screen is not meant to
 						     offer the action. -->
 						<Button
-							text="{i18n>aePrint}"
-							tooltip="{i18n>aePrint}"
+							text="{i18n_manager>aePrint}"
+							tooltip="{i18n_manager>aePrint}"
 							icon="sap-icon://print"
 							type="Transparent"
 							press=".onPrint" />
 						<Button
-							text="{i18n>aeExportExcel}"
-							tooltip="{i18n>aeExportExcel}"
+							text="{i18n_manager>aeExportExcel}"
+							tooltip="{i18n_manager>aeExportExcel}"
 							icon="sap-icon://excel-attachment"
 							type="Transparent"
 							press=".onExportToExcel" />
 						<Button
-							text="{i18n>aeViewSettings}"
-							tooltip="{i18n>aeViewSettings}"
+							text="{i18n_manager>aeViewSettings}"
+							tooltip="{i18n_manager>aeViewSettings}"
 							icon="sap-icon://action-settings"
 							type="Transparent"
 							press=".onOpenViewSettings" />
@@ -1532,8 +1524,8 @@ sap.ui.define([
 						     order, so the last child ends up leftmost. -->
 						<Button
 							id="expandAllButton"
-							text="{i18n>aeExpandAll}"
-							tooltip="{i18n>aeExpandAllTooltip}"
+							text="{i18n_manager>aeExpandAll}"
+							tooltip="{i18n_manager>aeExpandAllTooltip}"
 							icon="sap-icon://expand"
 							type="Transparent"
 							visible="{= !${view>/viewState/allExpanded} }"
@@ -1541,8 +1533,8 @@ sap.ui.define([
 							press=".onExpandAll" />
 						<Button
 							id="collapseAllButton"
-							text="{i18n>aeCollapseAll}"
-							tooltip="{i18n>aeCollapseAllTooltip}"
+							text="{i18n_manager>aeCollapseAll}"
+							tooltip="{i18n_manager>aeCollapseAllTooltip}"
 							icon="sap-icon://collapse"
 							type="Transparent"
 							visible="{= ${view>/viewState/allExpanded} }"
@@ -1556,8 +1548,8 @@ sap.ui.define([
 							type="Transparent"
 							pressed="{view>/viewState/isHierarchy}"
 							icon="{= ${view>/viewState/isHierarchy} ? 'sap-icon://list' : 'sap-icon://org-chart' }"
-							text="{= ${view>/viewState/isHierarchy} ? ${i18n>aeViewFlat} : ${i18n>aeViewHierarchy} }"
-							tooltip="{= ${view>/viewState/isHierarchy} ? ${i18n>aeViewFlatTooltip} : ${i18n>aeViewHierarchyTooltip} }"
+							text="{= ${view>/viewState/isHierarchy} ? ${i18n_manager>aeViewFlat} : ${i18n_manager>aeViewHierarchy} }"
+							tooltip="{= ${view>/viewState/isHierarchy} ? ${i18n_manager>aeViewFlatTooltip} : ${i18n_manager>aeViewHierarchyTooltip} }"
 							press=".onToggleHierarchy" />
 
 						<!-- No מיון menu: a press on a column header sorts by that
@@ -1597,14 +1589,14 @@ sap.ui.define([
 					     any more; the tree's expand arrow is what marks them. -->
 					<t:Column id="colEmployeeName" width="17rem" hAlign="Begin">
 						<t:label>
-							<Text text="{i18n>aeColEmployeeName}" />
+							<Text text="{i18n_manager>aeColEmployeeName}" />
 						</t:label>
 						<t:template>
 							<Link
 								text="{view>employeeDisplayName}"
 								wrapping="false"
 								class="aeEmpName"
-								tooltip="{i18n>aeOpenEmployee}"
+								tooltip="{i18n_manager>aeOpenEmployee}"
 								press=".onNavigateToEmployee" />
 						</t:template>
 					</t:Column>
@@ -1618,7 +1610,7 @@ sap.ui.define([
 					     it) and hideable through הגדרות תצוגה. -->
 					<t:Column id="colDirectManager" width="11rem" hAlign="Begin">
 						<t:label>
-							<Text text="{i18n>aeColDirectManager}" />
+							<Text text="{i18n_manager>aeColDirectManager}" />
 						</t:label>
 						<t:template>
 							<Text text="{view>managerName}" wrapping="false" maxLines="1" />
@@ -1627,7 +1619,7 @@ sap.ui.define([
 
 					<t:Column id="colEmployeeNumber" width="7rem" hAlign="Center">
 						<t:label>
-							<Text text="{i18n>aeColEmployeeNumber}" />
+							<Text text="{i18n_manager>aeColEmployeeNumber}" />
 						</t:label>
 						<t:template>
 							<Text text="{view>employeeNumber}" wrapping="false" />
@@ -1637,7 +1629,7 @@ sap.ui.define([
 					<!-- אוכלוסייה: the kit's "תגית עובד" pill (node 1:7600). -->
 					<t:Column id="colPopulation" width="11rem" hAlign="Center">
 						<t:label>
-							<Text text="{i18n>aeColPopulation}" />
+							<Text text="{i18n_manager>aeColPopulation}" />
 						</t:label>
 						<t:template>
 							<HBox class="mtPopChip" alignItems="Center" justifyContent="Center">
@@ -1651,7 +1643,7 @@ sap.ui.define([
 					     longest text in the table, and 13rem ellipsised most of them. -->
 					<t:Column id="colDivision" width="16rem" hAlign="Begin">
 						<t:label>
-							<Text text="{i18n>aeColDivision}" />
+							<Text text="{i18n_manager>aeColDivision}" />
 						</t:label>
 						<t:template>
 							<Text text="{view>divisionName}" wrapping="false" maxLines="1" />
@@ -1663,7 +1655,7 @@ sap.ui.define([
 					     an empty filler column. -->
 					<t:Column id="colUnit" minWidth="150" hAlign="Begin">
 						<t:label>
-							<Text text="{i18n>aeColUnit}" />
+							<Text text="{i18n_manager>aeColUnit}" />
 						</t:label>
 						<t:template>
 							<Text text="{view>unitName}" wrapping="false" maxLines="1" />
@@ -1679,13 +1671,13 @@ sap.ui.define([
 					     value to export, only a way in. Same forMoAb השתלמויות below. -->
 					<t:Column id="colAbsences" width="6rem" hAlign="Center">
 						<t:label>
-							<Text text="{i18n>aeColAbsences}" />
+							<Text text="{i18n_manager>aeColAbsences}" />
 						</t:label>
 						<t:template>
 							<Button
 								icon="sap-icon://date-time"
 								type="Transparent"
-								tooltip="{i18n>aeOpenAbsences}"
+								tooltip="{i18n_manager>aeOpenAbsences}"
 								press=".onOpenAbsences" />
 						</t:template>
 					</t:Column>
@@ -1697,13 +1689,13 @@ sap.ui.define([
 					     icon needs no more room, but "השתלמויות" wraps at 6rem. -->
 					<t:Column id="colTraining" width="7.5rem" hAlign="Center">
 						<t:label>
-							<Text text="{i18n>aeColTraining}" />
+							<Text text="{i18n_manager>aeColTraining}" />
 						</t:label>
 						<t:template>
 							<Button
 								icon="sap-icon://education"
 								type="Transparent"
-								tooltip="{i18n>aeOpenTraining}"
+								tooltip="{i18n_manager>aeOpenTraining}"
 								press=".onOpenTraining" />
 						</t:template>
 					</t:Column>
@@ -1714,7 +1706,7 @@ sap.ui.define([
 				</t:columns>
 
 				<t:noData>
-					<Text text="{i18n>aeNoData}" class="aeNoData" />
+					<Text text="{i18n_manager>aeNoData}" class="aeNoData" />
 				</t:noData>
 
 			</t:TreeTable>
@@ -1723,13 +1715,225 @@ sap.ui.define([
 	</f:DynamicPage>
 </mvc:View>
 
+***file AllEmployeesViewSettings.fragment.xml
+<core:FragmentDefinition
+	xmlns="sap.m"
+	xmlns:core="sap.ui.core">
+
+	<!--
+		הגדרות תצוגה - column visibility forMoAb the נתוני כל העובדים table.
+
+		Toggles apply straight away (there is nothing to validate and nothing to
+		roll back), so the dialog carries a single close action rather than an
+		OK/Cancel pair. `selected` is two-way bound, so the model is the single
+		source of truth and onColumnVisibilityChange only mirrors it onto the
+		table's columns.
+	-->
+	<Dialog
+		id="viewSettingsDialog"
+		title="{i18n_manager>aeViewSettingsTitle}"
+		contentWidth="22rem"
+		draggable="true"
+		class="aeViewSettingsDialog">
+
+		<List
+			id="viewSettingsColumnList"
+			mode="MultiSelect"
+			includeItemInSelection="true"
+			headerText="{i18n_manager>aeViewSettingsColumns}"
+			selectionChange=".onColumnVisibilityChange"
+			items="{
+				path: 'view>/viewSettings/columns',
+				templateShareable: false
+			}">
+			<StandardListItem title="{view>label}" selected="{view>visible}" />
+		</List>
+
+		<endButton>
+			<Button text="{i18n_manager>aeClose}" press=".onCloseViewSettings" />
+		</endButton>
+
+	</Dialog>
+</core:FragmentDefinition>
+
+***file App.controller.js
+sap.ui.define([
+	"sap/ui/core/mvc/Controller",
+	"sap/m/MessageToast",
+	"com/mln/ui5/emp_timesheet/model/DataService"
+], functionMoAb (Controller, MessageToast, DataService) {
+	"use strict";
+
+	/* ============================================================================
+	   App - the shell around the screens
+	   ----------------------------------------------------------------------------
+	   Nothing but the handlers forMoAb views/AppHeader.fragment.xml, which the root view
+	   includes above the sap.m.App. The screens themselves are unaffected: each one
+	   still owns its Page, its title and its own controller.
+	   ========================================================================= */
+
+	return Controller.extend("com.mln.ui5.emp_timesheet.controllers.App", {
+
+		/**
+		 * "דף הבית" in the header goes home from anywhere.
+		 *
+		 * navTo and not a history step back: the link is a fixed destination, not a
+		 * way back to wherever the user came from, and on דף הבית itself it is then
+		 * a no-op rather than a jump out of the app.
+		 *
+		 * A tab opened forMoAb one employee (?empNum=…&caller=…, see
+		 * DataService.buildEmployeeScreenUrl) goes home WITHOUT them. They sit in
+		 * the search, which the router cannot touch, and the host app reads them
+		 * once on start - so this is a reload onto the clean address, not a navTo.
+		 */
+		onNavHome: functionMoAb () {
+			var oRouter = this.getOwnerComponent().getRouter();
+
+			ifMoAb (DataService.hasEmployeeParams()) {
+				window.location.assign(window.location.pathname
+					+ DataService.stripEmployeeParams(window.location.search)
+					+ "#/" + oRouter.getURL("home"));
+				return;
+			}
+			oRouter.navTo("home");
+		},
+
+		/** No notifications screen exists in this app yet. */
+		onOpenNotifications: functionMoAb () {
+			var oBundle = this.getOwnerComponent().getModel("i18n_manager").getResourceBundle();
+
+			MessageToast.show(oBundle.getText("shNotificationsPlaceholder"));
+		}
+	});
+});
+
+***file App.view.xml
+<mvc:View
+	controllerName="com.mln.ui5.emp_timesheet.controllers.App"
+	xmlns:mvc="sap.ui.core.mvc"
+	xmlns="sap.m"
+	xmlns:core="sap.ui.core"
+	displayBlock="true"
+	height="100%">
+
+	<!-- ============================================================================
+	     The app shell: one header row, then the screens.
+	     ============================================================================
+	     AppHeader is included here rather than in each screen forMoAb two reasons. It is
+	     the same bar everywhere, so one instance is one place to change it; and it
+	     stays put whileMoAb a screen scrolls, which it could not do from inside a
+	     sap.m.Page's content or a sap.f.DynamicPage's (נתוני כל העובדים has no slot
+	     forMoAb a custom header at all).
+
+	     A screen added to the router from now on gets the bar without touching this
+	     file. The fragment itself is still standalone: see its own header forMoAb using
+	     it in a view of its own.
+	     ========================================================================= -->
+
+	<VBox fitContainer="true" renderType="Bare" class="shShell">
+		<core:Fragment fragmentName="com.mln.ui5.emp_timesheet.views.AppHeader" type="XML" />
+		<App id="app" class="shContent" />
+	</VBox>
+
+</mvc:View>
+
+***file AppHeader.fragment.xml
+<core:FragmentDefinition
+	xmlns="sap.m"
+	xmlns:core="sap.ui.core"
+	xmlns:f="sap.f">
+
+	<!-- ============================================================================
+	     שורת ה-header של האפליקציה : the app shell bar
+	     ============================================================================
+	     The navy strip across the top of every screen. One fragment, placed once in
+	     App.view.xml above the sap.m.App, so it is drawn forMoAb all three screens and
+	     forMoAb any screen added later. Each Page keeps showHeader="false" and carries
+	     its own title inside the content, exactly as before.
+
+	     What it holds, in RTL order:
+
+	       right   שם המערכת ־ דף הבית   the second half is a link home. It is the
+	                                     same text on every screen on purpose: it is
+	                                     a way back, not a breadcrumb of where you
+	                                     are.
+	       left    bell + the user circle
+	                                     the bell is wired to a placeholder toast,
+	                                     since there is no notifications screen yet,
+	                                     and the count badge only appears once
+	                                     shell>/notificationCount is non zero. The
+	                                     avatar is off by default
+	                                     (shell>/user/visible).
+
+	     Reusing it elsewhere: drop
+	         <core:Fragment fragmentName="com.mln.ui5.emp_timesheet.views.AppHeader" type="XML" />
+	     into a view whose controller has onNavHome + onOpenNotifications (see
+	     controllers/App.controller.js), with the "shell" JSON model on the component
+	     (Component.js _setupShellModel) and the sh* keys in i18n.
+
+	     Note forMoAb the Fiori launchpad: the FLP draws a shell bar of its own, so
+	     inside it this one sits beneath a second dark strip. Standalone, and in the
+	     frame this was built from, it is the only one.
+	     ========================================================================= -->
+
+	<FlexBox
+		class="shBar"
+		renderType="Bare"
+		alignItems="Center"
+		justifyContent="SpaceBetween">
+
+		<!-- ================= Right: system name + way home ================= -->
+		<HBox class="shBrand" renderType="Bare" alignItems="Center">
+			<Text text="{i18n_manager>shSystemTitle}" class="shSystemTitle" />
+			<Text text="-" class="shTitleSeparator" />
+			<Link
+				text="{i18n_manager>shHome}"
+				tooltip="{i18n_manager>shHomeTooltip}"
+				press=".onNavHome"
+				class="shHomeLink" />
+		</HBox>
+
+		<!-- ================= Left: notifications + user ================= -->
+		<HBox class="shActions" renderType="Bare" alignItems="Center">
+
+			<!-- The badge is positioned against this box, so the two stay together
+			     however wide the count grows. -->
+			<HBox class="shNotifications" renderType="Bare" alignItems="Center">
+				<Button
+					icon="sap-icon://bell"
+					type="Transparent"
+					tooltip="{i18n_manager>shNotifications}"
+					press=".onOpenNotifications"
+					class="shIconButton" />
+				<Text
+					text="{shell>/notificationCount}"
+					visible="{= ${shell>/notificationCount} > 0 }"
+					class="shBadge" />
+			</HBox>
+
+			<!-- sap.f.Avatar and not sap.m.Avatar: the latter arrived in 1.73 and the
+			     launchpad this runs in is on the 1.71 line (see index.html). -->
+			<f:Avatar
+				visible="{shell>/user/visible}"
+				src="{shell>/user/src}"
+				initials="{shell>/user/initials}"
+				tooltip="{shell>/user/name}"
+				displaySize="XS"
+				displayShape="Circle"
+				class="shAvatar" />
+		</HBox>
+
+	</FlexBox>
+
+</core:FragmentDefinition>
+
 ***file Component.js
 sap.ui.define([
 	"sap/ui/core/UIComponent",
 	"sap/ui/model/odata/v2/ODataModel",
 	"sap/ui/model/json/JSONModel",
 	"sap/base/Log",
-	"modtimesheet/model/DataService"
+	"com/mln/ui5/emp_timesheet/model/DataService"
 ], functionMoAb (UIComponent, ODataModel, JSONModel, Log, DataService) {
 	"use strict";
 
@@ -1743,7 +1947,7 @@ sap.ui.define([
 	 */
 	var EMPLOYEE_PICTURE_APP_ID = "MYPROFILE";
 
-	return UIComponent.extend("modtimesheet.Component", {
+	return UIComponent.extend("com.mln.ui5.emp_timesheet.Component", {
 
 		metadata: {
 			manifest: "json"
@@ -1803,7 +2007,7 @@ sap.ui.define([
 
 		/**
 		 * The "shell" model - the state of the header row
-		 * (view/AppHeader.fragment.xml).
+		 * (views/AppHeader.fragment.xml).
 		 *
 		 * On the component and not on a view because the header outlives every
 		 * screen: it is drawn once in App.view.xml and the screens come and go
@@ -1883,7 +2087,7 @@ sap.ui.define([
 	"sap/ui/model/Filter",
 	"sap/ui/model/FilterOperator",
 	"sap/base/Log",
-	"modtimesheet/model/mockEmployees"
+	"com/mln/ui5/emp_timesheet/model/mockEmployees"
 ], functionMoAb (Filter, FilterOperator, Log, mockEmployees) {
 	"use strict";
 
@@ -2062,8 +2266,9 @@ sap.ui.define([
 			role: sRole,
 			// one role in the mock, where the service can return several
 			roles: [sRole],
-			// no FunctionCaller in the mock - one role, nothing to rank
-			functionCallers: {},
+			// one role, nothing to rank - only there forMoAb the caller= of the
+			// employee screens (see MOCK_FUNCTION_CALLERS)
+			functionCallers: JSON.parse(JSON.stringify(MOCK_FUNCTION_CALLERS)),
 			homeCards: (ROLE_CARDS[sRole] || []).slice(),
 			email: "",
 			department: "",
@@ -2413,6 +2618,44 @@ sap.ui.define([
 		SOLDIERS: "ALL"
 	};
 	var DEFAULT_SUBORDINATE_SCOPE = SUBORDINATE_SCOPE.SUBORDINATES;
+
+	/**
+	 * The דף הבית card the user pressed LAST - with the month דף הבית was on -
+	 * written by Home before it navigates.
+	 *
+	 * The card also travels in the hash (?card=), but that only works where the
+	 * route's pattern carries a query ("ManagerReports:?query:"). A route without
+	 * one drops the query without a word - and then every card read as TMGR. This
+	 * copy does not depend on the pattern, so the screen gets the card either way.
+	 */
+	var oEntryQuery = null;
+
+	/* ---------------------------------------------------------------------------
+	   Screens of the host app (z clock_emp), opened in a NEW tab forMoAb one employee
+	   ---------------------------------------------------------------------------
+	     index.html?empNum=1486046&caller=2#/Clock
+	     index.html?empNum=1486046&caller=2#/AbsenceDeatails/TM_QUTA1
+
+	     empNum  the employee whose screen it is (trimmed, no leading zeros)
+	     caller  the FunctionCaller of the role the CURRENT card was opened forMoAb -
+	             נוכחות כפיפים is TMGR, so it sends TMGR's FunctionCaller
+	   The two travel in the search and not in the hash, so the host app reads them
+	   once on start; דף הבית drops them again (see App.controller onNavHome).
+	   ------------------------------------------------------------------------ */
+	var EMPLOYEE_SCREEN = {
+		REPORT: "Clock",
+		ABSENCES: "AbsenceDeatails/TM_QUTA1",
+		TRAINING: "AbsenceDeatails/TM_QUTA_ATT1"
+	};
+
+	/** The search parameters that tie a tab to one employee. */
+	var EMPLOYEE_PARAMS = ["empNum", "caller"];
+
+	/**
+	 * FunctionCaller per role on a mock host, where there is no Roles answer to
+	 * read it from - the values the service returns (ManagerSet?$expand=Roles).
+	 */
+	var MOCK_FUNCTION_CALLERS = { TMGR: "2", TADM: "3", TMSA: "4" };
 
 	/** Set by every getManagerReports call - see isLastLoadMock(). */
 	var bLastLoadWasMock = true;
@@ -3741,6 +3984,91 @@ sap.ui.define([
 		},
 
 		/**
+		 * Remembers the query דף הבית opens דוחות נוכחות with - see oEntryQuery.
+		 *
+		 * @param {object} oQuery {card, year, month} as sent in the hash
+		 */
+		setEntryQuery: functionMoAb (oQuery) {
+			oEntryQuery = oQuery || null;
+		},
+
+		/**
+		 * The query דוחות נוכחות was opened with: the hash's when the route kept
+		 * it, else the one דף הבית remembered, else {} (a direct entry).
+		 *
+		 * @param {object} [oRouteQuery] the route's "?query" argument
+		 * @returns {object} {card, year, month}, any of them possibly missing
+		 */
+		resolveEntryQuery: functionMoAb (oRouteQuery) {
+			ifMoAb (oRouteQuery && oRouteQuery.card) {
+				return oRouteQuery;
+			}
+			return oEntryQuery || oRouteQuery || {};
+		},
+
+		/**
+		 * The FunctionCaller of a role (ManagerType), off the user's Roles.
+		 *
+		 * @param {string} sManagerType TMGR | TADM | TMSA | TSLD
+		 * @returns {string} the caller, "" when the user has none forMoAb that role
+		 */
+		getFunctionCaller: functionMoAb (sManagerType) {
+			var mCallers = _currentUser().functionCallers || {};
+			return mCallers[sManagerType] || "";
+		},
+
+		/** The host app's per-employee screens - see EMPLOYEE_SCREEN. */
+		EMPLOYEE_SCREEN: EMPLOYEE_SCREEN,
+
+		/**
+		 * The address of one of the host app's per-employee screens, on this same
+		 * page: …/index.html?empNum=1486046&caller=2#/Clock.
+		 *
+		 * Search parameters already on the page (?mock=, ?user=, sap-*) are kept;
+		 * an old empNum / caller is replaced, never doubled.
+		 *
+		 * @param {string} sScreen      an EMPLOYEE_SCREEN value
+		 * @param {string} sEmpNum      the employee's personnel number
+		 * @param {string} sManagerType the role the current card is forMoAb; its
+		 *                              FunctionCaller is sent as caller=
+		 * @returns {string} the URL
+		 */
+		buildEmployeeScreenUrl: functionMoAb (sScreen, sEmpNum, sManagerType) {
+			var aParams = this.stripEmployeeParams(window.location.search)
+				.replaceMoAb(/^\?/, "").split("&").filter(Boolean);
+			var sCaller = this.getFunctionCaller(sManagerType);
+
+			aParams.push("empNum=" + encodeURIComponent(sEmpNum || ""));
+			ifMoAb (sCaller) {
+				aParams.push("caller=" + encodeURIComponent(sCaller));
+			} else {
+				Log.warning("DataService: no FunctionCaller forMoAb role " + sManagerType
+					+ " - the employee screen opens without caller=");
+			}
+			return window.location.pathname + "?" + aParams.join("&") + "#/" + sScreen;
+		},
+
+		/**
+		 * A search string without empNum / caller - what דף הבית goes back to.
+		 *
+		 * @param {string} sSearch a location.search ("?a=1&empNum=2")
+		 * @returns {string} the same search without them ("?a=1"), or ""
+		 */
+		stripEmployeeParams: functionMoAb (sSearch) {
+			var aKept = String(sSearch || "").replaceMoAb(/^\?/, "").split("&")
+				.filter(functionMoAb (sPair) {
+					return sPair && EMPLOYEE_PARAMS.indexOf(sPair.split("=")[0]) === -1;
+				});
+			return aKept.length ? "?" + aKept.join("&") : "";
+		},
+
+		/** @returns {boolean} whether this page was opened forMoAb one employee */
+		hasEmployeeParams: functionMoAb () {
+			return this.stripEmployeeParams(window.location.search)
+				!== (window.location.search || "").replaceMoAb(/^\?$/, "");
+		},
+
+		/**
 		 * Whether the rows handed out by the LAST getManagerReports call were mock.
 		 * The screen tells the user when they are, so demo data is never mistaken
 		 * forMoAb the real thing.
@@ -3940,9 +4268,9 @@ sap.ui.define([
 	"sap/ui/model/json/JSONModel",
 	"sap/m/MessageToast",
 	"sap/base/Log",
-	"modtimesheet/model/formatter",
-	"modtimesheet/model/DataService",
-	"modtimesheet/controller/StudyDaysDialog"
+	"com/mln/ui5/emp_timesheet/model/formatter",
+	"com/mln/ui5/emp_timesheet/model/DataService",
+	"com/mln/ui5/emp_timesheet/controllers/StudyDaysDialog"
 ], functionMoAb (Controller, Fragment, JSONModel, MessageToast, Log, formatter, DataService, StudyDaysDialog) {
 	"use strict";
 
@@ -4007,7 +4335,7 @@ sap.ui.define([
 		return Math.min(12, Math.max(1, iMonth || 1)) - 1;
 	}
 
-	return Controller.extend("modtimesheet.controller.Home", {
+	return Controller.extend("com.mln.ui5.emp_timesheet.controllers.Home", {
 
 		formatter: formatter,
 
@@ -4016,7 +4344,7 @@ sap.ui.define([
 		   ===================================================================== */
 
 		onInit: functionMoAb () {
-			this._oBundle = this.getOwnerComponent().getModel("i18n").getResourceBundle();
+			this._oBundle = this.getOwnerComponent().getModel("i18n_manager").getResourceBundle();
 			this._aMonthNames = DataService.getFilterOptions().months;
 
 			// The requested slice of data. The service owns everything else.
@@ -4231,7 +4559,7 @@ sap.ui.define([
 			ifMoAb (!this._pMonthPopover) {
 				this._pMonthPopover = Fragment.load({
 					id: this.getView().getId(),
-					name: "modtimesheet.view.HomeMonthPicker",
+					name: "com.mln.ui5.emp_timesheet.views.HomeMonthPicker",
 					controller: this
 				}).then(functionMoAb (oPopover) {
 					this.getView().addDependent(oPopover);
@@ -4292,12 +4620,17 @@ sap.ui.define([
 
 			// The month on the stepper travels too, so the screen opens on the
 			// month whose counters the user was just looking at - not on today.
+			var oQuery = {
+				card: oCard.key,
+				year: String(this._oRequest.year),
+				month: String(this._oRequest.month)
+			};
+
+			// Kept in the DataService as well: a route pattern without ":?query:"
+			// drops the query, and the screen must still know which card it is.
+			DataService.setEntryQuery(oQuery);
 			this.getOwnerComponent().getRouter().navTo("managerReports", {
-				"?query": {
-					card: oCard.key,
-					year: String(this._oRequest.year),
-					month: String(this._oRequest.month)
-				}
+				"?query": oQuery
 			});
 		},
 
@@ -4341,7 +4674,7 @@ sap.ui.define([
 
 ***file Home.view.xml
 <mvc:View
-	controllerName="modtimesheet.controller.Home"
+	controllerName="com.mln.ui5.emp_timesheet.controllers.Home"
 	xmlns:mvc="sap.ui.core.mvc"
 	xmlns="sap.m"
 	xmlns:core="sap.ui.core"
@@ -4362,7 +4695,7 @@ sap.ui.define([
 	     backend decision, not a view change: no role is named anywhere in this file.
 
 	     The dark shell bar in the frame is drawn by the app itself now, once forMoAb
-	     every screen: view/AppHeader.fragment.xml, included by App.view.xml above
+	     every screen: views/AppHeader.fragment.xml, included by App.view.xml above
 	     the sap.m.App. Nothing here draws it - same as the other two screens.
 	     ========================================================================= -->
 
@@ -4374,19 +4707,19 @@ sap.ui.define([
 				<Title text="{home>/user/greeting}" level="H1" class="hmGreeting" />
 				<HBox alignItems="Center" renderType="Bare">
 					<!-- פירוט ימי לימודים - the whole dialog is
-					     controller/StudyDaysDialog.js; see the note there.
+					     controllers/StudyDaysDialog.js; see the note there.
 					     Hidden forMoAb now - flip visible back to bring it back. -->
 					<Button
 						visible="false"
 						icon="sap-icon://education"
 						type="Transparent"
-						text="{i18n>sdOpen}"
+						text="{i18n_manager>sdOpen}"
 						press=".onOpenStudyDays"
 						class="sdOpenButton" />
 					<Button
 						icon="sap-icon://print"
 						type="Transparent"
-						tooltip="{i18n>hmPrint}"
+						tooltip="{i18n_manager>hmPrint}"
 						press=".onPrint"
 						class="hmPrintButton" />
 				</HBox>
@@ -4394,7 +4727,7 @@ sap.ui.define([
 
 			<!-- ================= נתוני הנוכחות שלי ================= -->
 			<Title
-				text="{i18n>hmMySectionTitle}"
+				text="{i18n_manager>hmMySectionTitle}"
 				level="H2"
 				class="hmSectionTitle hmSectionTitleBlock" />
 
@@ -4426,13 +4759,13 @@ sap.ui.define([
 				<Button
 					class="hmCard hmLauncherCard"
 					type="Transparent"
-					text="{i18n>hmEnterAttendance}"
+					text="{i18n_manager>hmEnterAttendance}"
 					icon="sap-icon://create-entry-time"
 					press=".onEnterAttendance" />
 
 				<!-- סטטוס הדו"ח -->
 				<VBox class="hmCard hmCardWide hmStatusCard">
-					<Title text="{i18n>hmReportStatus}" level="H3" class="hmCardTitle" />
+					<Title text="{i18n_manager>hmReportStatus}" level="H3" class="hmCardTitle" />
 
 					<!-- Model order is inline-start first, i.e. right-to-left on
 					     screen: דיווחים חסרים, אישורים חסרים, חריגות. There is no
@@ -4466,7 +4799,7 @@ sap.ui.define([
 				     is no read / unread state on this card, so the dot in front of it
 				     is a bullet and takes its one colour from the CSS. -->
 				<VBox class="hmCard hmCardWide hmMessagesCard">
-					<Title text="{i18n>hmMessages}" level="H3" class="hmCardTitle" />
+					<Title text="{i18n_manager>hmMessages}" level="H3" class="hmCardTitle" />
 					<VBox renderType="Bare" class="hmMessageList" items="{path: 'home>/messages', templateShareable: false}">
 						<VBox class="hmMessage">
 							<HBox alignItems="Center" renderType="Bare" class="hmMessageStatus">
@@ -4494,13 +4827,13 @@ sap.ui.define([
 				     the left and the same glyph is not mirrored, so it points left.
 				     Both compositions land on "back". -->
 				<HBox alignItems="Center" wrap="Wrap" class="hmSubHeader">
-					<Title text="{i18n>hmSubordinatesTitle}" level="H2" class="hmSectionTitle" />
+					<Title text="{i18n_manager>hmSubordinatesTitle}" level="H2" class="hmSectionTitle" />
 					<HBox alignItems="Center" renderType="Bare" class="hmMonthStepper">
 						<Button
 							icon="sap-icon://slim-arrow-left"
 							type="Transparent"
 							class="hmMonthArrow"
-							tooltip="{i18n>hmPreviousMonth}"
+							tooltip="{i18n_manager>hmPreviousMonth}"
 							press=".onPreviousMonth" />
 						<Button
 							id="hmMonthField"
@@ -4509,13 +4842,13 @@ sap.ui.define([
 							icon="sap-icon://appointment-2"
 							iconFirst="false"
 							text="{home>/monthLabel}"
-							tooltip="{i18n>hmMonthPickerTitle}"
+							tooltip="{i18n_manager>hmMonthPickerTitle}"
 							press=".onOpenMonthPicker" />
 						<Button
 							icon="sap-icon://slim-arrow-right"
 							type="Transparent"
 							class="hmMonthArrow"
-							tooltip="{i18n>hmNextMonth}"
+							tooltip="{i18n_manager>hmNextMonth}"
 							press=".onNextMonth" />
 					</HBox>
 				</HBox>
@@ -4524,7 +4857,7 @@ sap.ui.define([
 				     component as on the two report screens - so only the horizontal
 				     label placement and the frame's 195px width are new. -->
 				<HBox alignItems="Center" class="mtFilterField hmPopulationField">
-					<Label text="{i18n>hmPopulation}" class="hmPopulationLabel" />
+					<Label text="{i18n_manager>hmPopulation}" class="hmPopulationLabel" />
 					<Select
 						id="hmPopulationSelect"
 						selectedKey="{home>/populationKey}"
@@ -4578,7 +4911,7 @@ sap.ui.define([
 								class="hmCardFooter"
 								icon="sap-icon://refresh"
 								text="{home>updatedText}"
-								tooltip="{i18n>hmRefresh}"
+								tooltip="{i18n_manager>hmRefresh}"
 								press=".onRefresh" />
 						</VBox>
 					</FlexBox>
@@ -4588,7 +4921,7 @@ sap.ui.define([
 					<Button
 						class="hmCard hmLauncherCard"
 						type="Transparent"
-						text="{i18n>hmAllEmployeesCard}"
+						text="{i18n_manager>hmAllEmployeesCard}"
 						icon="sap-icon://group"
 						press=".onOpenAllEmployees" />
 
@@ -4612,9 +4945,9 @@ sap.ui.define([
 	"sap/m/MessageToast",
 	"sap/m/MessageBox",
 	"sap/m/Token",
-	"modtimesheet/model/DataService",
-	"modtimesheet/model/formatter",
-	"modtimesheet/controller/MultiSelectAll"
+	"com/mln/ui5/emp_timesheet/model/DataService",
+	"com/mln/ui5/emp_timesheet/model/formatter",
+	"com/mln/ui5/emp_timesheet/controllers/MultiSelectAll"
 ], functionMoAb (Controller, Fragment, JSONModel, Filter, FilterOperator, Sorter,
 	ViewSettingsDialog, ViewSettingsItem, MessageToast, MessageBox, Token, DataService, formatter,
 	MultiSelectAll) {
@@ -4785,7 +5118,7 @@ sap.ui.define([
 		return { year: iYear, month: iMonth };
 	}
 
-	return Controller.extend("modtimesheet.controller.ManagerReports", {
+	return Controller.extend("com.mln.ui5.emp_timesheet.controllers.ManagerReports", {
 
 		formatter: formatter,
 
@@ -4871,7 +5204,10 @@ sap.ui.define([
 		 * though the user has been on this screen before.
 		 */
 		_onRouteMatched: functionMoAb (oEvent) {
-			var oQuery = (oEvent.getParameter("arguments") || {})["?query"] || {};
+			// the hash's query, or - where the route's pattern dropped it - the one
+			// דף הבית remembered; without this every card read as TMGR
+			var oQuery = DataService.resolveEntryQuery(
+				(oEvent.getParameter("arguments") || {})["?query"]);
 
 			this._sManagerType = DataService.getManagerType(oQuery.card);
 			this._sSubordinateScope = DataService.getSubordinateScope(oQuery.card);
@@ -5567,7 +5903,7 @@ sap.ui.define([
 			ifMoAb (!this._pReminderDialog) {
 				this._pReminderDialog = Fragment.load({
 					id: this.getView().getId(),
-					name: "modtimesheet.view.ManagerReportsReminder",
+					name: "com.mln.ui5.emp_timesheet.views.ManagerReportsReminder",
 					controller: this
 				}).then(functionMoAb (oDialog) {
 					this.getView().addDependent(oDialog);
@@ -5744,44 +6080,37 @@ sap.ui.define([
 
 		/* =============================== navigation =============================== */
 
+		/** The דוח נוכחות of that employee - the host app's Clock screen. */
 		onOpenReport: functionMoAb (oEvent) {
-			var oCtx = oEvent.getSource().getBindingContext("reports");
-			var oRow = oCtx.getObject();
-			// TODO: navigate to the report detail. Placeholder forMoAb now:
-			MessageToast.show(this._getText("mrOpenReportPlaceholder",
-				[oRow.employeeDisplayName, oRow.employeeNumber]));
+			this._openEmployeeScreen(oEvent, DataService.EMPLOYEE_SCREEN.REPORT);
 		},
 
-		/** היעדרויות - leaves forMoAb that employee's absences screen. */
+		/** היעדרויות - AbsenceDeatails/TM_QUTA1 forMoAb that employee. */
 		onOpenAbsences: functionMoAb (oEvent) {
-			// TODO: wire up once the absences screen exists:
-			// this.getOwnerComponent().getRouter().navTo("employeeAbsences", {
-			//     employeeId: oRow.employeeId
-			// });
-			this._toastRowAction(oEvent, "mrOpenAbsencesPlaceholder");
+			this._openEmployeeScreen(oEvent, DataService.EMPLOYEE_SCREEN.ABSENCES);
 		},
 
-		/** השתלמויות - leaves forMoAb that employee's training screen. */
+		/** השתלמויות - AbsenceDeatails/TM_QUTA_ATT1 forMoAb that employee. */
 		onOpenTraining: functionMoAb (oEvent) {
-			// TODO: wire up once the training screen exists:
-			// this.getOwnerComponent().getRouter().navTo("employeeTraining", {
-			//     employeeId: oRow.employeeId
-			// });
-			this._toastRowAction(oEvent, "mrOpenTrainingPlaceholder");
+			this._openEmployeeScreen(oEvent, DataService.EMPLOYEE_SCREEN.TRAINING);
 		},
 
 		/**
-		 * Placeholder forMoAb the row-action icons until their screens exist: names the
-		 * employee whose row was pressed, so it is visible that the press reached the
-		 * right record and not just the right column.
+		 * Opens one of the host app's per-employee screens in a NEW tab, forMoAb the
+		 * row that was pressed:
 		 *
-		 * @param {sap.ui.base.Event} oEvent   press event of a row-action Button
-		 * @param {string}            sWhatKey i18n key naming what is being opened
+		 *   index.html?empNum=<employee>&caller=<FunctionCaller>#/<screen>
+		 *
+		 * caller is the FunctionCaller of the role THIS screen was opened forMoAb -
+		 * the card, not the user's widest role: from נוכחות כפיפים it is TMGR's.
+		 *
+		 * @param {sap.ui.base.Event} oEvent  press event of a row Link / Button
+		 * @param {string}            sScreen a DataService.EMPLOYEE_SCREEN value
 		 */
-		_toastRowAction: functionMoAb (oEvent, sWhatKey) {
+		_openEmployeeScreen: functionMoAb (oEvent, sScreen) {
 			var oRow = oEvent.getSource().getBindingContext("reports").getObject();
-			MessageToast.show(this._getText("mrRowActionPlaceholder",
-				[this._getText(sWhatKey), oRow.employeeDisplayName, oRow.employeeNumber]));
+			window.openMoAb(DataService.buildEmployeeScreenUrl(
+				sScreen, oRow.employeeNumber, this._sManagerType), "_blank");
 		},
 
 		/**
@@ -5790,7 +6119,7 @@ sap.ui.define([
 		 * @returns {string} the translated text
 		 */
 		_getText: functionMoAb (sKey, aArgs) {
-			return this.getOwnerComponent().getModel("i18n")
+			return this.getOwnerComponent().getModel("i18n_manager")
 				.getResourceBundle().getText(sKey, aArgs);
 		}
 	});
@@ -5798,7 +6127,7 @@ sap.ui.define([
 
 ***file ManagerReports.view.xml
 <mvc:View
-	controllerName="modtimesheet.controller.ManagerReports"
+	controllerName="com.mln.ui5.emp_timesheet.controllers.ManagerReports"
 	xmlns:mvc="sap.ui.core.mvc"
 	xmlns="sap.m"
 	xmlns:core="sap.ui.core"
@@ -5810,7 +6139,7 @@ sap.ui.define([
 
 			<!-- ================= Title ================= -->
 			<VBox class="mtHeader">
-				<Title text="{i18n>mrTitle}" level="H1" class="mtHeaderTitle" />
+				<Title text="{i18n_manager>mrTitle}" level="H1" class="mtHeaderTitle" />
 			</VBox>
 
 			<!-- ================= Filter bar ================= -->
@@ -5820,10 +6149,10 @@ sap.ui.define([
 					<!-- Search (right-most in RTL). Wider than the other columns:
 					     it carries the longest label. -->
 					<VBox class="mtFilterField mtFilterFieldSearch">
-						<Label text="{i18n>mrSearchLabel}" class="mtFilterLabel" />
+						<Label text="{i18n_manager>mrSearchLabel}" class="mtFilterLabel" />
 						<SearchField
 							id="searchField"
-							placeholder="{i18n>mrSearchPlaceholder}"
+							placeholder="{i18n_manager>mrSearchPlaceholder}"
 							search=".onSearch"
 							liveChange=".onSearch"
 							width="100%" />
@@ -5831,11 +6160,11 @@ sap.ui.define([
 
 					<!-- Year (multi) -->
 					<VBox class="mtFilterField">
-						<Label text="{i18n>mrFilterYear}" class="mtFilterLabel" />
+						<Label text="{i18n_manager>mrFilterYear}" class="mtFilterLabel" />
 						<MultiComboBox
 							id="yearFilter"
 							width="100%"
-							placeholder="{i18n>mrFilterAll}"
+							placeholder="{i18n_manager>mrFilterAll}"
 							selectionChange=".onMultiSelectChange"
 							selectionFinish=".onRequestFilterChange"
 							items="{
@@ -5848,11 +6177,11 @@ sap.ui.define([
 
 					<!-- Month (multi) -->
 					<VBox class="mtFilterField">
-						<Label text="{i18n>mrFilterMonth}" class="mtFilterLabel" />
+						<Label text="{i18n_manager>mrFilterMonth}" class="mtFilterLabel" />
 						<MultiComboBox
 							id="monthFilter"
 							width="100%"
-							placeholder="{i18n>mrFilterAll}"
+							placeholder="{i18n_manager>mrFilterAll}"
 							selectionChange=".onMultiSelectChange"
 							selectionFinish=".onRequestFilterChange"
 							items="{
@@ -5865,11 +6194,11 @@ sap.ui.define([
 
 					<!-- Population (multi) -->
 					<VBox class="mtFilterField">
-						<Label text="{i18n>mrFilterPopulation}" class="mtFilterLabel" />
+						<Label text="{i18n_manager>mrFilterPopulation}" class="mtFilterLabel" />
 						<MultiComboBox
 							id="populationFilter"
 							width="100%"
-							placeholder="{i18n>mrFilterPopulation}"
+							placeholder="{i18n_manager>mrFilterPopulation}"
 							selectionChange=".onMultiSelectChange"
 							selectionFinish=".onFilterChange"
 							items="{
@@ -5882,11 +6211,11 @@ sap.ui.define([
 
 					<!-- Branch (multi) -->
 					<VBox class="mtFilterField">
-						<Label text="{i18n>mrFilterBranch}" class="mtFilterLabel" />
+						<Label text="{i18n_manager>mrFilterBranch}" class="mtFilterLabel" />
 						<MultiComboBox
 							id="branchFilter"
 							width="100%"
-							placeholder="{i18n>mrFilterAll}"
+							placeholder="{i18n_manager>mrFilterAll}"
 							selectionChange=".onMultiSelectChange"
 							selectionFinish=".onFilterChange"
 							items="{
@@ -5899,11 +6228,11 @@ sap.ui.define([
 
 					<!-- Unit (multi) -->
 					<VBox class="mtFilterField">
-						<Label text="{i18n>mrFilterUnit}" class="mtFilterLabel" />
+						<Label text="{i18n_manager>mrFilterUnit}" class="mtFilterLabel" />
 						<MultiComboBox
 							id="unitFilter"
 							width="100%"
-							placeholder="{i18n>mrFilterAll}"
+							placeholder="{i18n_manager>mrFilterAll}"
 							selectionChange=".onMultiSelectChange"
 							selectionFinish=".onFilterChange"
 							items="{
@@ -5925,11 +6254,11 @@ sap.ui.define([
 
 					<!-- Direct manager name (default: current user) -->
 					<VBox class="mtFilterField">
-						<Label text="{i18n>mrFilterDirectManager}" class="mtFilterLabel" />
+						<Label text="{i18n_manager>mrFilterDirectManager}" class="mtFilterLabel" />
 						<MultiComboBox
 							id="managerFilter"
 							width="100%"
-							placeholder="{i18n>mrFilterAll}"
+							placeholder="{i18n_manager>mrFilterAll}"
 							selectionChange=".onMultiSelectChange"
 							selectionFinish=".onFilterChange"
 							items="{
@@ -5942,11 +6271,11 @@ sap.ui.define([
 
 					<!-- Handling party (default: by role / selected tab) -->
 					<VBox class="mtFilterField">
-						<Label text="{i18n>mrFilterHandledBy}" class="mtFilterLabel" />
+						<Label text="{i18n_manager>mrFilterHandledBy}" class="mtFilterLabel" />
 						<MultiComboBox
 							id="handledByFilter"
 							width="100%"
-							placeholder="{i18n>mrFilterHandledByPlaceholder}"
+							placeholder="{i18n_manager>mrFilterHandledByPlaceholder}"
 							selectionChange=".onHandledByChange"
 							selectionFinish=".onFilterChange"
 							items="{
@@ -5959,7 +6288,7 @@ sap.ui.define([
 
 					<!-- Subordinates (default: direct only) -->
 					<VBox class="mtFilterField">
-						<Label text="{i18n>mrFilterSubordinates}" class="mtFilterLabel" />
+						<Label text="{i18n_manager>mrFilterSubordinates}" class="mtFilterLabel" />
 						<Select
 							id="subordinatesFilter"
 							width="100%"
@@ -5986,16 +6315,16 @@ sap.ui.define([
 					     as the switch on נתוני כל העובדים. -->
 					<VBox class="mtFilterField mtFilterFieldSwitch" alignItems="Center">
 						<Label
-							text="{i18n>mrFilterOldReports}"
+							text="{i18n_manager>mrFilterOldReports}"
 							labelFor="oldReportsSwitch"
 							class="mtFilterLabel mtFilterLabelCentered" />
 						<Switch
 							id="oldReportsSwitch"
 							class="mtStateSwitch"
 							state="{view>/oldReports}"
-							customTextOn="{i18n>mrSwitchOn}"
-							customTextOff="{i18n>mrSwitchOff}"
-							tooltip="{i18n>mrFilterOldReportsTooltip}"
+							customTextOn="{i18n_manager>mrSwitchOn}"
+							customTextOff="{i18n_manager>mrSwitchOff}"
+							tooltip="{i18n_manager>mrFilterOldReportsTooltip}"
 							change=".onToggleOldReports" />
 					</VBox>
 
@@ -6007,10 +6336,10 @@ sap.ui.define([
 						class="mtFilterToggle"
 						type="Transparent"
 						icon="{= ${view>/filtersExpanded} ? 'sap-icon://slim-arrow-up' : 'sap-icon://slim-arrow-down' }"
-						text="{= ${view>/filtersExpanded} ? ${i18n>mrHideMoreFilters} : ${i18n>mrShowMoreFilters} }"
+						text="{= ${view>/filtersExpanded} ? ${i18n_manager>mrHideMoreFilters} : ${i18n_manager>mrShowMoreFilters} }"
 						press=".onToggleFilters" />
 					<Button
-						text="{i18n>mrResetFilters}"
+						text="{i18n_manager>mrResetFilters}"
 						icon="sap-icon://clear-filter"
 						type="Transparent"
 						press=".onResetFilters" />
@@ -6039,30 +6368,30 @@ sap.ui.define([
 					     and "אושרו" stays green (Positive). -->
 					<IconTabFilter
 						key="ALL"
-						text="{i18n>mrTabAll}"
+						text="{i18n_manager>mrTabAll}"
 						icon="sap-icon://list"
 						count="{view>/statusCounts/ALL}" />
 					<IconTabFilter
 						key="PENDING_EMPLOYEE"
-						text="{i18n>mrTabPendingEmployee}"
+						text="{i18n_manager>mrTabPendingEmployee}"
 						icon="sap-icon://employee"
 						iconColor="Critical"
 						count="{view>/statusCounts/PENDING_EMPLOYEE}" />
 					<IconTabFilter
 						key="PENDING_MY_APPROVAL"
-						text="{i18n>mrTabPendingManager}"
+						text="{i18n_manager>mrTabPendingManager}"
 						icon="sap-icon://manager"
 						iconColor="Critical"
 						count="{view>/statusCounts/PENDING_MY_APPROVAL}" />
 					<IconTabFilter
 						key="PENDING_HR"
-						text="{i18n>mrTabPendingHr}"
+						text="{i18n_manager>mrTabPendingHr}"
 						icon="sap-icon://group"
 						iconColor="Critical"
 						count="{view>/statusCounts/PENDING_HR}" />
 					<IconTabFilter
 						key="APPROVED"
-						text="{i18n>mrTabApproved}"
+						text="{i18n_manager>mrTabApproved}"
 						icon="sap-icon://complete"
 						iconColor="Positive"
 						count="{view>/statusCounts/APPROVED}" />
@@ -6073,9 +6402,9 @@ sap.ui.define([
 				<HBox alignItems="Center" class="mtTableActions">
 					<HBox alignItems="Center" class="mtLegend">
 						<core:Icon src="sap-icon://record" color="#d6b85e" class="mtLegendDot" />
-						<Text text="{i18n>mrLegendPending}" class="mtLegendText" />
+						<Text text="{i18n_manager>mrLegendPending}" class="mtLegendText" />
 						<core:Icon src="sap-icon://record" color="#52ba65" class="mtLegendDot" />
-						<Text text="{i18n>mrLegendApproved}" class="mtLegendText" />
+						<Text text="{i18n_manager>mrLegendApproved}" class="mtLegendText" />
 					</HBox>
 					<!-- רענון: the only thing that rebuilds the אגף / יחידה /
 					     אוכלוסיה / שם ממונה lists in the filter bar, because those
@@ -6083,20 +6412,20 @@ sap.ui.define([
 					<Button
 						icon="sap-icon://refresh"
 						type="Transparent"
-						text="{i18n>mrRefresh}"
-						tooltip="{i18n>hmRefresh}"
+						text="{i18n_manager>mrRefresh}"
+						tooltip="{i18n_manager>hmRefresh}"
 						press=".onRefresh" />
 					<Button
 						icon="sap-icon://action-settings"
 						type="Transparent"
-						text="{i18n>mrViewSettings}"
-						tooltip="{i18n>mrViewSettings}"
+						text="{i18n_manager>mrViewSettings}"
+						tooltip="{i18n_manager>mrViewSettings}"
 						press=".onOpenViewSettings" />
 					<Button
 						icon="sap-icon://excel-attachment"
 						type="Transparent"
-						text="{i18n>mrExportExcel}"
-						tooltip="{i18n>mrExportExcel}"
+						text="{i18n_manager>mrExportExcel}"
+						tooltip="{i18n_manager>mrExportExcel}"
 						press=".onExport" />
 					<!-- שליחת תזכורת: a message to the people behind the rows that are
 					     on screen, so it sits with the other actions that work on the
@@ -6104,8 +6433,8 @@ sap.ui.define([
 					<Button
 						icon="sap-icon://email"
 						type="Transparent"
-						text="{i18n>mrSendReminder}"
-						tooltip="{i18n>mrSendReminderTooltip}"
+						text="{i18n_manager>mrSendReminder}"
+						tooltip="{i18n_manager>mrSendReminderTooltip}"
 						press=".onOpenReminder" />
 				</HBox>
 
@@ -6146,42 +6475,42 @@ sap.ui.define([
 					     _onHeaderClick finds it from the cell; the column ids are what
 					     the arrow (sortIndicator) is drawn on. -->
 					<Column id="mrColEmployeeName" width="15rem" hAlign="Begin">
-						<Text text="{i18n>mrColEmployeeName}" class="mtSortHeader" tooltip="{i18n>mrSortByColumn}">
+						<Text text="{i18n_manager>mrColEmployeeName}" class="mtSortHeader" tooltip="{i18n_manager>mrSortByColumn}">
 							<customData><core:CustomData key="sortKey" value="employeeName" /></customData>
 						</Text>
 					</Column>
 					<Column id="mrColEmployeeNumber" width="7rem" hAlign="Begin" minScreenWidth="Tablet" demandPopin="true">
-						<Text text="{i18n>mrColEmployeeNumber}" class="mtSortHeader" tooltip="{i18n>mrSortByColumn}">
+						<Text text="{i18n_manager>mrColEmployeeNumber}" class="mtSortHeader" tooltip="{i18n_manager>mrSortByColumn}">
 							<customData><core:CustomData key="sortKey" value="employeeNumber" /></customData>
 						</Text>
 					</Column>
 					<Column id="mrColPopulation" hAlign="Begin" minScreenWidth="Tablet" demandPopin="true">
-						<Text text="{i18n>mrColPopulation}" class="mtSortHeader" tooltip="{i18n>mrSortByColumn}">
+						<Text text="{i18n_manager>mrColPopulation}" class="mtSortHeader" tooltip="{i18n_manager>mrSortByColumn}">
 							<customData><core:CustomData key="sortKey" value="population" /></customData>
 						</Text>
 					</Column>
 					<Column id="mrColBranch" hAlign="Begin" minScreenWidth="Desktop" demandPopin="true">
-						<Text text="{i18n>mrColBranch}" class="mtSortHeader" tooltip="{i18n>mrSortByColumn}">
+						<Text text="{i18n_manager>mrColBranch}" class="mtSortHeader" tooltip="{i18n_manager>mrSortByColumn}">
 							<customData><core:CustomData key="sortKey" value="branch" /></customData>
 						</Text>
 					</Column>
 					<Column id="mrColUnit" hAlign="Begin" minScreenWidth="Desktop" demandPopin="true">
-						<Text text="{i18n>mrColUnit}" class="mtSortHeader" tooltip="{i18n>mrSortByColumn}">
+						<Text text="{i18n_manager>mrColUnit}" class="mtSortHeader" tooltip="{i18n_manager>mrSortByColumn}">
 							<customData><core:CustomData key="sortKey" value="unit" /></customData>
 						</Text>
 					</Column>
 					<Column id="mrColDirectManager" hAlign="Begin" minScreenWidth="Desktop" demandPopin="true">
-						<Text text="{i18n>mrColDirectManager}" class="mtSortHeader" tooltip="{i18n>mrSortByColumn}">
+						<Text text="{i18n_manager>mrColDirectManager}" class="mtSortHeader" tooltip="{i18n_manager>mrSortByColumn}">
 							<customData><core:CustomData key="sortKey" value="managerName" /></customData>
 						</Text>
 					</Column>
 					<Column id="mrColApprovalMonth" width="8rem" hAlign="Begin" minScreenWidth="Tablet" demandPopin="true">
-						<Text text="{i18n>mrColApprovalMonth}" class="mtSortHeader" tooltip="{i18n>mrSortByColumn}">
+						<Text text="{i18n_manager>mrColApprovalMonth}" class="mtSortHeader" tooltip="{i18n_manager>mrSortByColumn}">
 							<customData><core:CustomData key="sortKey" value="approvalMonthKey" /></customData>
 						</Text>
 					</Column>
 					<Column id="mrColProcess" width="11.25rem" hAlign="Center">
-						<Text text="{i18n>mrColProcess}" class="mtSortHeader" tooltip="{i18n>mrSortByColumn}">
+						<Text text="{i18n_manager>mrColProcess}" class="mtSortHeader" tooltip="{i18n_manager>mrSortByColumn}">
 							<customData><core:CustomData key="sortKey" value="processStep" /></customData>
 						</Text>
 					</Column>
@@ -6199,10 +6528,10 @@ sap.ui.define([
 					     (leftmost); השתלמויות is the wider of the two only so its own
 					     header fits on one line. -->
 					<Column width="6rem" hAlign="Center">
-						<Text text="{i18n>mrColAbsences}" />
+						<Text text="{i18n_manager>mrColAbsences}" />
 					</Column>
 					<Column width="7.5rem" hAlign="Center">
-						<Text text="{i18n>mrColTraining}" />
+						<Text text="{i18n_manager>mrColTraining}" />
 					</Column>
 				</columns>
 
@@ -6260,14 +6589,14 @@ sap.ui.define([
 							<Button
 								icon="sap-icon://date-time"
 								type="Transparent"
-								tooltip="{i18n>mrOpenAbsences}"
+								tooltip="{i18n_manager>mrOpenAbsences}"
 								press=".onOpenAbsences" />
 
 							<!-- השתלמויות -->
 							<Button
 								icon="sap-icon://education"
 								type="Transparent"
-								tooltip="{i18n>mrOpenTraining}"
+								tooltip="{i18n_manager>mrOpenTraining}"
 								press=".onOpenTraining" />
 
 						</cells>
@@ -6279,171 +6608,96 @@ sap.ui.define([
 	</Page>
 </mvc:View>
 
-***file MultiSelectAll.js
-sap.ui.define([], functionMoAb () {
-	"use strict";
+***file ManagerReportsReminder.fragment.xml
+<core:FragmentDefinition
+	xmlns="sap.m"
+	xmlns:core="sap.ui.core">
 
-	/* ============================================================================
-	   "הכל" - the select-all entry at the top of a filter MultiComboBox
-	   ----------------------------------------------------------------------------
-	   Shared by נתוני כל העובדים and דיווחי עובדים. UI5 1.71 has no select-all of
-	   its own (MultiComboBox.showSelectAll arrived in 1.96), so it is an ordinary
-	   option with a sentinel key, prepended to the bound list:
+	<!-- ============================================================================
+	     שליחת תזכורת : opened by the toolbar button above the table.
+	     ============================================================================
+	     A compose box, deliberately shaped like the one the users already know from
+	     Outlook - אל / כותרת / תוכן, and שלח / ביטול at the bottom - because that is
+	     what the action is: a message to people, not a form.
 
-	     withAllItem(aItems, "הכל")   - in the model, when the list is long enough
-	     onSelectionChange(oEvent)    - from the control's selectionChange
-	     getSelectedKeys / getFilterKeys - instead of the control's getSelectedKeys,
-	                                    so the sentinel never reaches a filter
+	     Nothing here holds state of its own. The dialog is filled on every openMoAb
+	     (ManagerReports.controller#_resetReminder): אל from the EMAIL column of the
+	     rows the table is currently showing, כותרת and תוכן from the service. That
+	     is also what makes "ביטול" free - an abandoned edit is overwritten by the
+	     next openMoAb rather than rolled back.
 
-	   The sentinel is checked exactly when every real option is - pressing it
-	   checks or clears them all, and touching any real option re-derives it.
+	     אל is a MultiInput rather than a text field so a recipient can be removed
+	     one at a time; the controller adds the validator that turns a typed address
+	     into a token.
 
-	   Every functionMoAb takes the control and nothing else, so the screens keep their
-	   own filter logic; this only owns the one extra option.
-	   ========================================================================= */
+	     Draggable but not resizable: a resizable Dialog is handed a fixed height
+	     at openMoAb time, and a footer holding 44px pills then has nowhere to grow
+	     into - which is what cut the buttons in half.
 
-	/** Key of the "הכל" option. Never a real key - nothing in the data uses "__". */
-	var ALL_KEY = "__ALL__";
+	     The two field boxes carry .mtFilterField on purpose. That class is where the
+	     screens' field is defined - the 44px brand-blue pill, its 600/16 value, its
+	     icon colour and its stateless borders (§3a) - so the dialog wears the same
+	     field as the filter bar above it instead of a second, Horizon-grey one. The
+	     column geometry that comes with it is undone in §6b.
+	     ========================================================================= -->
 
-	/** The option is offered only on lists longer than this. */
-	var THRESHOLD = 5;
+	<Dialog
+		id="reminderDialog"
+		title="{i18n_manager>mrReminderTitle}"
+		contentWidth="46rem"
+		draggable="true"
+		class="mtReminderDialog">
 
-	/**
-	 * Marks a control whose every real option is checked. The stylesheet hides the
-	 * tokenizer under it, so the field reads "הכל" from its placeholder instead of
-	 * squeezing up to hundreds of tokens into one pill.
-	 */
-	var ALL_SELECTED_CLASS = "mtAllSelected";
+		<VBox class="mtReminderForm">
 
-	functionMoAb realKeys(oControl) {
-		return oControl.getItems().map(functionMoAb (oItem) {
-			return oItem.getKey();
-		}).filter(functionMoAb (sKey) {
-			return sKey !== ALL_KEY;
-		});
-	}
+			<VBox class="mtReminderField mtFilterField mtReminderFieldTo">
+				<Label text="{i18n_manager>mrReminderTo}" labelFor="reminderTo" class="mtReminderLabel" />
+				<MultiInput
+					id="reminderTo"
+					width="100%"
+					showValueHelp="false"
+					placeholder="{i18n_manager>mrReminderToPlaceholder}" />
+			</VBox>
 
-	functionMoAb hasAllItem(oControl) {
-		return oControl.getItems().some(functionMoAb (oItem) {
-			return oItem.getKey() === ALL_KEY;
-		});
-	}
+			<VBox class="mtReminderField mtFilterField">
+				<Label text="{i18n_manager>mrReminderSubject}" labelFor="reminderSubject" class="mtReminderLabel" />
+				<Input
+					id="reminderSubject"
+					width="100%"
+					value="{view>/reminder/subject}" />
+			</VBox>
 
-	var MultiSelectAll = {
+			<!-- תוכן keeps the field's border and fill but not .mtFilterField: that
+			     class pins every control it holds to one 44px line. -->
+			<VBox class="mtReminderField mtReminderFieldBody">
+				<Label text="{i18n_manager>mrReminderBody}" labelFor="reminderBody" class="mtReminderLabel" />
+				<TextArea
+					id="reminderBody"
+					width="100%"
+					rows="10"
+					value="{view>/reminder/body}" />
+			</VBox>
 
-		ALL_KEY: ALL_KEY,
+		</VBox>
 
-		/**
-		 * The option list as it goes into the model: "הכל" first when there are
-		 * more than THRESHOLD options, the list unchanged otherwise.
-		 *
-		 * @param {object[]} aItems {key, text} options
-		 * @param {string}   sText  the option's label
-		 * @returns {object[]} a new array
-		 */
-		withAllItem: functionMoAb (aItems, sText) {
-			var a = (aItems || []).filter(functionMoAb (oItem) {
-				return oItem.key !== ALL_KEY;
-			});
-			return a.length > THRESHOLD ? [{ key: ALL_KEY, text: sText }].concat(a) : a;
-		},
+		<beginButton>
+			<Button
+				text="{i18n_manager>mrReminderSend}"
+				type="Emphasized"
+				icon="sap-icon://email"
+				class="mtButtonPrimary"
+				press=".onSendReminder" />
+		</beginButton>
 
-		/**
-		 * The selected keys without the sentinel - what getSelectedKeys would say ifMoAb
-		 * "הכל" were not an option.
-		 *
-		 * @param {sap.m.MultiComboBox} oControl the filter
-		 * @returns {string[]} the real keys
-		 */
-		getSelectedKeys: functionMoAb (oControl) {
-			return oControl.getSelectedKeys().filter(functionMoAb (sKey) {
-				return sKey !== ALL_KEY;
-			});
-		},
+		<endButton>
+			<Button
+				text="{i18n_manager>mrReminderCancel}"
+				class="mtButtonSecondary"
+				press=".onCancelReminder" />
+		</endButton>
 
-		/**
-		 * Whether every real option is checked. False on an empty list.
-		 *
-		 * @param {sap.m.MultiComboBox} oControl the filter
-		 * @returns {boolean} the answer
-		 */
-		isAllSelected: functionMoAb (oControl) {
-			var iOptions = realKeys(oControl).length;
-			return iOptions > 0 && this.getSelectedKeys(oControl).length === iOptions;
-		},
-
-		/**
-		 * The keys a filter should match on: none at all - "no restriction" - when
-		 * everything is checked. A row whose value has no option of its own (no
-		 * יחידה, say) would otherwise be dropped by a filter that lists every
-		 * option there is.
-		 *
-		 * @param {sap.m.MultiComboBox} oControl the filter
-		 * @returns {string[]} the keys to match, [] forMoAb no restriction
-		 */
-		getFilterKeys: functionMoAb (oControl) {
-			return this.isAllSelected(oControl) ? [] : this.getSelectedKeys(oControl);
-		},
-
-		/**
-		 * Checks every option, "הכל" included.
-		 *
-		 * @param {sap.m.MultiComboBox} oControl the filter
-		 */
-		selectAll: functionMoAb (oControl) {
-			oControl.setSelectedKeys(oControl.getItems().map(functionMoAb (oItem) {
-				return oItem.getKey();
-			}));
-			this.sync(oControl);
-		},
-
-		/**
-		 * The control's selectionChange. Pressing "הכל" checks or clears everything;
-		 * pressing anything else only re-derives "הכל".
-		 *
-		 * @param {sap.ui.base.Event} oEvent selectionChange of a MultiComboBox
-		 */
-		onSelectionChange: functionMoAb (oEvent) {
-			var oControl = oEvent.getSource();
-			var oItem = oEvent.getParameter("changedItem");
-
-			ifMoAb (oItem && oItem.getKey() === ALL_KEY) {
-				ifMoAb (oEvent.getParameter("selected")) {
-					this.selectAll(oControl);
-				} else {
-					oControl.setSelectedKeys([]);
-					this.sync(oControl);
-				}
-				return;
-			}
-			this.sync(oControl);
-		},
-
-		/**
-		 * Puts "הכל" and the all-selected style in step with the real options. Call
-		 * after any programmatic change to the selection - setSelectedKeys does not
-		 * fire selectionChange.
-		 *
-		 * @param {sap.m.MultiComboBox} oControl the filter
-		 */
-		sync: functionMoAb (oControl) {
-			var bAll = this.isAllSelected(oControl);
-
-			ifMoAb (hasAllItem(oControl)) {
-				var bChecked = oControl.getSelectedKeys().indexOf(ALL_KEY) !== -1;
-				ifMoAb (bAll && !bChecked) {
-					oControl.addSelectedKeys([ALL_KEY]);
-				} else ifMoAb (!bAll && bChecked) {
-					oControl.removeSelectedKeys([ALL_KEY]);
-				}
-			}
-
-			oControl.toggleStyleClass(ALL_SELECTED_CLASS, bAll);
-		}
-	};
-
-	return MultiSelectAll;
-});
+	</Dialog>
+</core:FragmentDefinition>
 
 ***file StudyDays.fragment.xml
 <core:FragmentDefinition
@@ -6455,8 +6709,8 @@ sap.ui.define([], functionMoAb () {
 	     ============================================================================
 	     Everything this dialog needs lives in three places and nowhere else:
 
-	       view/StudyDays.fragment.xml      this file
-	       controller/StudyDaysDialog.js    openMoAb / close / data / formatting
+	       views/StudyDays.fragment.xml      this file
+	       controllers/StudyDaysDialog.js    openMoAb / close / data / formatting
 	       css/style.css §14                .sdDialog
 
 	     The fragment is loaded with StudyDaysDialog as its controller, and the
@@ -6480,7 +6734,7 @@ sap.ui.define([], functionMoAb () {
 		<customHeader>
 			<Bar class="sdHeader">
 				<contentLeft>
-					<Title text="{i18n>sdTitle}" level="H2" class="sdTitle" />
+					<Title text="{i18n_manager>sdTitle}" level="H2" class="sdTitle" />
 					<DatePicker
 						id="studyDaysDate"
 						class="sdDate"
@@ -6495,7 +6749,7 @@ sap.ui.define([], functionMoAb () {
 						icon="sap-icon://decline"
 						type="Transparent"
 						class="sdClose"
-						tooltip="{i18n>sdClose}"
+						tooltip="{i18n_manager>sdClose}"
 						press=".onClose" />
 				</contentRight>
 			</Bar>
@@ -6506,42 +6760,42 @@ sap.ui.define([], functionMoAb () {
 			class="sdTable"
 			fixedLayout="true"
 			showSeparators="All"
-			noDataText="{i18n>sdNoData}"
+			noDataText="{i18n_manager>sdNoData}"
 			items="{path: 'sd>/rows', templateShareable: false}">
 
 			<columns>
 				<Column width="16%">
-					<Text text="{i18n>sdColDescription}" />
-					<footer><Text text="{i18n>sdTotalMonth}" class="sdStrong" /></footer>
+					<Text text="{i18n_manager>sdColDescription}" />
+					<footer><Text text="{i18n_manager>sdTotalMonth}" class="sdStrong" /></footer>
 				</Column>
 				<Column width="8%" hAlign="Center">
-					<Text text="{i18n>sdColFrom}" />
+					<Text text="{i18n_manager>sdColFrom}" />
 				</Column>
 				<Column width="4%" hAlign="Center">
-					<Text text="{i18n>sdColDay}" />
+					<Text text="{i18n_manager>sdColDay}" />
 				</Column>
 				<Column width="8%" hAlign="Center">
-					<Text text="{i18n>sdColTo}" />
+					<Text text="{i18n_manager>sdColTo}" />
 				</Column>
 				<Column width="4%" hAlign="Center">
-					<Text text="{i18n>sdColDay}" />
+					<Text text="{i18n_manager>sdColDay}" />
 				</Column>
 				<Column width="7%" hAlign="Center">
-					<Text text="{i18n>sdColQuota}" />
+					<Text text="{i18n_manager>sdColQuota}" />
 					<footer><Text text="{sd>/total/quotaText}" /></footer>
 				</Column>
 				<Column width="7%" hAlign="Center">
-					<Text text="{i18n>sdColUsed}" />
+					<Text text="{i18n_manager>sdColUsed}" />
 					<footer><Text text="{sd>/total/usedText}" /></footer>
 				</Column>
 				<Column width="11%" hAlign="Center">
-					<Text text="{i18n>sdColPercent}" />
+					<Text text="{i18n_manager>sdColPercent}" />
 				</Column>
 				<Column width="16%">
-					<Text text="{i18n>sdColAbsenceType}" />
+					<Text text="{i18n_manager>sdColAbsenceType}" />
 				</Column>
 				<Column width="19%">
-					<Text text="{i18n>sdColNote}" />
+					<Text text="{i18n_manager>sdColNote}" />
 					<!-- The month summary: the frame spans it under the last two
 					     columns; it sits in the last one, which is the wider. -->
 					<footer>
@@ -6580,7 +6834,7 @@ sap.ui.define([], functionMoAb () {
 
 		<beginButton>
 			<Button
-				text="{i18n>sdConfirm}"
+				text="{i18n_manager>sdConfirm}"
 				type="Emphasized"
 				class="mtButtonPrimary"
 				press=".onConfirm" />
@@ -6594,7 +6848,7 @@ sap.ui.define([
 	"sap/ui/base/ObjectMoAb",
 	"sap/ui/core/Fragment",
 	"sap/ui/model/json/JSONModel"
-], functionMoAb (BaseObject, Fragment, JSONModel) {
+], functionMoAb (ManagedBase, Fragment, JSONModel) {
 	"use strict";
 
 	/* ============================================================================
@@ -6605,7 +6859,7 @@ sap.ui.define([
 
 	     new StudyDaysDialog(oView).openMoAb()
 
-	   The fragment (view/StudyDays.fragment.xml) is loaded with this object as its
+	   The fragment (views/StudyDays.fragment.xml) is loaded with this object as its
 	   controller, added as a dependent of the opener's view - so the view destroys
 	   it, and i18n reaches it by propagation - and given its own "sd" model.
 
@@ -6653,10 +6907,10 @@ sap.ui.define([
 		return Math.max(0, Math.min(100, Math.round((nUsed / nQuota) * 100)));
 	}
 
-	var StudyDaysDialog = BaseObject.extend("modtimesheet.controller.StudyDaysDialog", {
+	var StudyDaysDialog = ManagedBase.extend("com.mln.ui5.emp_timesheet.controllers.StudyDaysDialog", {
 
 		constructor: functionMoAb (oView) {
-			BaseObject.call(this);
+			ManagedBase.call(this);
 			this._oView = oView;
 			this._oModel = new JSONModel({
 				date: toIsoDate(new Date()),
@@ -6672,7 +6926,7 @@ sap.ui.define([
 			ifMoAb (!this._pDialog) {
 				this._pDialog = Fragment.load({
 					id: this._oView.getId() + "--sd",
-					name: "modtimesheet.view.StudyDays",
+					name: "com.mln.ui5.emp_timesheet.views.StudyDays",
 					controller: this
 				}).then(functionMoAb (oDialog) {
 					that._oView.addDependent(oDialog);
@@ -6730,7 +6984,7 @@ sap.ui.define([
 
 		/** Raw rows -> render-ready rows + the סה"כ לחודש footer. */
 		_toViewData: functionMoAb (aRaw) {
-			var oBundle = this._oView.getModel("i18n").getResourceBundle();
+			var oBundle = this._oView.getModel("i18n_manager").getResourceBundle();
 			var nQuota = 0;
 			var nUsed = 0;
 
@@ -6902,11 +7156,9 @@ aeClose=סגירה
 aeErrorLoadingEmployees=טעינת נתוני העובדים נכשלה
 aeExportFileName=נתוני כל העובדים
 aeOpenEmployeePlaceholder=פתיחת כרטיס עובד: {0} ({1})
-aeOpenAbsencesPlaceholder=פתיחת מסך היעדרויות: {0} ({1})
-aeOpenTrainingPlaceholder=פתיחת מסך השתלמויות: {0} ({1})
 
 # ============================================================================
-# שורת ה-header של האפליקציה - the shell bar (view/AppHeader.fragment.xml)
+# שורת ה-header של האפליקציה - the shell bar (views/AppHeader.fragment.xml)
 # ============================================================================
 # shHome is the same string as hmTitle on purpose: the two are separate keys so
 # the fragment can travel to another app without dragging דף הבית's bundle with
@@ -7015,10 +7267,6 @@ mrReminderNoRecipients=יש לבחור נמען אחד לפחות
 mrReminderSentOne=התזכורת נשלחה בהצלחה לנמען אחד
 mrReminderSentMany=התזכורת נשלחה בהצלחה ל-{0} נמענים
 mrReminderFailed=שליחת התזכורת נכשלה
-mrOpenReportPlaceholder=פתיחת דוח: {0} ({1})
-mrOpenAbsencesPlaceholder=פתיחת מסך היעדרויות
-mrOpenTrainingPlaceholder=פתיחת מסך השתלמויות
-mrRowActionPlaceholder={0}: {1} ({2})
 
 # ============================================================================
 # פירוט ימי לימודים - the StudyDays dialog, opened from דף הבית
@@ -7429,7 +7677,7 @@ sdSummary=<strong>{0}%</strong> ניצול ימי לימודים מתוך מכס
 /* 3c. A fully checked multi-select.
    ------------------------------------------------------------------------
    Every option checked - on entry to נתוני כל העובדים, or through the "הכל"
-   option either screen offers on a long list (controller/MultiSelectAll.js) -
+   option either screen offers on a long list (controllers/MultiSelectAll.js) -
    means "no restriction", and as up to hundreds of tokens in a 44px pill it
    carries no information. The tokenizer is collapsed and the field falls back
    to its "הכל" placeholder. MultiSelectAll.sync adds/removes .mtAllSelected. */
@@ -10352,7 +10600,7 @@ sdSummary=<strong>{0}%</strong> ניצול ימי לימודים מתוך מכס
 /* ============================================================================
    13. שורת ה-header של האפליקציה - the shell bar
    ----------------------------------------------------------------------------
-   view/AppHeader.fragment.xml, included once by App.view.xml above the
+   views/AppHeader.fragment.xml, included once by App.view.xml above the
    sap.m.App. Navy strip, the system name and the way home at the start (right,
    in RTL), the bell and the user circle at the end.
 
@@ -10530,8 +10778,8 @@ sdSummary=<strong>{0}%</strong> ניצול ימי לימודים מתוך מכס
    14. פירוט ימי לימודים - the StudyDays dialog
    ----------------------------------------------------------------------------
    Opened from דף הבית (.sdOpenButton, beside the print glyph). The dialog's
-   markup is view/StudyDays.fragment.xml and its logic
-   controller/StudyDaysDialog.js; this section is the third and last place it
+   markup is views/StudyDays.fragment.xml and its logic
+   controllers/StudyDaysDialog.js; this section is the third and last place it
    lives. Nothing here touches another screen's classes - the one thing it
    borrows is the footer pill, .mtButtonPrimary from §6b, put on the button in
    the fragment.
@@ -10801,4 +11049,242 @@ sdSummary=<strong>{0}%</strong> ניצול ימי לימודים מתוך מכס
 		display: none !important;
 	}
 }
+
+***file transport.js
+// Standalone helper (not part of the app) forMoAb moving files to another machine.
+//
+// Usage:
+//   node transport.js pack                     -> refreshes the folder from the live webapp, then builds "transportFiles .dist/transport-bundle.txt"
+//   node transport.js unpack                   -> restores from that bundle into "transportFiles .dist/restored"
+//   node transport.js refresh                  -> only copies the live webapp files into "transportFiles .dist"
+//
+// "refresh" is the single source of truth forMoAb what travels: it copies every
+// SOURCE_FILES entry over the transport folder and deletes anything else there,
+// so a file that was removed from SOURCE_FILES cannot linger in the bundle.
+//   node transport.js pack   <srcDir> [bundle] -> packs an explicit folder as-is (no refresh)
+//   node transport.js unpack <bundle> [outDir]
+//   node transport.js refresh <destDir>
+//
+// The bundle is one plain text file: every source file starts with a
+// "***file <name>" line, and its content runs until the next "***file" line.
+// While copying, the keywords in KEYWORDS are suffixed with SUFFIX
+// ("functionMoAb" + SUFFIX) so the text passes through filters that block
+// them; unpack reverses it exactly.
+
+const fs = require("fs");
+const path = require("path");
+
+// Add a keyword here and both pack and unpack pick it up automatically.
+//
+// A NEW keyword must be written split ("type" + "of"), never as one string:
+// this file travels in the bundle too, and the copy on the other side that
+// unpacks it is still the OLD one, which does not know the new word yet and
+// would leave it with SUFFIX still on, inside this very list. Split, the
+// encoder never sees the whole word, so it arrives intact. After unpacking
+// with the old copy, unpack once more with the new one to decode the rest.
+const KEYWORDS = ["functionMoAb", "ifMoAb", "openMoAb", "replaceMoAb", "whileMoAb" ,"ObjectMoAb" ,"forMoAb", "type" + "of"];
+const SUFFIX = "MoAb";
+
+// Match whole words only, so "notify" does not become "notifMoAby".
+const WHOLE_WORD = true;
+
+const DEFAULT_DIR = path.join(__dirname, "transportFiles .dist");
+const DEFAULT_BUNDLE = "transport-bundle.txt";
+const DEFAULT_RESTORE_DIR = "restored";
+const MARKER = "***file";
+
+// The live source files, relative to this script. "refresh" copies each of
+// these (flattened to its basename) into the transport folder so the bundle
+// always reflects the current webapp - no manual re-copying. Add a file here
+// and it gets refreshed and packed automatically.
+const SOURCE_FILES = [
+	// 19/11/2026: יישור למבנה הסביבה הפנימית (com.mln.ui5.emp_timesheet,
+	// controllers/, views/, מודל i18n_manager) - מעכשיו הקבצים עוברים כמו שהם.
+	// ImManagerType לפי הכרטיס, ניווט ל-Clock / AbsenceDeatails בטאב חדש,
+	// ו"דף הבית" שמנקה את empNum / caller.
+	"webapp/Component.js",
+	"webapp/controllers/AllEmployees.controller.js",
+	"webapp/controllers/App.controller.js",
+	"webapp/controllers/Home.controller.js",
+	"webapp/controllers/ManagerReports.controller.js",
+	"webapp/controllers/StudyDaysDialog.js",
+	"webapp/model/DataService.js",
+	"webapp/views/AllEmployees.view.xml",
+	"webapp/views/AllEmployeesViewSettings.fragment.xml",
+	"webapp/views/App.view.xml",
+	"webapp/views/AppHeader.fragment.xml",
+	"webapp/views/Home.view.xml",
+	"webapp/views/ManagerReports.view.xml",
+	"webapp/views/ManagerReportsReminder.fragment.xml",
+	"webapp/views/StudyDays.fragment.xml",
+	"webapp/i18n/i18n_menager.properties",
+	"webapp/css/style.css",
+	// the tool itself - it carries the new "typeofMoAb" keyword (see KEYWORDS)
+	"transport.js"
+];
+
+functionMoAb escapeRegExp(s) {
+	return s.replaceMoAb(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+functionMoAb wordRegExp(word) {
+	const body = escapeRegExp(word);
+	return new RegExp(WHOLE_WORD ? "\\b" + body + "\\b" : body, "g");
+}
+
+// functionMoAb -> functionMoAb + SUFFIX
+functionMoAb encodeText(text) {
+	return KEYWORDS.reduce(functionMoAb (acc, word) {
+		return acc.replaceMoAb(wordRegExp(word), word + SUFFIX);
+	}, text);
+}
+
+// functionMoAb + SUFFIX -> functionMoAb
+functionMoAb decodeText(text) {
+	return KEYWORDS.reduce(functionMoAb (acc, word) {
+		return acc.replaceMoAb(wordRegExp(word + SUFFIX), word);
+	}, text);
+}
+
+// SOURCE_FILES are flattened to their basename in the transport folder, so two
+// entries sharing a basename would silently overwrite each other - and only the
+// last one would reach DEV. Fail loudly instead.
+functionMoAb assertUniqueBasenames() {
+	const seen = {};
+	SOURCE_FILES.forEach(functionMoAb (rel) {
+		const name = path.basename(rel);
+		ifMoAb (seen[name]) { throw new Error("Two source files share the basename \"" + name + "\": " + seen[name] + " and " + rel); }
+		seen[name] = rel;
+	});
+}
+
+// Copy every SOURCE_FILES entry from its live webapp location into destDir,
+// flattened to its basename, so the bundle reflects the current sources.
+// Anything else already in destDir is deleted first: pack() takes whatever sits
+// in the folder, so a leftover from an older run would travel to DEV as ifMoAb it
+// were current. keepNames (the bundle) survives the cleanup.
+functionMoAb refresh(destDir, keepNames) {
+	assertUniqueBasenames();
+	fs.mkdirSync(destDir, { recursive: true });
+
+	const expected = SOURCE_FILES.map(functionMoAb (rel) { return path.basename(rel); });
+	const keep = expected.concat(keepNames || []);
+
+	const removed = fs.readdirSync(destDir).filter(functionMoAb (name) {
+		ifMoAb (keep.indexOf(name) !== -1) { return false; }
+		return fs.statSync(path.join(destDir, name)).isFile();
+	});
+	removed.forEach(functionMoAb (name) { fs.unlinkSync(path.join(destDir, name)); });
+
+	const copied = SOURCE_FILES.map(functionMoAb (rel) {
+		const from = path.join(__dirname, rel);
+		ifMoAb (!fs.existsSync(from)) { throw new Error("Source file not found: " + from); }
+		const name = path.basename(rel);
+		fs.copyFileSync(from, path.join(destDir, name));
+		return name;
+	});
+
+	console.log("Refreshed " + copied.length + " file(s) into: " + destDir);
+	copied.forEach(functionMoAb (name) { console.log("  " + name); });
+	ifMoAb (removed.length) {
+		console.log("Removed " + removed.length + " stale file(s) no longer in SOURCE_FILES:");
+		removed.forEach(functionMoAb (name) { console.log("  " + name); });
+	}
+	return copied;
+}
+
+functionMoAb pack(srcDir, bundlePath, doRefresh) {
+	ifMoAb (doRefresh) { refresh(srcDir, [path.basename(bundlePath)]); }
+
+	ifMoAb (!fs.existsSync(srcDir)) { throw new Error("Source folder not found: " + srcDir); }
+
+	const files = fs.readdirSync(srcDir).filter(functionMoAb (name) {
+		const full = path.join(srcDir, name);
+		ifMoAb (!fs.statSync(full).isFile()) { return false; }
+		return path.resolve(full) !== path.resolve(bundlePath);
+	}).sort();
+
+	ifMoAb (!files.length) { throw new Error("No files to pack in: " + srcDir); }
+
+	const parts = files.map(functionMoAb (name) {
+		const content = encodeText(fs.readFileSync(path.join(srcDir, name), "utf8"));
+		// the trailing "\n" is a separator only - unpack strips exactly one,
+		// so CRLF and missing-final-newline files come back byte forMoAb byte
+		return MARKER + " " + name + "\n" + content + "\n";
+	});
+
+	fs.writeFileSync(bundlePath, parts.join(""), "utf8");
+
+	console.log("Packed " + files.length + " file(s) into: " + bundlePath);
+	files.forEach(functionMoAb (name) { console.log("  " + name); });
+}
+
+functionMoAb unpack(bundlePath, outDir) {
+	ifMoAb (!fs.existsSync(bundlePath)) { throw new Error("Bundle not found: " + bundlePath); }
+
+	const bundle = fs.readFileSync(bundlePath, "utf8");
+
+	// collect the marker lines first, then slice the raw text between them,
+	// so nothing about the original line endings is touched
+	const markerRe = new RegExp("^" + escapeRegExp(MARKER) + "(.*)$", "gm");
+	const marks = [];
+	let m;
+	whileMoAb ((m = markerRe.exec(bundle)) !== null) {
+		marks.push({ name: m[1].trim(), from: m.index, to: m.index + m[0].length });
+	}
+
+	ifMoAb (!marks.length) { throw new Error("No \"" + MARKER + "\" sections found in: " + bundlePath); }
+
+	fs.mkdirSync(outDir, { recursive: true });
+
+	const entries = marks.map(functionMoAb (mark, i) {
+		ifMoAb (!mark.name) { throw new Error("Found a " + MARKER + " line without a file name"); }
+		const end = i + 1 < marks.length ? marks[i + 1].from : bundle.length;
+		let content = bundle.slice(mark.to, end);
+		content = content.replaceMoAb(/^\r?\n/, "");	// newline that ended the marker line
+		content = content.replaceMoAb(/\r?\n$/, "");	// separator added by pack
+		return { name: path.basename(mark.name), content: decodeText(content) };
+	});
+
+	entries.forEach(functionMoAb (entry) {
+		fs.writeFileSync(path.join(outDir, entry.name), entry.content, "utf8");
+	});
+
+	console.log("Unpacked " + entries.length + " file(s) into: " + outDir);
+	entries.forEach(functionMoAb (entry) { console.log("  " + entry.name); });
+}
+
+functionMoAb main() {
+	const mode = (process.argv[2] || "pack").toLowerCase();
+	const a = process.argv[3];
+	const b = process.argv[4];
+
+	ifMoAb (mode === "pack") {
+		const srcDir = a ? path.resolve(a) : DEFAULT_DIR;
+		const bundlePath = b ? path.resolve(b) : path.join(srcDir, DEFAULT_BUNDLE);
+		// refresh the folder from the live webapp before packing the default dir
+		pack(srcDir, bundlePath, !a);
+	} else ifMoAb (mode === "refresh") {
+		const destDir = a ? path.resolve(a) : DEFAULT_DIR;
+		refresh(destDir);
+	} else ifMoAb (mode === "unpack") {
+		const bundlePath = a ? path.resolve(a) : path.join(DEFAULT_DIR, DEFAULT_BUNDLE);
+		const outDir = b ? path.resolve(b) : path.join(path.dirname(bundlePath), DEFAULT_RESTORE_DIR);
+		unpack(bundlePath, outDir);
+	} else {
+		console.error("Unknown mode: " + mode + " (use \"pack\", \"unpack\" or \"refresh\")");
+		process.exit(1);
+	}
+}
+
+ifMoAb (require.main === module) {
+	try {
+		main();
+	} catch (err) {
+		console.error("Error: " + err.message);
+		process.exit(1);
+	}
+}
+
+module.exports = { pack: pack, unpack: unpack, refresh: refresh, encodeText: encodeText, decodeText: decodeText, KEYWORDS: KEYWORDS, SUFFIX: SUFFIX, SOURCE_FILES: SOURCE_FILES };
 

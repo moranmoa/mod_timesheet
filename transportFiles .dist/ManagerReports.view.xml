@@ -1,5 +1,5 @@
 <mvc:View
-	controllerName="modtimesheet.controller.ManagerReports"
+	controllerName="com.mln.ui5.emp_timesheet.controllers.ManagerReports"
 	xmlns:mvc="sap.ui.core.mvc"
 	xmlns="sap.m"
 	xmlns:core="sap.ui.core"
@@ -11,7 +11,7 @@
 
 			<!-- ================= Title ================= -->
 			<VBox class="mtHeader">
-				<Title text="{i18n>mrTitle}" level="H1" class="mtHeaderTitle" />
+				<Title text="{i18n_manager>mrTitle}" level="H1" class="mtHeaderTitle" />
 			</VBox>
 
 			<!-- ================= Filter bar ================= -->
@@ -21,10 +21,10 @@
 					<!-- Search (right-most in RTL). Wider than the other columns:
 					     it carries the longest label. -->
 					<VBox class="mtFilterField mtFilterFieldSearch">
-						<Label text="{i18n>mrSearchLabel}" class="mtFilterLabel" />
+						<Label text="{i18n_manager>mrSearchLabel}" class="mtFilterLabel" />
 						<SearchField
 							id="searchField"
-							placeholder="{i18n>mrSearchPlaceholder}"
+							placeholder="{i18n_manager>mrSearchPlaceholder}"
 							search=".onSearch"
 							liveChange=".onSearch"
 							width="100%" />
@@ -32,11 +32,11 @@
 
 					<!-- Year (multi) -->
 					<VBox class="mtFilterField">
-						<Label text="{i18n>mrFilterYear}" class="mtFilterLabel" />
+						<Label text="{i18n_manager>mrFilterYear}" class="mtFilterLabel" />
 						<MultiComboBox
 							id="yearFilter"
 							width="100%"
-							placeholder="{i18n>mrFilterAll}"
+							placeholder="{i18n_manager>mrFilterAll}"
 							selectionChange=".onMultiSelectChange"
 							selectionFinish=".onRequestFilterChange"
 							items="{
@@ -49,11 +49,11 @@
 
 					<!-- Month (multi) -->
 					<VBox class="mtFilterField">
-						<Label text="{i18n>mrFilterMonth}" class="mtFilterLabel" />
+						<Label text="{i18n_manager>mrFilterMonth}" class="mtFilterLabel" />
 						<MultiComboBox
 							id="monthFilter"
 							width="100%"
-							placeholder="{i18n>mrFilterAll}"
+							placeholder="{i18n_manager>mrFilterAll}"
 							selectionChange=".onMultiSelectChange"
 							selectionFinish=".onRequestFilterChange"
 							items="{
@@ -66,11 +66,11 @@
 
 					<!-- Population (multi) -->
 					<VBox class="mtFilterField">
-						<Label text="{i18n>mrFilterPopulation}" class="mtFilterLabel" />
+						<Label text="{i18n_manager>mrFilterPopulation}" class="mtFilterLabel" />
 						<MultiComboBox
 							id="populationFilter"
 							width="100%"
-							placeholder="{i18n>mrFilterPopulation}"
+							placeholder="{i18n_manager>mrFilterPopulation}"
 							selectionChange=".onMultiSelectChange"
 							selectionFinish=".onFilterChange"
 							items="{
@@ -83,11 +83,11 @@
 
 					<!-- Branch (multi) -->
 					<VBox class="mtFilterField">
-						<Label text="{i18n>mrFilterBranch}" class="mtFilterLabel" />
+						<Label text="{i18n_manager>mrFilterBranch}" class="mtFilterLabel" />
 						<MultiComboBox
 							id="branchFilter"
 							width="100%"
-							placeholder="{i18n>mrFilterAll}"
+							placeholder="{i18n_manager>mrFilterAll}"
 							selectionChange=".onMultiSelectChange"
 							selectionFinish=".onFilterChange"
 							items="{
@@ -100,11 +100,11 @@
 
 					<!-- Unit (multi) -->
 					<VBox class="mtFilterField">
-						<Label text="{i18n>mrFilterUnit}" class="mtFilterLabel" />
+						<Label text="{i18n_manager>mrFilterUnit}" class="mtFilterLabel" />
 						<MultiComboBox
 							id="unitFilter"
 							width="100%"
-							placeholder="{i18n>mrFilterAll}"
+							placeholder="{i18n_manager>mrFilterAll}"
 							selectionChange=".onMultiSelectChange"
 							selectionFinish=".onFilterChange"
 							items="{
@@ -126,11 +126,11 @@
 
 					<!-- Direct manager name (default: current user) -->
 					<VBox class="mtFilterField">
-						<Label text="{i18n>mrFilterDirectManager}" class="mtFilterLabel" />
+						<Label text="{i18n_manager>mrFilterDirectManager}" class="mtFilterLabel" />
 						<MultiComboBox
 							id="managerFilter"
 							width="100%"
-							placeholder="{i18n>mrFilterAll}"
+							placeholder="{i18n_manager>mrFilterAll}"
 							selectionChange=".onMultiSelectChange"
 							selectionFinish=".onFilterChange"
 							items="{
@@ -143,11 +143,11 @@
 
 					<!-- Handling party (default: by role / selected tab) -->
 					<VBox class="mtFilterField">
-						<Label text="{i18n>mrFilterHandledBy}" class="mtFilterLabel" />
+						<Label text="{i18n_manager>mrFilterHandledBy}" class="mtFilterLabel" />
 						<MultiComboBox
 							id="handledByFilter"
 							width="100%"
-							placeholder="{i18n>mrFilterHandledByPlaceholder}"
+							placeholder="{i18n_manager>mrFilterHandledByPlaceholder}"
 							selectionChange=".onHandledByChange"
 							selectionFinish=".onFilterChange"
 							items="{
@@ -160,7 +160,7 @@
 
 					<!-- Subordinates (default: direct only) -->
 					<VBox class="mtFilterField">
-						<Label text="{i18n>mrFilterSubordinates}" class="mtFilterLabel" />
+						<Label text="{i18n_manager>mrFilterSubordinates}" class="mtFilterLabel" />
 						<Select
 							id="subordinatesFilter"
 							width="100%"
@@ -187,16 +187,16 @@
 					     as the switch on נתוני כל העובדים. -->
 					<VBox class="mtFilterField mtFilterFieldSwitch" alignItems="Center">
 						<Label
-							text="{i18n>mrFilterOldReports}"
+							text="{i18n_manager>mrFilterOldReports}"
 							labelFor="oldReportsSwitch"
 							class="mtFilterLabel mtFilterLabelCentered" />
 						<Switch
 							id="oldReportsSwitch"
 							class="mtStateSwitch"
 							state="{view>/oldReports}"
-							customTextOn="{i18n>mrSwitchOn}"
-							customTextOff="{i18n>mrSwitchOff}"
-							tooltip="{i18n>mrFilterOldReportsTooltip}"
+							customTextOn="{i18n_manager>mrSwitchOn}"
+							customTextOff="{i18n_manager>mrSwitchOff}"
+							tooltip="{i18n_manager>mrFilterOldReportsTooltip}"
 							change=".onToggleOldReports" />
 					</VBox>
 
@@ -208,10 +208,10 @@
 						class="mtFilterToggle"
 						type="Transparent"
 						icon="{= ${view>/filtersExpanded} ? 'sap-icon://slim-arrow-up' : 'sap-icon://slim-arrow-down' }"
-						text="{= ${view>/filtersExpanded} ? ${i18n>mrHideMoreFilters} : ${i18n>mrShowMoreFilters} }"
+						text="{= ${view>/filtersExpanded} ? ${i18n_manager>mrHideMoreFilters} : ${i18n_manager>mrShowMoreFilters} }"
 						press=".onToggleFilters" />
 					<Button
-						text="{i18n>mrResetFilters}"
+						text="{i18n_manager>mrResetFilters}"
 						icon="sap-icon://clear-filter"
 						type="Transparent"
 						press=".onResetFilters" />
@@ -240,30 +240,30 @@
 					     and "אושרו" stays green (Positive). -->
 					<IconTabFilter
 						key="ALL"
-						text="{i18n>mrTabAll}"
+						text="{i18n_manager>mrTabAll}"
 						icon="sap-icon://list"
 						count="{view>/statusCounts/ALL}" />
 					<IconTabFilter
 						key="PENDING_EMPLOYEE"
-						text="{i18n>mrTabPendingEmployee}"
+						text="{i18n_manager>mrTabPendingEmployee}"
 						icon="sap-icon://employee"
 						iconColor="Critical"
 						count="{view>/statusCounts/PENDING_EMPLOYEE}" />
 					<IconTabFilter
 						key="PENDING_MY_APPROVAL"
-						text="{i18n>mrTabPendingManager}"
+						text="{i18n_manager>mrTabPendingManager}"
 						icon="sap-icon://manager"
 						iconColor="Critical"
 						count="{view>/statusCounts/PENDING_MY_APPROVAL}" />
 					<IconTabFilter
 						key="PENDING_HR"
-						text="{i18n>mrTabPendingHr}"
+						text="{i18n_manager>mrTabPendingHr}"
 						icon="sap-icon://group"
 						iconColor="Critical"
 						count="{view>/statusCounts/PENDING_HR}" />
 					<IconTabFilter
 						key="APPROVED"
-						text="{i18n>mrTabApproved}"
+						text="{i18n_manager>mrTabApproved}"
 						icon="sap-icon://complete"
 						iconColor="Positive"
 						count="{view>/statusCounts/APPROVED}" />
@@ -274,9 +274,9 @@
 				<HBox alignItems="Center" class="mtTableActions">
 					<HBox alignItems="Center" class="mtLegend">
 						<core:Icon src="sap-icon://record" color="#d6b85e" class="mtLegendDot" />
-						<Text text="{i18n>mrLegendPending}" class="mtLegendText" />
+						<Text text="{i18n_manager>mrLegendPending}" class="mtLegendText" />
 						<core:Icon src="sap-icon://record" color="#52ba65" class="mtLegendDot" />
-						<Text text="{i18n>mrLegendApproved}" class="mtLegendText" />
+						<Text text="{i18n_manager>mrLegendApproved}" class="mtLegendText" />
 					</HBox>
 					<!-- רענון: the only thing that rebuilds the אגף / יחידה /
 					     אוכלוסיה / שם ממונה lists in the filter bar, because those
@@ -284,20 +284,20 @@
 					<Button
 						icon="sap-icon://refresh"
 						type="Transparent"
-						text="{i18n>mrRefresh}"
-						tooltip="{i18n>hmRefresh}"
+						text="{i18n_manager>mrRefresh}"
+						tooltip="{i18n_manager>hmRefresh}"
 						press=".onRefresh" />
 					<Button
 						icon="sap-icon://action-settings"
 						type="Transparent"
-						text="{i18n>mrViewSettings}"
-						tooltip="{i18n>mrViewSettings}"
+						text="{i18n_manager>mrViewSettings}"
+						tooltip="{i18n_manager>mrViewSettings}"
 						press=".onOpenViewSettings" />
 					<Button
 						icon="sap-icon://excel-attachment"
 						type="Transparent"
-						text="{i18n>mrExportExcel}"
-						tooltip="{i18n>mrExportExcel}"
+						text="{i18n_manager>mrExportExcel}"
+						tooltip="{i18n_manager>mrExportExcel}"
 						press=".onExport" />
 					<!-- שליחת תזכורת: a message to the people behind the rows that are
 					     on screen, so it sits with the other actions that work on the
@@ -305,8 +305,8 @@
 					<Button
 						icon="sap-icon://email"
 						type="Transparent"
-						text="{i18n>mrSendReminder}"
-						tooltip="{i18n>mrSendReminderTooltip}"
+						text="{i18n_manager>mrSendReminder}"
+						tooltip="{i18n_manager>mrSendReminderTooltip}"
 						press=".onOpenReminder" />
 				</HBox>
 
@@ -347,42 +347,42 @@
 					     _onHeaderClick finds it from the cell; the column ids are what
 					     the arrow (sortIndicator) is drawn on. -->
 					<Column id="mrColEmployeeName" width="15rem" hAlign="Begin">
-						<Text text="{i18n>mrColEmployeeName}" class="mtSortHeader" tooltip="{i18n>mrSortByColumn}">
+						<Text text="{i18n_manager>mrColEmployeeName}" class="mtSortHeader" tooltip="{i18n_manager>mrSortByColumn}">
 							<customData><core:CustomData key="sortKey" value="employeeName" /></customData>
 						</Text>
 					</Column>
 					<Column id="mrColEmployeeNumber" width="7rem" hAlign="Begin" minScreenWidth="Tablet" demandPopin="true">
-						<Text text="{i18n>mrColEmployeeNumber}" class="mtSortHeader" tooltip="{i18n>mrSortByColumn}">
+						<Text text="{i18n_manager>mrColEmployeeNumber}" class="mtSortHeader" tooltip="{i18n_manager>mrSortByColumn}">
 							<customData><core:CustomData key="sortKey" value="employeeNumber" /></customData>
 						</Text>
 					</Column>
 					<Column id="mrColPopulation" hAlign="Begin" minScreenWidth="Tablet" demandPopin="true">
-						<Text text="{i18n>mrColPopulation}" class="mtSortHeader" tooltip="{i18n>mrSortByColumn}">
+						<Text text="{i18n_manager>mrColPopulation}" class="mtSortHeader" tooltip="{i18n_manager>mrSortByColumn}">
 							<customData><core:CustomData key="sortKey" value="population" /></customData>
 						</Text>
 					</Column>
 					<Column id="mrColBranch" hAlign="Begin" minScreenWidth="Desktop" demandPopin="true">
-						<Text text="{i18n>mrColBranch}" class="mtSortHeader" tooltip="{i18n>mrSortByColumn}">
+						<Text text="{i18n_manager>mrColBranch}" class="mtSortHeader" tooltip="{i18n_manager>mrSortByColumn}">
 							<customData><core:CustomData key="sortKey" value="branch" /></customData>
 						</Text>
 					</Column>
 					<Column id="mrColUnit" hAlign="Begin" minScreenWidth="Desktop" demandPopin="true">
-						<Text text="{i18n>mrColUnit}" class="mtSortHeader" tooltip="{i18n>mrSortByColumn}">
+						<Text text="{i18n_manager>mrColUnit}" class="mtSortHeader" tooltip="{i18n_manager>mrSortByColumn}">
 							<customData><core:CustomData key="sortKey" value="unit" /></customData>
 						</Text>
 					</Column>
 					<Column id="mrColDirectManager" hAlign="Begin" minScreenWidth="Desktop" demandPopin="true">
-						<Text text="{i18n>mrColDirectManager}" class="mtSortHeader" tooltip="{i18n>mrSortByColumn}">
+						<Text text="{i18n_manager>mrColDirectManager}" class="mtSortHeader" tooltip="{i18n_manager>mrSortByColumn}">
 							<customData><core:CustomData key="sortKey" value="managerName" /></customData>
 						</Text>
 					</Column>
 					<Column id="mrColApprovalMonth" width="8rem" hAlign="Begin" minScreenWidth="Tablet" demandPopin="true">
-						<Text text="{i18n>mrColApprovalMonth}" class="mtSortHeader" tooltip="{i18n>mrSortByColumn}">
+						<Text text="{i18n_manager>mrColApprovalMonth}" class="mtSortHeader" tooltip="{i18n_manager>mrSortByColumn}">
 							<customData><core:CustomData key="sortKey" value="approvalMonthKey" /></customData>
 						</Text>
 					</Column>
 					<Column id="mrColProcess" width="11.25rem" hAlign="Center">
-						<Text text="{i18n>mrColProcess}" class="mtSortHeader" tooltip="{i18n>mrSortByColumn}">
+						<Text text="{i18n_manager>mrColProcess}" class="mtSortHeader" tooltip="{i18n_manager>mrSortByColumn}">
 							<customData><core:CustomData key="sortKey" value="processStep" /></customData>
 						</Text>
 					</Column>
@@ -400,10 +400,10 @@
 					     (leftmost); השתלמויות is the wider of the two only so its own
 					     header fits on one line. -->
 					<Column width="6rem" hAlign="Center">
-						<Text text="{i18n>mrColAbsences}" />
+						<Text text="{i18n_manager>mrColAbsences}" />
 					</Column>
 					<Column width="7.5rem" hAlign="Center">
-						<Text text="{i18n>mrColTraining}" />
+						<Text text="{i18n_manager>mrColTraining}" />
 					</Column>
 				</columns>
 
@@ -461,14 +461,14 @@
 							<Button
 								icon="sap-icon://date-time"
 								type="Transparent"
-								tooltip="{i18n>mrOpenAbsences}"
+								tooltip="{i18n_manager>mrOpenAbsences}"
 								press=".onOpenAbsences" />
 
 							<!-- השתלמויות -->
 							<Button
 								icon="sap-icon://education"
 								type="Transparent"
-								tooltip="{i18n>mrOpenTraining}"
+								tooltip="{i18n_manager>mrOpenTraining}"
 								press=".onOpenTraining" />
 
 						</cells>

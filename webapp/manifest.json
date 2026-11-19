@@ -1,7 +1,7 @@
 {
 	"_version": "1.40.0",
 	"sap.app": {
-		"id": "modtimesheet",
+		"id": "com.mln.ui5.emp_timesheet",
 		"type": "application",
 		"i18n": "i18n/i18n_menager.properties",
 		"title": "דוחות נוכחות באחריות ממונה",
@@ -29,7 +29,7 @@
 	},
 	"sap.ui5": {
 		"rootView": {
-			"viewName": "modtimesheet.view.App",
+			"viewName": "com.mln.ui5.emp_timesheet.views.App",
 			"type": "XML",
 			"id": "app",
 			"async": true
@@ -60,10 +60,10 @@
 			]
 		},
 		"models": {
-			"i18n": {
+			"i18n_manager": {
 				"type": "sap.ui.model.resource.ResourceModel",
 				"settings": {
-					"bundleName": "modtimesheet.i18n.i18n_menager",
+					"bundleName": "com.mln.ui5.emp_timesheet.i18n.i18n_menager",
 					"supportedLocales": [""],
 					"fallbackLocale": ""
 				}
@@ -73,7 +73,7 @@
 			"config": {
 				"routerClass": "sap.m.routing.Router",
 				"viewType": "XML",
-				"viewPath": "modtimesheet.view",
+				"viewPath": "com.mln.ui5.emp_timesheet.views",
 				"controlId": "app",
 				"controlAggregation": "pages",
 				"async": true

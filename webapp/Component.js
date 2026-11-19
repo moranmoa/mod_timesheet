@@ -3,7 +3,7 @@ sap.ui.define([
 	"sap/ui/model/odata/v2/ODataModel",
 	"sap/ui/model/json/JSONModel",
 	"sap/base/Log",
-	"modtimesheet/model/DataService"
+	"com/mln/ui5/emp_timesheet/model/DataService"
 ], function (UIComponent, ODataModel, JSONModel, Log, DataService) {
 	"use strict";
 
@@ -17,7 +17,7 @@ sap.ui.define([
 	 */
 	var EMPLOYEE_PICTURE_APP_ID = "MYPROFILE";
 
-	return UIComponent.extend("modtimesheet.Component", {
+	return UIComponent.extend("com.mln.ui5.emp_timesheet.Component", {
 
 		metadata: {
 			manifest: "json"
@@ -77,7 +77,7 @@ sap.ui.define([
 
 		/**
 		 * The "shell" model - the state of the header row
-		 * (view/AppHeader.fragment.xml).
+		 * (views/AppHeader.fragment.xml).
 		 *
 		 * On the component and not on a view because the header outlives every
 		 * screen: it is drawn once in App.view.xml and the screens come and go

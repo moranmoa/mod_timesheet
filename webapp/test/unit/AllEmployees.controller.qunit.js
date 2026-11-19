@@ -1,9 +1,9 @@
 /* global QUnit */
 sap.ui.define([
 	"sap/ui/model/json/JSONModel",
-	"modtimesheet/controller/AllEmployees.controller",
-	"modtimesheet/model/formatter",
-	"modtimesheet/model/mockEmployees"
+	"com/mln/ui5/emp_timesheet/controllers/AllEmployees.controller",
+	"com/mln/ui5/emp_timesheet/model/formatter",
+	"com/mln/ui5/emp_timesheet/model/mockEmployees"
 ], function (JSONModel, AllEmployeesController, formatter, mockEmployees) {
 	"use strict";
 
